@@ -154,7 +154,7 @@ for model in simu_list:     # model will be 'irr' or 'std'
 #%% GRAPH ESTHETIC
 #add special lines
 
-plot_title = 'Vertical profile for {0}\n at {1} on {2}'.format(
+plot_title = 'Vertical profile for {0} at {1} on {2}'.format(
         var_simu, site, wanted_date)
 plt.title(plot_title)
 plt.ylabel('height AGL (m)')

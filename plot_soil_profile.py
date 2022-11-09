@@ -18,7 +18,7 @@ from find_xy_from_latlon import indices_of_lat_lon
 import xarray as xr
 
 
-##-------------------------------------------------------------
+##########################################
 dati = pd.Timestamp('2021-07-24 01:00')
      #first day of simulation
 
@@ -35,7 +35,8 @@ start_day = 21      #first day in simu
 plot_title = 'Ground profile at {0} on {1}'.format(site, dati)
 save_plot = False
 
-#%%------------------
+########################################
+
 #Automatic variable assignation:
 if varname_obs_prefix == 'soil_moisture':
     xlabel = 'humidité du sol [m3/m3]'

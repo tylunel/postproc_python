@@ -21,10 +21,10 @@ import tools
 site = 'cendrosa'
 
 #domain to consider for simu files: 1 or 2
-domain_nb = 1
+domain_nb = 2
 file_suffix = '001dg'  # '001' or '001dg'
 
-varname_obs = 'swd'   # options are: (last digit is the max number available)
+varname_obs = 'rn'   # options are: (last digit is the max number available)
 #-- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1
@@ -46,14 +46,14 @@ longname_as_label = True  #does not work for elsplans
 if site == 'elsplans':
     longname_as_label = False  #does not work for elsplans
 
-save_plot = False
+save_plot = True
 save_folder = './figures/time_series/{0}/domain{1}/'.format(site, domain_nb)
 
 ######################################################
 
 simu_folders = {
-#        'irr': '2.13_irr_2021_22-27/', 
-#        'std': '1.11_ECOII_2021_ecmwf_22-27/'
+        'irr': '2.13_irr_2021_22-27/', 
+        'std': '1.11_ECOII_2021_ecmwf_22-27/'
          }
 father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
 
@@ -159,6 +159,8 @@ fig = plt.figure(figsize=(10, 6.5))
     
 obs = xr.open_dataset(datafolder + out_filename_obs)
 
+obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
+
 if site == 'elsplans':
     dati_arr = pd.date_range(start=obs.time.min().values, 
                              periods=len(obs[varname_obs]), 
@@ -228,8 +230,11 @@ for model in simu_folders:
              color=colordict[model])
 
 if longname_as_label:
-    ylabel = obs[varname_obs].long_name
-
+    try:
+        ylabel = obs[varname_obs].long_name
+    except AttributeError:
+        ylabel = varname_obs
+        
 plot_title = '{0} at {1}'.format(ylabel, site)
 
 # add secondary axis on the right, relative to the left one - (for LE)

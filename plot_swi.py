@@ -14,18 +14,25 @@ from tools import indices_of_lat_lon, sm2swi
 
 #################### Independant Parameters (TO FILL IN):
     
-site = 'cendrosa'
+site = 'preixana'
 
-varname_obs = 'soil_moisture_3'   # options are: (last digit is the max number available)
-# ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
+#domain to consider for simu files: 1 or 2
+domain_nb = 2
+file_suffix = '001dg'  # '001' or '001dg'
 
-varname_sim = 'SWI4_ISBA'      # simu varname to compare obs with
-#T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_ISBA, SWI14_P12
-#leave None for automatic attribution
+varname_obs = 'soil_moisture_1'   # options are: (last digit is the max number available)
+# ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,...
+#elsplans: SM10_subsoil, 
+
+varname_sim = 'SWI2_ISBA'      # simu varname to compare obs with
+#ex: WG3_ISBA, WG4P9, SWI4_ISBA, SWI14_P12
+#N.B.: layers depth for diff: 
+#    [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6,
+#     -0.8, -1, -1.5, -2, -3, -5, -8, -12]
 
 date = '2021-07'
 
-save_plot = False
+save_plot = True
 save_folder = './figures/time_series/{0}/'.format(site)
 
 ###################################################
@@ -51,22 +58,16 @@ if varname_obs in ['soil_moisture_1', 'soil_moisture_2', 'soil_moisture_3']:
     ylabel = 'soil water index'
     constant_obs = 0
     coeff_obs = 1
-    varname_sim_prefix = 'WG3'    #corresponding variables in SFX
-    #other options: 'WG3_ISBA', 'WG4P9', 'SWI4_ISBA', 'SWI14_P12'
-    #N.B.: layers depth for diff: 
-    #    [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6,
-    #     -0.8, -1, -1.5, -2, -3, -5, -8, -12]
-else:
-    raise ValueError('Unknown value')
+
+#else:
+#    raise ValueError('Unknown value')
 
 
 if site == 'cendrosa':
     lat = 41.6925905
     lon = 0.9285671
-    alt = 'undef'
-    wilt_pt ={1: 0.141, 2: 0.07, 3: 0.125}       # To determine via plot on August
+    wilt_pt ={1: 0.141, 2: 0.07, 3: 0.125}     # To determine via plot on August
     field_capa = {1: 0.28, 2: 0.18, 3: 0.23}   # resp. layers 1, 2 & 3
-    varname_sim_suffix = 'P9'
     datafolder = \
         '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
     filename_prefix = \
@@ -75,10 +76,8 @@ if site == 'cendrosa':
 elif site == 'preixana':
     lat = 41.59373 
     lon = 1.07250
-    alt = 'undef'
     wilt_pt ={1: 0.065, 2: 0.135, 3: 0.115}       # To determine via plot
     field_capa = {1: 0.25, 2: 0.30, 3: 0.187}    # on May
-    varname_sim_suffix = 'P2'
     datafolder = \
         '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
     filename_prefix = \
@@ -86,14 +85,13 @@ elif site == 'preixana':
     in_filenames = filename_prefix + date
 elif site == 'elsplans':
     lat = 41.590111 
-    lon = 1.029363  
-    alt = 'undef'
-    varname_sim_suffix = '_ISBA'
+    lon = 1.029363
+    datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/5min/'
+    filename_prefix = 'LIAISE_'
+    date = date.replace('-', '')
+    in_filenames = filename_prefix + date
 else:
     raise ValueError('Site name not known')
-
-if varname_sim is None:
-    varname_sim = varname_sim_prefix + varname_sim_suffix
 
 
 #%% OBS: Concatenate and plot data
@@ -114,16 +112,29 @@ obs = xr.open_dataset(datafolder + out_filename)
 #(obs[varname_obs]*coeff_obs).plot(label='obs_{0}'.format(varname_obs))
 
 varplot = 'swi'
+multi_layers = False  # set to true if you want all depth shown on same graph
+if multi_layers:
+    layers_list = [1, 2, 3]
+else:
+    layers_list = [int(varname_obs[-1]),]
 # FOR SWI
 if varplot == 'swi':
     swi = {}
-    #for i in [1, 2, 3]:
-    for i in [3]:
-        swi[i] = sm2swi(obs['soil_moisture_{0}'.format(str(i))], 
-                        wilt_pt=wilt_pt[i], field_capa=field_capa[i])
-        swi[i].plot(label='swi_{0}'.format(str(i)),
-                    color=colordict['obs']
-                    )
+    for i in layers_list:
+        if site == 'elsplans':
+            swi[i] = sm2swi(obs[varname_obs], 
+                                wilt_pt=wilt_pt[i], 
+                                field_capa=field_capa[i])
+            swi[i].plot(label='swi_ukmo',
+                        color=colordict['obs']
+                            )
+        else:           
+            swi[i] = sm2swi(obs[varname_obs], 
+                            wilt_pt=wilt_pt[i], 
+                            field_capa=field_capa[i])
+            swi[i].plot(label='swi_{0}'.format(str(i)),
+                        color=colordict['obs']
+                        )
 # FOR SM:  # mainly for debug, exploratory understanding
 elif varplot == 'sm':
     obs[varname_obs].plot(label='varname_obs')
@@ -131,8 +142,8 @@ elif varplot == 'sm':
 
 #%% SIMU:
 
-in_filenames_sim = 'LIAIS.2.SEG*.001dg.nc'  # use of wildcard allowed
-out_filename_sim = 'LIAIS.2.{0}dg.nc'.format(varname_sim)
+in_filenames_sim = 'LIAIS.{0}.SEG*.{1}.nc'.format(domain_nb, file_suffix)  # use of wildcard allowed
+out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim)
 
 for model in simu_folders:
     datafolder = father_folder + simu_folders[model]

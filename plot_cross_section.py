@@ -11,9 +11,11 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import xarray as xr
 import MNHPy.misc_functions as misc
-from tools import indices_of_lat_lon, get_simu_filename, line_coords
+import tools
 
 ########## Independant parameters ###############
+#domain to consider: 1 or 2
+domain_nb = 1
 # Simulation to show: 'irr' or 'std'
 model = 'irr'
 # Surface variable to show below the section
@@ -22,19 +24,47 @@ surf_var_label = 'Q_vol_soil'
 # Set type of wind representation: 'verti_proj' or 'horiz'
 wind_visu = 'verti_proj'
 # Datetime
-wanted_date = '20210722-1400'
+wanted_date = '20210722-2000'
 # altitude ASL or height AGL: 'asl' or 'agl'
 alti_type = 'asl'
 # maximum level (height AGL) to plot
 toplevel = 2500
 # Save the figure
 save_plot = True
-save_folder = './figures/cross_sections/'
+save_folder = './figures/cross_sections/domain1/'
+
+# where to place the cross section
+nb_points_beyond = 10
+site_start = 'cendrosa'
+start = (41.6925905, 0.9285671)
+#site_start = 'preixana'
+#start = (41.59373, 1.0725)
+#site_start = 'arbeca'
+#start = (41.54236, 0.9232)
+#site_start = 'verdu'
+#start = (41.6107, 1.1428)
+#site_end = 'tarragona'
+#end = (41.1188, 1.2456)
+#site_end = 'coll_lilla'
+#end = (41.34072, 1.22014)
+#site_end = 'puig_pelat'
+#end = (41.26571, 1.05502)
+#site_end = 'st_maria'
+#end = (41.36315, 1.29917)
+site_end = 'elsplans'
+end = (41.590111, 1.029363)
+
+# Arrow/barbs esthetics:
+skip_barbs_x = 2
+skip_barbs_y = 5
+arrow_size = 1  #works for arrow and barbs
+
 #################################################
 
 
 # Dependant parameters
-filename = get_simu_filename(model, wanted_date)
+filename = tools.get_simu_filename(model, wanted_date, domain=domain_nb,
+                             file_suffix='001')
 
 #load file
 data_perso = xr.open_dataset(filename)
@@ -47,9 +77,12 @@ data = data_reduced
 #%% Put all variable in the middle of the grid:
 
 # Interpolate in middle of grid and rename the coords
-data_UT = data['UT'].interp(ni_u=data.ni.values, nj_u=data.nj.values).rename({'ni_u': 'ni', 'nj_u': 'nj'})
-data_VT = data['VT'].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename({'ni_v': 'ni', 'nj_v': 'nj'})
-data_WT = data['WT'].interp(level_w=data.level.values).rename({'level_w': 'level'})
+data_UT = data['UT'].interp(ni_u=data.ni.values, nj_u=data.nj.values).rename(
+        {'ni_u': 'ni', 'nj_u': 'nj'})
+data_VT = data['VT'].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
+        {'ni_v': 'ni', 'nj_v': 'nj'})
+data_WT = data['WT'].interp(level_w=data.level.values).rename(
+        {'level_w': 'level'})
 
 # Create new datarray with everything centered in the middle
 data = xr.merge([data_UT, data_VT, data_WT, 
@@ -63,14 +96,7 @@ data = data.squeeze()
 
 #%% CREATE SECTION LINE
 
-site_start = 'cendrosa'
-start = (41.6925905, 0.9285671) # CENDROSA
-site_end = 'tarragona'
-end = (41.1188, 1.2456)
-#site_end = 'elsplans'
-#end = (41.590111, 1.029363) # ELSPLANS
-
-line = line_coords(data, start, end, nb_indices_exterior=10)
+line = tools.line_coords(data, start, end, nb_indices_exterior=nb_points_beyond)
 ni_range = line['ni_range']
 nj_range = line['nj_range']
 slope = line['slope']
@@ -85,8 +111,8 @@ section = []
 abscisse_coords = []
 abscisse_sites = {}
 
+print('section interpolation on {0} points (~1sec/pt)'.format(len(ni_range)))
 for i, ni in enumerate(ni_range):
-    print(i)
     #interpolation of all variables on ni_range
     profile = data.interp(ni=ni, nj=nj_range[i]).expand_dims({'i_sect':[i]})
     section.append(profile)
@@ -112,8 +138,11 @@ fig, ax = plt.subplots(2, figsize=(12,6),
                        gridspec_kw={'height_ratios': [20, 1]})
 
 ## --- Subplot of section, i.e. the main plot ----
+#get maximum height of relief in cross-section
+max_ZS = section_ds['ZS'].max()
+
 # remove top layers of troposphere
-section_ds = section_ds.where(section_ds.level<toplevel, drop=True)
+section_ds = section_ds.where(section_ds.level<(toplevel+max_ZS), drop=True)
 
 ## --- Adapt to alti_type ------
 #create grid mesh (eq. to X)
@@ -163,8 +192,6 @@ ax[0].clabel(cont, cont.levels, inline=True, fontsize=8)
 
 ### 3. Winds
 if wind_visu == 'horiz':            # 2.1 winds - flat direction and force
-    skip_barbs_x = 5
-    skip_barbs_y = 4
     ax[0].barbs(
             #Note that X & alti have dimensions reversed
             Xmesh[::skip_barbs_y, ::skip_barbs_x], 
@@ -173,14 +200,12 @@ if wind_visu == 'horiz':            # 2.1 winds - flat direction and force
             section_ds['UT'][::skip_barbs_x, ::skip_barbs_y].T, 
             section_ds['VT'][::skip_barbs_x, ::skip_barbs_y].T, 
             pivot='middle',
-            length=5,     #length of barbs
+            length=5*arrow_size,     #length of barbs
             sizes={
     #              'spacing':1, 'height':1, 'width':1,
                  'emptybarb':0.01}
               )
 elif wind_visu == 'verti_proj':     # 2.2  winds - verti and projected wind
-    skip_barbs_x = 5
-    skip_barbs_y = 4
     Q = ax[0].quiver(
             #Note that X & alti have dimensions reversed
             Xmesh[::skip_barbs_y, ::skip_barbs_x], 
@@ -189,7 +214,7 @@ elif wind_visu == 'verti_proj':     # 2.2  winds - verti and projected wind
             section_ds['PROJ'][::skip_barbs_x, ::skip_barbs_y].T, 
             section_ds['WT'][::skip_barbs_x, ::skip_barbs_y].T, 
             pivot='middle',
-            scale=150,     #scale of arrows - if higher, arrows are smaller
+            scale=150/arrow_size,  # arrows scale, if higher, smaller arrows
             )
     #add arrow scale in top-right corner
     u_max = abs(section_ds['PROJ'][::skip_barbs_x, ::skip_barbs_y]).max()
@@ -208,6 +233,9 @@ ax[0].set_xticklabels(list(abscisse_sites.values()),
 #ax.set_xticks(data1.i_sect[::10])
 #ax.set_xticklabels(abscisse_coords[::10], rotation=0, fontsize=9)
 
+# set y limits (height ASL)
+min_ZS = section_ds['ZS'].min()
+ax[0].set_ylim([min_ZS, max_ZS + toplevel])
 ax[0].set_ylabel(ylabel)
 
 
@@ -226,7 +254,8 @@ cbar2 = fig.colorbar(p9, cax=cax, orientation='vertical')
 cbar2.set_label(surf_var_label)
 
 ax[1].set_xticks(ticks = data_soil.i_sect.values[::9],
-                 labels = (data_soil.i_sect.values * line['ni_step']/1000)[::9].round(decimals=1)
+                 labels = (data_soil.i_sect.values * \
+                           line['nij_step']/1000)[::9].round(decimals=1)
                  )
 ax[1].set_xlabel('distance [km]')
 
@@ -234,11 +263,9 @@ ax[1].set_yticks([])
 ax[1].set_ylabel(surf_var)
 
 # Global options
-plot_title = 'Cross section on '+ str(wanted_date) +'-'+ model +'-'+ wind_visu
+plot_title = 'Cross section on {0}-{1}-{2}-domain{3}'.format(
+        wanted_date, model, wind_visu, domain_nb)
 fig.suptitle(plot_title)
 
 if save_plot:
-    filename = (plot_title)
-    filename = filename.replace('=', '').replace('(', '').replace(')', '')
-    filename = filename.replace(' ', '_').replace(',', '').replace('.', '_')
-    plt.savefig(save_folder +str(filename))
+    tools.save_figure(plot_title, save_folder)

@@ -20,6 +20,8 @@ from tools import indices_of_lat_lon, apparent_temperature
     
 site = 'cendrosa'
 
+domain_nb = 2
+
 #If varname_sim is 3D:
 ilevel = 1   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
@@ -154,16 +156,15 @@ plt.plot(obs.time,
 varname_sim_list = [
                     'T2M_ISBA', 
                     'REHU', 
-#                    'UT',
-#                    'VT',
-#                    'UT,VT'
+                    'UT',
+                    'VT',
                     ]
 
 ## CONCATENATE DATA
 for varname_sim in varname_sim_list:
     
-    in_filenames_sim = 'LIAIS.2.SEG*.001dg.nc'  # use of wildcard allowed
-    out_filename_sim = 'LIAIS.2.{0}dg.nc'.format(varname_sim)
+    in_filenames_sim = 'LIAIS.{0}.SEG*.001dg.nc'.format(domain_nb)  # use of wildcard allowed
+    out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim)
     
     for model in simu_folders:
         datafolder = father_folder + simu_folders[model]
@@ -208,16 +209,19 @@ for model in simu_folders:
         #Put in result dict
         vars_sim[varname_sim] = var_1d
 
-#    vars_sim['WS10M'] = np.sqrt(vars_sim['UT']**2 + \
-#                                vars_sim['VT']**2)
+    vars_sim['WS'] = np.sqrt(vars_sim['UT']**2 + \
+                                vars_sim['VT']**2)
 
     ## Compute thermal comfort
     apparent_temp_sim[model] = []
     for i in range(len(var_1d)):
-        apparent_temp_sim[model].append(apparent_temperature(
+        apparent_temp_sim[model].append(
+            apparent_temperature(
                 float(vars_sim['T2M_ISBA'][i])-273.15,
                 float(vars_sim['REHU'][i]), 
-                0))
+                float(vars_sim['WS'][i])
+                )
+            )
 
     #plot T2M
     plt.plot(dati_arr, vars_sim['T2M_ISBA']-273.15, 

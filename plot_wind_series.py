@@ -4,29 +4,30 @@
 Creation : 07/01/2021
 
 Fonctionnement:
-    Seule plusieurs sections ont besoin d'être remplies, à automatiser.
-    Works fine for scalar variables, not great for wind
-    
+    Seule plusieurs sections ont besoin d'être remplies, à automatiser.    
 """
 import os
 import pandas as pd
 import numpy as np
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import xarray as xr
-from tools import indices_of_lat_lon
+import tools
 from windrose import WindroseAxes
 import metpy.calc as mpcalc
 from metpy.units import units
-#import time
 
 
 ################%% Independant Parameters (TO FILL IN):
     
-site = 'elsplans'
+site = 'cendrosa'
+
+#domain to consider for simu files: 1 or 2
+domain_nb = 2
+
+ilevel = 3   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
 save_plot = True 
-save_folder = './figures/winds/'
+save_folder = './figures/winds/domain{0}/series/'.format(domain_nb)
 #varname_sim = 'T2M_ISBA'      # simu varname to compare obs with
 #leave None for automatic attribution
 ########################################################
@@ -123,6 +124,8 @@ def plot_windrose(ws, wd, start_date=None, end_date=None, fig=None, **kwargs):
 if site == 'cendrosa':
     lat = 41.6925905
     lon = 0.9285671
+    varname_obs_ws = 'ws_2'
+    varname_obs_wd = 'wd_2'
     datafolder = \
         '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
     filename_prefix = \
@@ -131,6 +134,8 @@ if site == 'cendrosa':
 elif site == 'preixana':
     lat = 41.59373 
     lon = 1.07250
+    varname_obs_ws = 'ws_2'
+    varname_obs_wd = 'wd_2'
     datafolder = \
         '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
     filename_prefix = \
@@ -139,11 +144,13 @@ elif site == 'preixana':
 elif site == 'elsplans':
     lat = 41.590111 
     lon = 1.029363
+    varname_obs_ws = 'UTOT_10m'
+    varname_obs_wd = 'DIR_10m'
     datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/5min/'
     filename_prefix = 'LIAISE_'
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
-    varname_sim_suffix = '_ISBA'
+
 else:
     raise ValueError('Site name not known')
 
@@ -172,9 +179,6 @@ fig, ax = plt.subplots(2, 1, figsize=(15,9))
 #%% PLOT OBS
 start_date = pd.Timestamp('20210721-0000')
 end_date = pd.Timestamp('20210725-0000')
-
-varname_obs_ws = 'UTOT_10m'
-varname_obs_wd = 'DIR_10m'
 
 ws_obs = obs[varname_obs_ws]
 wd_obs = obs[varname_obs_wd]
@@ -215,8 +219,8 @@ else:
 #%% SIMU:
 
 varname_sim = 'UT,VT'
-in_filenames_sim = 'LIAIS.2.SEG*.001.nc'  # use of wildcard allowed
-out_filename_sim = 'LIAIS.2.{0}.nc'.format(varname_sim)
+in_filenames_sim = 'LIAIS.{0}.SEG*.001.nc'.format(domain_nb)  # use of wildcard allowed
+out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim)
 
 for model in simu_folders:
 #model='std'
@@ -234,7 +238,7 @@ for model in simu_folders:
     ds1 = xr.open_dataset(datafolder + out_filename_sim)
     
     # find indices from lat,lon values 
-    index_lat, index_lon = indices_of_lat_lon(ds1, lat, lon)
+    index_lat, index_lon = tools.indices_of_lat_lon(ds1, lat, lon)
 
     ut_md = ds1['UT']
     vt_md = ds1['VT']
@@ -245,16 +249,15 @@ for model in simu_folders:
 
     # PLOT d1
     if len(ut_md.shape) == 5:
-        ilevel = 3   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
         ut_1d = ut_md[:, :, ilevel, index_lat, index_lon].data #1st index is time, 2nd is ?, 3rd is Z,..
         vt_1d = vt_md[:, :, ilevel, index_lat, index_lon].data
     elif len(ut_md.shape) == 4:
-        ilevel = 3   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
         ut_1d = ut_md[:, ilevel ,index_lat, index_lon].data #1st index is time, 2nd is ?, 3rd is Z,..
         vt_1d = vt_md[:, ilevel ,index_lat, index_lon].data
     elif len(ut_md.shape) == 3:
         var_1d = ut_md.data[:, index_lat, index_lon]
     
+    #computation of windspeed and  winddirection following ut and vt
     ws = mpcalc.wind_speed(ut_1d * units.meter_per_second, 
                            vt_1d * units.meter_per_second)
     wd = mpcalc.wind_direction(ut_1d * units.meter_per_second,
@@ -289,8 +292,4 @@ ax[1].grid(visible=True, axis='both')
 #%% Save figure
 
 if save_plot:
-    filename = (plot_title)
-    filename = filename.replace('=', '').replace('(', '').replace(')', '')
-    filename = filename.replace(' ', '_').replace(',', '').replace('.', '_')
-    filename = filename.replace('/', 'over')
-    plt.savefig(save_folder+filename)
+    tools.save_figure(plot_title, save_folder)

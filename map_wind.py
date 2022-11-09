@@ -14,13 +14,45 @@ import xarray as xr
 import metpy.calc as mpcalc
 from metpy.units import units
 import pandas as pd 
+import tools
 
 
 #########################################"""
 model = 'irr'
-ilevel = 10  #0 is Halo, 1->2m, 2->6.12m, 3->10.49m, 10->49.3m
-skip_barbs = 3 # 1/skip_barbs will be printed
-save_plot = False
+ilevel = 3  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070
+skip_barbs = 10 # 1/skip_barbs will be printed
+barb_length = 4
+# Datetime
+wanted_date = '20210723-1200'
+
+speed_plane = 'horiz'  # 'horiz': horizontal 'normal' wind, 'verti' for W
+
+if speed_plane == 'verti':
+    vmax_cbar = 4
+    vmin_cbar = -vmax_cbar
+    cmap_name = 'seismic'
+elif speed_plane == 'horiz':
+    vmax_cbar = 15
+    vmin_cbar = 0
+    cmap_name = 'BuPu'
+
+zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
+
+if zoom_on == 'liaise':
+    skip_barbs = 3 # 1/skip_barbs will be printed
+    barb_length = 5.5
+    lat_range = [41.45, 41.8]
+    lon_range = [0.7, 1.2]
+elif zoom_on == 'urgell':
+    skip_barbs = 6 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    lat_range = [41.1, 42.1]
+    lon_range = [0.2, 1.7]
+    
+    
+save_plot = True
+save_folder = './figures/winds/horiz/'
+
 ###########################################
 
 simu_folders = {
@@ -31,8 +63,11 @@ father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
 
 datafolder = father_folder + simu_folders[model]
 
+filename = tools.get_simu_filename(model, wanted_date)
+
 # load file, dataset and set parameters
-ds1 = xr.open_dataset(datafolder + 'LIAIS.2.SEG36.001.nc', 
+ds1 = xr.open_dataset(filename,
+#        datafolder + 'LIAIS.2.SEG36.001.nc', 
                       decode_coords="coordinates",
 #                      coordinates=['latitude_u', 'longitude_u'],
 #                      grid_mapping=latitude
@@ -41,16 +76,22 @@ ds1 = xr.open_dataset(datafolder + 'LIAIS.2.SEG36.001.nc',
 fig1 = plt.figure(figsize=(13,9))
 
 #%% WIND SPEED COLORMAP
-ws = mpcalc.wind_speed(ds1['UT'] * units.meter_per_second, 
-                       ds1['VT'] * units.meter_per_second)
+if speed_plane == 'horiz':
+    ws = mpcalc.wind_speed(ds1['UT'] * units.meter_per_second, 
+                           ds1['VT'] * units.meter_per_second)
 #wd = mpcalc.wind_direction(ds1['UT'] * units.meter_per_second, 
 #                           ds1['VT'] * units.meter_per_second)
+elif speed_plane == 'verti':
+    ws = ds1['WT']
 
+# keep only layer of interest
 ws_layer = ws[0, ilevel, :, :]
 
 plt.pcolormesh(ds1.longitude, ds1.latitude, ws_layer,
 #               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
-               cmap='BuPu'
+               cmap=cmap_name,
+               vmin=vmin_cbar,
+               vmax=vmax_cbar               
               )
 cbar = plt.colorbar()
 cbar.set_label('Wind speed [m/s]')
@@ -58,13 +99,13 @@ cbar.set_label('Wind speed [m/s]')
 
 X = ds1.longitude
 Y = ds1.latitude
-U = ds1.UT[0, 10, :,:]
-V = ds1.VT[0, 10, :,:]
+U = ds1.UT[0, ilevel, :,:]
+V = ds1.VT[0, ilevel, :,:]
 
 plt.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs], 
           U[::skip_barbs, ::skip_barbs], V[::skip_barbs, ::skip_barbs],
           pivot='middle',
-          length=6,     #length of barbs
+          length=barb_length,     #length of barbs
           sizes={
 #                 'spacing':1, 
 #                 'height':1,
@@ -110,22 +151,35 @@ for site in sites:
                 color='r',
                 s=15        #size of markers
                 )
-    plt.text(sites[site]['lon']+0.01,
-             sites[site]['lat']+0.01, 
-             site, 
-             fontsize=12)
+    if site == 'elsplans':
+        plt.text(sites[site]['lon']-0.1,
+                 sites[site]['lat']-0.03, 
+                 site, 
+                 fontsize=12)
+    else:
+        plt.text(sites[site]['lon']+0.01,
+                 sites[site]['lat']+0.01, 
+                 site, 
+                 fontsize=12)
 
 
 #%% FIGURE OPTIONS
-plot_title = 'Winds at {0}m on {1} for simu {2}'.format(
-        np.round(ws_layer.level, decimals=1), 
+if speed_plane == 'horiz':
+    level_agl = ws_layer.level
+if speed_plane == 'verti':
+    level_agl = ws_layer.level_w
+        
+plot_title = '{4} winds at {0}m on {1} for simu {2} zoomed on {3}'.format(
+        np.round(level_agl, decimals=1), 
         pd.to_datetime(ws_layer.time.values).strftime('%Y-%m-%dT%H%M'),
-        model)
+        model,
+        zoom_on,
+        speed_plane)
 plt.title(plot_title)
 
+if zoom_on is not None:
+    plt.ylim(lat_range)
+    plt.xlim(lon_range)
 
 if save_plot:
-    filename = (plot_title)
-    filename = filename.replace('=', '').replace('(', '').replace(')', '')
-    filename = filename.replace(' ', '_').replace(',', '').replace('.', '_')
-    plt.savefig('./figures/winds/'+str(filename))
+    tools.save_figure(plot_title, save_folder)

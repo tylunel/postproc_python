@@ -18,9 +18,10 @@ import math   # mais on pourrait s'en passer et rendre le tout plus lisible
 #from difflib import SequenceMatcher
 
 
-def indices_of_lat_lon(ds, lat, lon):
+def indices_of_lat_lon(ds, lat, lon, verbose=True):
     """ 
-    Find indices corresponding to latitude and longitude values for a given file.
+    Find indices corresponding to latitude and longitude values
+    for a given file.
     
     ds: xarray.DataSet
         Dataset containing fields of netcdf file
@@ -43,13 +44,13 @@ def indices_of_lat_lon(ds, lat, lon):
     distance2lon = np.abs(lon_dat - lon)
     index_lon = np.argwhere(distance2lon <= distance2lon.min())[0,1]
     
-    print("Before refinement : index_lat={0}, index_lon={1}".format(
-            index_lat, index_lon))
+#    print("Before refinement : index_lat={0}, index_lon={1}".format(
+#            index_lat, index_lon))
     
-    # refine
-    opti = False
+    # refine as long as optimum not reached
+    opti_reached = False
     n = 0  #count of iteration
-    while opti is False:
+    while opti_reached is False:
         if (np.abs(lon_dat[index_lat, index_lon] - lon) > \
             np.abs(lon_dat[index_lat, index_lon+1] - lon) ):
             index_lon = index_lon+1
@@ -63,12 +64,13 @@ def indices_of_lat_lon(ds, lat, lon):
             np.abs(lat_dat[index_lat-1, index_lon] - lat) ):
             index_lat = index_lat-1
         elif n > 20:
-            raise ValueError("loop does not converge, check manually for indices.")
+            raise ValueError("""loop does not converge, 
+                             check manually for indices.""")
         else:
-            opti = True
-            
-    print("After refinement : index_lat={0}, index_lon={1}".format(
-            index_lat, index_lon))
+            opti_reached = True
+    if verbose:
+        print("For lat={0}, lon={1} : index_lat={2}, index_lon={3}".format(
+            lat, lon, index_lat, index_lon))
     
     return index_lat, index_lon
 
@@ -76,8 +78,7 @@ def indices_of_lat_lon(ds, lat, lon):
 def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=False):
     """
     Open the 50m mast from UK MetOffice formatted under .txt,
-    and return it into xarray dataset with same variable names 
-    than .nc file from cnrm.
+    create netcdf file, and returns a xarray dataset.
     """
     filename_modi = filename + '_modi'
     
@@ -178,7 +179,6 @@ def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=False):
         cd {0}
         rm -f {1}'''.format(datafolder, filename_modi))
 
-    
     return obs_ukmo_xr
     
 
@@ -272,17 +272,25 @@ def moving_average(arr, window_size = 3):
     return np.array(moving_averages)
 
 def nearest(items, pivot):
-    """ returns nearest element and corresponding index """
+    """ 
+    Returns nearest element and corresponding index 
+    """
     dist = [abs(elt - pivot) for elt in items]
     return items[np.argmin(dist)], np.argmin(dist)
 
-def get_obs_filename_from_date(datafolder, wanted_datetime, 
+def get_obs_filename_from_date(datafolder, wanted_date='20210722-1200', 
                        dt_threshold=pd.Timedelta('0 days 01:30:00'),
                        regex_date='202107\d\d.\d\d\d\d'):
     """
     Function returning obs filename corresponding to closest datetime. 
     Obs filename have varying filename depending on launch time
     for radiosoundings.
+    
+    Parameters:
+        datafolder: str
+            folder containing the obs
+        wanted_datetime: str, that can be convert to pd.Timestamp
+            ex: '20210722-1200', '20210722T1200'
     
     Returns:
         filename: str
@@ -304,11 +312,15 @@ def get_obs_filename_from_date(datafolder, wanted_datetime,
             datetime = pd.Timestamp(stringdate)
         dates.append(datetime)
     
+    #convert str to timestamp
+    wanted_datetime = pd.Timestamp(wanted_date)
+    #find nearest datetime
     nearest_date, i_near = nearest(dates, wanted_datetime)
     print("The nearest date found in files is: " + str(nearest_date))
     
+    #compute time distance between wanted datetime and available obs
     distance = abs(nearest_date - wanted_datetime)
-    
+    # check it is below threshold
     if distance > dt_threshold:
         raise ValueError("No obs at wanted datetime (or not close enough)")
     
@@ -316,16 +328,23 @@ def get_obs_filename_from_date(datafolder, wanted_datetime,
     
     return filename
 
-def get_simu_filename(model, date='20210722-1200'):
+def get_simu_filename(model, date='20210722-1200', domain=2,
+                      file_suffix='001dg'):
     """
     Returns the whole string for filename and path. 
     Chooses the right SEG (segment) number corresponding to date
     
-    model: str, 
-        'irr' or 'std'
+    Parameters:
+        model: str, 
+            'irr' or 'std'
+        wanted_date: str, with format accepted by pd.Timestamp,
+            ex: '20210722-1200'
+        domain: int,
+            domain number in case of grid nesting.
+            ex: domain 1 is the biggest, domain 2 smaller, etc
     
-    wanted_date: str, with format accepted by pd.Timestamp,
-        ex: '20210722-1200'
+    Returns:
+        filename: str, full path and filename
     """
     pd_date = pd.Timestamp(date)
     seg_nb = (pd_date - pd.Timestamp('20210721-0000')).components.hours +\
@@ -339,12 +358,39 @@ def get_simu_filename(model, date='20210722-1200'):
 
     father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
     simu_filelist = {
-        'std': '1.11_ECOII_2021_ecmwf_22-27/LIAIS.2.SEG{0}.001dg.nc'.format(seg_nb_str),
-        'irr': '2.13_irr_2021_22-27//LIAIS.2.SEG{0}.001dg.nc'.format(seg_nb_str),
+        'std': '1.11_ECOII_2021_ecmwf_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
+                domain, seg_nb_str, file_suffix),
+        'irr': '2.13_irr_2021_22-27//LIAIS.{0}.SEG{1}.{2}.nc'.format(
+                domain, seg_nb_str, file_suffix),
         }
     
     filename = father_folder + simu_filelist[model]
     return filename
+
+def concat_obs_files(datafolder, in_filenames, out_filename):
+    """
+    Check if file already exists. If not create it by concatenating files
+    that correspond to "in_filenames*". It uses shell script, and the command
+    'ncrcat' for it.
+    
+    Parameters:
+        datafolder: 
+            str, absolute path
+        in_filenames: 
+            str, common partial name of files to be concatenated.
+            Used with wildcard "*" in the shell script run.
+        out_filename:
+            str, name of output file
+            
+    Returns: Nothing in python, but it should have created the output file
+    in the datafolder if not existing before.        
+    """
+    if not os.path.exists(datafolder + out_filename):
+        os.system('''
+            cd {0}
+            ncrcat {1}*.nc -o {2}
+            '''.format(datafolder, in_filenames, out_filename))
+
 
 def sm2swi(sm, wilt_pt=None, field_capa=None):
     """
@@ -394,11 +440,17 @@ def line_coords(data,
     y_intercept = nj_start - slope * ni_start
     print('slope and y-intercept :', slope, y_intercept)
     
-    # distance between start and end in term of index
+    # distance between start and end in term of indices
     index_distance = np.ceil(np.sqrt((index_lon_end - index_lon_start)**2 + \
                                      (index_lat_end - index_lat_start)**2))
-    # distance between start and end in term of meters
+    
+    # distance between start and end in term of meters ...
+    # .. on i (longitude)
     ni_step = (ni_end - ni_start)/(index_distance-1)
+    # .. on j (latitude)
+    nj_step = (nj_end - nj_start)/(index_distance-1)
+    # .. on section line
+    nij_step = np.sqrt(ni_step**2 + nj_step**2)
     
     ni_range = np.linspace(ni_start - ni_step*nb_indices_exterior, 
                            ni_end + ni_step*nb_indices_exterior,
@@ -408,7 +460,59 @@ def line_coords(data,
     nj_range = y_intercept + slope * ni_range
     
     return {'ni_range': ni_range, 'nj_range': nj_range, 'slope': slope,
-            'ni_start': ni_start, 'ni_end': ni_end, 'ni_step': ni_step} 
+            'ni_start': ni_start, 'ni_end': ni_end, 'nij_step': nij_step} 
+
+
+def center_uvw(data):
+    """
+    Interpolate in middle of grid for variable UT, VT and WT
+    and rename the associated coordinates.
+    Useful for operation on winds in post processing.
+    
+    Inputs:
+        data: xarray.Dataset, containing variables 'UT', 'VT', 'WT'
+    
+    Returns:
+        data: xarray.Dataset,
+            same dataset but with winds positionned in the center of grid
+    """
+    
+    data['UT'] = data['UT'].interp(ni_u=data.ni.values, nj_u=data.nj.values).rename(
+            {'ni_u': 'ni', 'nj_u': 'nj'})
+    data['VT'] = data['VT'].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
+            {'ni_v': 'ni', 'nj_v': 'nj'})
+    data['WT'] = data['WT'].interp(level_w=data.level.values).rename(
+            {'level_w': 'level'})
+    
+    # Create new datarray with everything centered in the middle
+    #data_new = xr.merge([data_UT, data_VT, data_WT, 
+    #                 data['THT'], data['RVT'], data['ZS'],
+    ##                 data[surf_var],
+    #                 ])
+    
+    # remove useless coordinates
+#    data_new = data.drop(['latitude_u', 'longitude_u', 
+#                          'latitude_v', 'longitude_v', ])
+    
+    # consider time no longer as a dimension but just as a single coordinate
+    data = data.squeeze()
+    
+    return data
+
+
+def save_figure(plot_title, save_folder='./figures/', verbose=True):
+    """
+    Save the plot
+    """
+    if not os.path.isdir(save_folder):
+        os.mkdir(save_folder)
+    filename = (plot_title)
+    filename = filename.replace('=', '').replace('(', '').replace(')', '')
+    filename = filename.replace(' ', '_').replace(',', '').replace('.', '_')
+    filename = filename.replace('/', 'over')
+    plt.savefig(save_folder +str(filename))
+    if verbose:
+        print('figure {0} saved in {1}'.format(plot_title, save_folder))
 
 
 def subset(latmin=41.35, lonmin=0.40, latmax=41.9, lonmax=1.4):

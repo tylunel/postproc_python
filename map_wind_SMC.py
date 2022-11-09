@@ -4,23 +4,54 @@
 Created on Tue May 17 09:33:15 2022
 
 @author: lunelt
+
+Pb for comparing values of wind_speed!:
+    most of stations inside irrgated area are 2m high, and 10m high outside
+    of irrigated zone.
+    For relevant comparison, check C6 vs C7 (10m high each)
 """
 
 import xarray as xr
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
+import tools
 #import numpy as np
 
+##########################################
+date_begin = 20210630  #keep it as float, even if it is a date
+date_end = 20210801
+#Be careful for conflicts with partial_filename
 
-save_plot = False
-
-#%% SET DATAFOLDER
 datafolder = '/cnrm/surface/lunelt/data_LIAISE/SMC_22stations/'
 #filename_ex = 'LIAISE_C6_SMC_MTO-1MN_L0_20210910_V01.nc'    
+partial_filename = '202107'
+
+zoom_on = 'urgell'  #None for no zoom, 'liaise' or 'urgell'
+
+if zoom_on == 'liaise':
+    lat_range = [41.45, 41.8]
+    lon_range = [0.7, 1.2]
+elif zoom_on == 'urgell':
+    lat_range = [41.1, 42.1]
+    lon_range = [0.2, 1.7]
+
+save_plot = True
+save_folder = './figures/winds/corr/'
+
+selected_stations_height = 'all'  #'2m', '10m' or 'all'
+
+##############################################
+
+# not all SMC stations are 0m high:
+stations_2m = ['VH', 'WK', 'V1', 'WB', 'VM', 'WX', 'WA', 'WC', 'V8', 'XI',
+               'XM', 'WL', 'UM', 'WI', 'VE']
+stations_10m = ['VK', 'C6', 'C7', 'C8', 'D1', 'XD', 'XR', 'XA', 'VP', 'VB',
+                'VQ']
+stations_unk = ['YJ', 'CW', 'MR', 'VM', 'WV', 'VD', 'YD', 'XX', 'YJ', ]
 
 
-#%% OLD WAY - AS FOR PRECIP
+#%% Get stations availables in folder
 fname_list = []
 read_data = True
 if read_data:
@@ -29,7 +60,7 @@ if read_data:
 
 # iterate over files in that directory
 for filename in os.listdir(datafolder):
-    if '2021072' in filename:
+    if partial_filename in filename:
         fname_chunks = filename.split('_')
         fname_list.append(fname_chunks)    
     
@@ -62,22 +93,48 @@ stations.set_index('station', inplace=True)
 #%% date refining - keep summer period only
 #refine dfwind before other computation
 
-dfwind1 = dfwind[(dfwind.date.values.astype(float) > 20210720) & \
-                     (dfwind.date.values.astype(float) < 20210725)]
+dfwind1 = dfwind[(dfwind.date.values.astype(float) > date_begin) & \
+                     (dfwind.date.values.astype(float) < date_end)]
 
 #dfwind = dfwind[dfwind.date.values.astype(float) == 20210722]
 
+
 dfwind_refined = dfwind1
+
+#dfwind_10m = dfwind1[
+#        dfwind1.ws_attrs['long_name'][-4::].replace(" ", "") == '10m']
 
 #%% Get mean wind
 total_wind = {}
 frac_missing = {}
 
+if selected_stations_height == '2m':
+    list_stations = stations_2m
+elif selected_stations_height == '10m':
+    list_stations = stations_10m
+else:
+    list_stations = stations.index
+
+
+
+
 for id_station in stations.index :
     print(id_station)
+#    if id_station not in stations.index:
+#        continue
+    
     df1 = dfwind_refined[dfwind_refined.station == id_station]
+    
+    if selected_stations_height == 'all':
+        pass
+    elif (df1.iloc[0].ws_attrs['long_name'][-4::].replace(" ", "") != \
+        selected_stations_height):
+        continue
+    
     df1.sort_values('date', inplace=True)
+    # Check if data available for every minute of day:
     valid_df1 = df1[df1.length_ws == 1440]
+    # compute fraction of missing values
     frac_missing_values = (len(df1)-len(valid_df1))/len(df1)
     
     try:
@@ -91,6 +148,7 @@ for id_station in stations.index :
             print(type(valid_df1.ws))
             raise ValueError('Type issue')
     
+    # put in dict fraction of missing values and mean_wind
     frac_missing[id_station] = frac_missing_values
     total_wind[id_station] = mean_wind
 
@@ -127,17 +185,26 @@ ax.contour(DS.longitude.data,
           linewidths=1,)
 
 # Stations DATA
-temp = ax.scatter(valid_stations.longitude,
+stations_data = ax.scatter(valid_stations.longitude,
                   valid_stations.latitude, 
-                  s=30,
+                  s=50,
                   c=valid_stations.total_wind, 
-                  cmap='seismic_r')
+                  cmap='seismic',
+                  vmin=0.5,
+                  vmax=4)
 
+if zoom_on is not None:
+    plt.ylim(lat_range)
+    plt.xlim(lon_range)
 
-plot_title = 'Average wind speed on 202107 on SMC stations'
+plot_title = 'Average wind speed from {0} to {1} on {2} SMC stations'.format(
+        date_begin, date_end, selected_stations_height)
 plt.title(plot_title)
-cbar = plt.colorbar(temp)
+cbar = plt.colorbar(stations_data)
 cbar.set_label('wind speed m/s')
 plt.show()
 
+#%% Save_plot
+if save_plot:
+    tools.save_figure(plot_title, save_folder)
 

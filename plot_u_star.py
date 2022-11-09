@@ -18,26 +18,23 @@ import tools
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'cendrosa'
+site = 'preixana'
 
 #domain to consider for simu files: 1 or 2
-domain_nb = 1
+domain_nb = 2
 file_suffix = '001dg'  # '001' or '001dg'
 
-varname_obs = 'swd'   # options are: (last digit is the max number available)
+varname_obs = 'u_star'   # options are: (last digit is the max number available)
 #-- For CNRM:
-# ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
+# u_star_3, u_star, hur_5, soil_moisture_3,, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1
 # from données lentes: 1->0.2m, 2->2m, 3->10m, 4->25m, 5->50m
 # from eddy covariance measures: 1->3m, 2->25m, 3->50m
 #-- For UKMO (elsplans):
 # TEMP, RHO, WQ, WT, UTOT, DIR, ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
 
-varname_sim = 'RN_ISBA'      # simu varname to compare obs with
-#T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9
-#N.B.: layers depth for diff: 
-#    [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6,
-#     -0.8, -1, -1.5, -2, -3, -5, -8, -12]
+varname_sim = 'FMU_ISBA,FMV_ISBA'      # simu varname to compare obs with
+#FMU_ISBA, FMU_P9, FMV_ISBA, T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4
 
 #If varname_sim is 3D:
 ilevel = 1   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
@@ -46,14 +43,14 @@ longname_as_label = True  #does not work for elsplans
 if site == 'elsplans':
     longname_as_label = False  #does not work for elsplans
 
-save_plot = False
-save_folder = './figures/time_series/{0}/domain{1}/'.format(site, domain_nb)
+save_plot = True
+save_folder = './figures/time_series/{0}/'.format(site)
 
 ######################################################
 
 simu_folders = {
-#        'irr': '2.13_irr_2021_22-27/', 
-#        'std': '1.11_ECOII_2021_ecmwf_22-27/'
+        'irr': '2.13_irr_2021_22-27/', 
+        'std': '1.11_ECOII_2021_ecmwf_22-27/'
          }
 father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
 
@@ -69,64 +66,22 @@ if varname_obs in ['soil_moisture_1', 'soil_moisture_2', 'soil_moisture_3']:
     ylabel = 'soil moisture [m3/m3]'
     offset_obs = 0
     coeff_obs = 1
-elif varname_obs in ['soil_temp_1', 'soil_temp_2', 'soil_temp_3']:
-    ylabel = 'soil temperature [K]'
-    offset_obs = 273.15
-    coeff_obs = 1
-elif varname_obs in ['swd']:
-    ylabel = 'shortwave downward radiation [W/m2]'
-    offset_obs = 0
-    coeff_obs = 1
-elif varname_obs in ['lmon_1', 'lmon_2', 'lmon_3']:
-    ylabel = 'monin-obukhov length [m]'
-    offset_obs = 0
-    coeff_obs = 1
-elif varname_obs in ['h2o_flux_1', 'h2o_flux_2', 'h2o_flux']:  #this includes Webb Pearman Leuning correction on w_h2o_cov
-    ylabel = 'h2o flux [kg.m-2.s-1]'
-    offset_obs = 0
-    coeff_obs = 0.001
-    secondary_axis_latent_heat = True
-elif varname_obs in ['w_h2o_cov_1', 'w_h2o_cov_2', 'w_h2o_cov']:
-    ylabel = 'h2o turbulent flux [kg.m-2.s-1]'
-    offset_obs = 0
-    coeff_obs = 0.001
-    secondary_axis_latent_heat = True
-elif varname_obs in ['WQ_2m', 'WQ_10m']:
-    ylabel = 'h2o turbulent flux [kg.m-2.s-1]'
-    offset_obs = 0
-    coeff_obs = 1
-    secondary_axis_latent_heat = True
-elif varname_obs in ['ta_1', 'ta_2', 'ta_3', 'ta_4', 'ta_5', 'TEMP_2m']:
-    ylabel = 'air temperature [K]'
-    offset_obs = 273.15
-    coeff_obs = 1
-elif varname_obs in ['hus_1', 'hus_2', 'hus_3', 'hus_4', 'hus_5', 'RHO_2m']:
-    ylabel = 'specific humidity [kg/kg]'
-    offset_obs = 0
-    coeff_obs = 0.001
-elif varname_obs in ['WT_2m']:
-    ylabel = 'turbulent sensible heat flux [W/m²]'
-    offset_obs = 0
-    coeff_obs = 1005*1.20  #heat capacity * density of DRY air at 20°C
-else:
-    ylabel = varname_obs
-    offset_obs = 0
-    coeff_obs = 1
-    pass
-#    raise ValueError("nom de variable d'observation inconnue"), 'WQ_2m', 'WQ_10m'
+    varname_sim_prefix = 'WG3'    #corresponding variables in SFX
+    #other options: 'WG3_ISBA', 'WG4P9'
+    #N.B.: layers depth for diff: 
+    #    [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6,
+    #     -0.8, -1, -1.5, -2, -3, -5, -8, -12]
+
 
 if site == 'cendrosa':
     lat = 41.6925905
     lon = 0.9285671
-#    varname_sim_suffix = 'P9'
-    varname_sim_suffix = '_ISBA'
     datafolder = '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
     filename_prefix = 'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'preixana':
     lat = 41.59373 
     lon = 1.07250
-    varname_sim_suffix = '_ISBA'
     datafolder = '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
     filename_prefix = 'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
@@ -137,7 +92,6 @@ elif site == 'elsplans':
     filename_prefix = 'LIAISE_'
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
-    varname_sim_suffix = '_ISBA'
 else:
     raise ValueError('Site name not known')
 
@@ -146,7 +100,7 @@ else:
 
 out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
 
-# CONCATENATE multiple days
+# Concatenate multiple days
 if not os.path.exists(datafolder + out_filename_obs):
     print("creation of file: ", out_filename_obs)
     os.system('''
@@ -154,7 +108,8 @@ if not os.path.exists(datafolder + out_filename_obs):
         ncrcat {1}*.nc -o {2}
         '''.format(datafolder, in_filenames_obs, out_filename_obs))
 
-# PLOT:
+# Plot:
+
 fig = plt.figure(figsize=(10, 6.5))
     
 obs = xr.open_dataset(datafolder + out_filename_obs)
@@ -176,14 +131,13 @@ else:
                                                    linewidth=1)
 
 
+
 #%% SIMU:
 
 in_filenames_sim = 'LIAIS.{0}.SEG*.{1}.nc'.format(domain_nb, file_suffix)  # use of wildcard allowed
 out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim)
 
 for model in simu_folders:
-    
-    # CONCATENATE multiple days
     datafolder = father_folder + simu_folders[model]
     if not os.path.exists(datafolder + out_filename_sim):
         print("creation of file: ", out_filename_sim)
@@ -199,21 +153,22 @@ for model in simu_folders:
     # find indices from lat,lon values 
     index_lat, index_lon = tools.indices_of_lat_lon(ds1, lat, lon)
     
-    var_md = ds1[varname_sim]
+    fmu_md = ds1['FMU_ISBA']
+    fmv_md = ds1['FMV_ISBA']
     
     # Set time abscisse axis
     start = np.datetime64('2021-07-21T01:00')
-    dati_arr = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, var_md.shape[0])])
-    
-    # PLOT
-    var_md = var_md.squeeze()  # removes dimension with 1 value only
-    
-    if len(var_md.shape) == 5:
-        var_1d = var_md.data[:, :, ilevel, index_lat, index_lon] #1st index is time, 2nd is ?, 3rd is Z,..
-    elif len(var_md.shape) == 4:
-        var_1d = var_md.data[:, ilevel, index_lat, index_lon] #1st index is time, 2nd is Z,..
-    elif len(var_md.shape) == 3:
-        var_1d = var_md.data[:, index_lat, index_lon]
+    dati_arr = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, fmu_md.shape[0])])
+#    
+#    # PLOT
+#    var_md = var_md.squeeze()  # removes dimension with 1 value only
+#    
+#    if len(var_md.shape) == 3:        #1st index is time, 2nd is lat,..
+    fmu_1d = fmu_md.data[:, index_lat, index_lon]
+    fmv_1d = fmv_md.data[:, index_lat, index_lon]
+    tau = np.sqrt(fmu_1d**2 + fmv_1d**2)
+    u_star = np.sqrt(tau)
+
     
     #fig = plt.figure()
     ax = plt.gca()
@@ -223,8 +178,8 @@ for model in simu_folders:
 #    ax.set_xlim([np.min(obs.time), np.max(obs.time)])
     ax.set_xlim([np.min(dati_arr), np.max(dati_arr)])
     
-    plt.plot(dati_arr, var_1d, 
-             label='simu_{0}_{1}'.format(model, varname_sim),
+    plt.plot(dati_arr, u_star, 
+             label='simu_{0}_{1}'.format(model, 'u*'),
              color=colordict[model])
 
 if longname_as_label:
@@ -232,7 +187,7 @@ if longname_as_label:
 
 plot_title = '{0} at {1}'.format(ylabel, site)
 
-# add secondary axis on the right, relative to the left one - (for LE)
+# add secondary axis on the right, relative to the left one
 if secondary_axis_latent_heat:
     axes = plt.gca()
     secax = axes.secondary_yaxis("right",                              
