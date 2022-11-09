@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """
 @author: Tanguy LUNEL
-Creation : 07/01/2021
 
-Fonctionnement:
-    Seule plusieurs sections ont besoin d'être remplies, à automatiser.    
+Compute wind speed difference between irrig and std run - simu only.
 """
 import os
 import pandas as pd
@@ -18,8 +16,9 @@ from metpy.units import units
 
 
 ################%% Independant Parameters (TO FILL IN):
-    
-site = 'cendrosa'
+# center of zone
+site = 'preixana'
+zone_sidelength_km = 10  #km
 
 #domain to consider for simu files: 1 or 2
 domain_nb = 2
@@ -134,8 +133,6 @@ if site == 'cendrosa':
 elif site == 'preixana':
     lat = 41.59373 
     lon = 1.07250
-    varname_obs_ws = 'ws_2'
-    varname_obs_wd = 'wd_2'
     datafolder = \
         '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
     filename_prefix = \
@@ -144,8 +141,6 @@ elif site == 'preixana':
 elif site == 'elsplans':
     lat = 41.590111 
     lon = 1.029363
-    varname_obs_ws = 'UTOT_10m'
-    varname_obs_wd = 'DIR_10m'
     datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/5min/'
     filename_prefix = 'LIAISE_'
     date = date.replace('-', '')
@@ -158,60 +153,15 @@ else:
 #    varname_sim = varname_sim_prefix + varname_sim_suffix
 
 
-#%% OBS: CONCATENATE AND LOAD
 
-out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
 
-# Concatenate multiple days
-tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs)
-
-# Load data:
-obs = xr.open_dataset(datafolder + out_filename_obs)
-
-#fig_speed=plt.figure()
-#fig_dir=plt.figure()
-
-fig, ax = plt.subplots(2, 1, figsize=(15,9))
-
-#%% PLOT OBS
 start_date = pd.Timestamp('20210721-0000')
 end_date = pd.Timestamp('20210725-0000')
 
-ws_obs = obs[varname_obs_ws]
-wd_obs = obs[varname_obs_wd]
 
-if site == 'elsplans':
-    dati_arr = pd.date_range(start=obs.time.min().values, 
-                             periods=len(obs[varname_obs_ws]), 
-                             freq='5T')
-    #turn outliers into NaN
-    ws_obs_filtered = ws_obs.where(
-            (ws_obs-ws_obs.mean()) < (4*ws_obs.std()), 
-             np.nan)
-    ax[0].plot(dati_arr, ws_obs_filtered, 
-             label='obs_'+varname_obs_ws,
-             color=colordict['obs'],
-             linewidth=1)
-    ax[1].plot(dati_arr, wd_obs, 
-             label='obs_'+varname_obs_wd,
-             color=colordict['obs'],
-             linewidth=1)
-    ax[0].set_xlim(start_date, end_date)
-    ax[1].set_xlim(start_date, end_date)
-else:
-    plot_wind_speed(ws_obs,
-                    start_date=start_date, end_date=end_date, fig=ax[0],
-    #                label='obs_'+ ws_obs.long_name[-6:],
-                    label='obs_'+ varname_obs_ws,
-                    color=colordict['obs'])
-    plot_wind_dir(wd_obs,
-                  start_date=start_date, end_date=end_date, fig=ax[1],
-    #              label='obs_'+ wd_obs.long_name[-6:],
-                    label='obs_'+ varname_obs_wd,
-                  color=colordict['obs'])
-#plot_windrose(ws_obs, wd_obs, 
-#              start_date=start_date, end_date=end_date
-#              )
+fig = plt.figure()
+ax = fig.add_subplot(1, 1, 1)
+#ax = plt.gca()
 
 #%% SIMU:
 
@@ -219,22 +169,15 @@ varname_sim = 'UT,VT'
 in_filenames_sim = 'LIAIS.{0}.SEG*.001.nc'.format(domain_nb)  # use of wildcard allowed
 out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim)
 
+ws_mean = {}
+
 for model in simu_folders:
 #model='std'
-
     datafolder = father_folder + simu_folders[model]
     
     #concatenate multiple days for 1 variable
     tools.concat_simu_files_1var(datafolder, varname_sim, 
                                  in_filenames_sim, out_filename_sim)
-    
-#    if not os.path.exists(datafolder + out_filename_sim):
-#        print("creation of file: ", out_filename_sim)
-#        os.system('''
-#            cd {0}
-#            ncecat -v {1} {2} {3}
-#            '''.format(datafolder, varname_sim, 
-#                       in_filenames_sim, out_filename_sim))
     
     ds1 = xr.open_dataset(datafolder + out_filename_sim)
     
@@ -248,26 +191,46 @@ for model in simu_folders:
     start = np.datetime64('2021-07-21T01:00')
     dati_arr = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, ut_md.shape[0])])
 
-    # PLOT d1
-    if len(ut_md.shape) == 5:
-        ut_1d = ut_md[:, :, ilevel, index_lat, index_lon].data #1st index is time, 2nd is ?, 3rd is Z,..
-        vt_1d = vt_md[:, :, ilevel, index_lat, index_lon].data
-    elif len(ut_md.shape) == 4:
-        ut_1d = ut_md[:, ilevel ,index_lat, index_lon].data #1st index is time, 2nd is ?, 3rd is Z,..
-        vt_1d = vt_md[:, ilevel ,index_lat, index_lon].data
-    elif len(ut_md.shape) == 3:
-        var_1d = ut_md.data[:, index_lat, index_lon]
+
+    if domain_nb == 2:
+        zone_sidelength_i = zone_sidelength_km/0.4
+    elif domain_nb == 1:
+        zone_sidelength_i = zone_sidelength_km/2
+    
+    index_lat_min = index_lat - int(zone_sidelength_i/2)
+    index_lat_max = index_lat + int(zone_sidelength_i/2)
+    index_lon_min = index_lon - int(zone_sidelength_i/2)
+    index_lon_max = index_lon + int(zone_sidelength_i/2)
+    
+    ut_zone = ut_md[:, :, ilevel, 
+                    index_lat_min:index_lat_max, 
+                    index_lon_min:index_lon_max].squeeze()
+    vt_zone = vt_md[:, :, ilevel, 
+                    index_lat_min:index_lat_max, 
+                    index_lon_min:index_lon_max].squeeze()
+        
     
     #computation of windspeed and  winddirection following ut and vt
-    ws = mpcalc.wind_speed(ut_1d * units.meter_per_second, 
-                           vt_1d * units.meter_per_second)
-    wd = mpcalc.wind_direction(ut_1d * units.meter_per_second,
-                               vt_1d * units.meter_per_second)
+    ws = mpcalc.wind_speed(ut_zone * units.meter_per_second, 
+                           vt_zone * units.meter_per_second)
     
-    plot_wind_speed(ws, dates=dati_arr, fig=ax[0], 
+    ws_mean[model] = ws.mean(dim=['nj_u', 'ni_u'])
+    
+#    wd = mpcalc.wind_direction(ut_1d * units.meter_per_second,
+#                               vt_1d * units.meter_per_second)
+    
+    plot_wind_speed(ws_mean[model], dates=dati_arr, fig=ax, 
                     label=model +'_l'+str(ilevel), color=colordict[model])
-    plot_wind_dir(wd, dates=dati_arr, fig=ax[1], 
-                  label=model +'_l'+str(ilevel), color=colordict[model])
+#    plot_wind_dir(wd, dates=dati_arr, fig=ax[1],
+#                  label=model +'_l'+str(ilevel), color=colordict[model])
+
+
+    
+#plot DIFF:
+ws_mean_diff = ws_mean['std'] - ws_mean['irr']
+plot_wind_speed(ws_mean_diff, dates=dati_arr, fig=ax, 
+                label= 'diff' +'_l'+str(ilevel), color='b')
+
 
     #fig = plt.figure()
 #    ax = plt.gca()
@@ -276,18 +239,13 @@ for model in simu_folders:
     
     #    ax.set_xlim([np.min(obs.time), np.max(obs.time)])
 #    ax.set_xlim([np.min(dati_arr), np.max(dati_arr)])
-    
-#    plt.plot(dati_arr, var_1d, 
-#             label='simu_{0}'.format(model))
 
-plot_title = 'wind at {0}'.format(site)
+plot_title = 'mean wind speed around {0} ({1}km x {1}km)'.format(site, 
+                                     zone_sidelength_km)
 
 fig.suptitle(plot_title)
-ax[0].legend(loc='upper right')
-ax[1].legend(loc='lower right')
-ax[0].grid(visible=True, axis='both')
-ax[1].grid(visible=True, axis='both')
-
+ax.legend(loc='upper right')
+ax.grid(visible=True, axis='both')
 
 
 #%% Save figure

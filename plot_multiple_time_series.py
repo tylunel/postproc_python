@@ -79,6 +79,7 @@ else:
 
 out_filename = 'CAT_' + date + filename_prefix + '.nc'
 
+#CREATE netCDF file from .dat if not existing yet
 #if site == 'elsplans':
 #    fnames = os.listdir(datafolder)
 #    for f in fnames:

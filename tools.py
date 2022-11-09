@@ -391,6 +391,39 @@ def concat_obs_files(datafolder, in_filenames, out_filename):
             ncrcat {1}*.nc -o {2}
             '''.format(datafolder, in_filenames, out_filename))
 
+def concat_simu_files_1var(datafolder, varname_sim, in_filenames, out_filename):
+    """
+    Check if file already exists. If not create it by concatenating files
+    that correspond to "in_filenames". "in_filenames" must contain wildcards
+    like * in order to gather more than one file. It concatenates the values
+    for only one or few variables in varname_sim in order to get a reasonable
+    siez for the output file.
+    It then uses shell script, and the command 'ncecat' to concatenate.
+    
+    Parameters:
+        datafolder: 
+            str, absolute path
+        varname_sim:
+            str, variable name that will be concatenated over the files
+            ex: 'T2M', 'UT,VT'
+        in_filenames: 
+            str, common partial name of files to be concatenated 
+            with wildcard (?, *, ...)
+        out_filename:
+            str, name of output file
+            
+    Returns: Nothing in python, but it should have created the output file
+    in the datafolder if not existing before.       
+    """
+    if not os.path.exists(datafolder + out_filename):
+        print("creation of file: ", out_filename)
+        os.system('''
+            cd {0}
+            ncecat -v {1} {2} {3}
+            '''.format(datafolder, varname_sim, 
+                       in_filenames, out_filename))
+    #command 'cdo -select,name={1} {2} {3}' may work as well, but not always...
+
 
 def sm2swi(sm, wilt_pt=None, field_capa=None):
     """
