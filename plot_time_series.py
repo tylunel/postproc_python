@@ -8,7 +8,7 @@ Fonctionnement:
     Works fine for scalar variables, not great for wind
     
 """
-import os
+#import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -18,24 +18,25 @@ import tools
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'cendrosa'
+site = 'preixana'
 
 #domain to consider for simu files: 1 or 2
 domain_nb = 1
-file_suffix = '001dg'  # '001' or '001dg'
+file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'swd'   # options are: (last digit is the max number available)
+varname_obs = 'lhf'   # options are: (last digit is the max number available)
 #-- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1
 # from données lentes: 1->0.2m, 2->2m, 3->10m, 4->25m, 5->50m
 # from eddy covariance measures: 1->3m, 2->25m, 3->50m
 #-- For UKMO (elsplans):
-# TEMP, RHO, WQ, WT, UTOT, DIR, ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
+# TEMP, RHO (=hus), WQ, WT, UTOT, DIR, ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
+# RAIN, PRES, ST01 (=soil_temp), SWDN ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
 
-varname_sim = 'RN_ISBA'      # simu varname to compare obs with
+varname_sim = 'LE_P4'      # simu varname to compare obs with
 #T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9
-#N.B.: layers depth for diff: 
+#N.B.: layers depth for diff:
 #    [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6,
 #     -0.8, -1, -1.5, -2, -3, -5, -8, -12]
 
@@ -46,22 +47,26 @@ longname_as_label = True  #does not work for elsplans
 if site == 'elsplans':
     longname_as_label = False  #does not work for elsplans
 
-save_plot = False
+save_plot = True
 save_folder = './figures/time_series/{0}/domain{1}/'.format(site, domain_nb)
 
 ######################################################
 
 simu_folders = {
 #        'irr': '2.13_irr_2021_22-27/', 
+        'irr_d1': '2.14_irr_15-30/',
 #        'std': '1.11_ECOII_2021_ecmwf_22-27/'
          }
 father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
 
 date = '2021-07'
 
-colordict = {'irr': 'g', 'std': 'orange', 'obs': 'k'}
+colordict = {'irr': 'g', 'irr_d1': 'g', 'std': 'orange', 'obs': 'k'}
 
-secondary_axis_latent_heat = False
+if varname_obs in ['lhf_1', 'lhf', 'WQ_2m', 'WQ_10m']:
+    secondary_axis_latent_heat = True
+else:
+    secondary_axis_latent_heat = False
 
 #%% Dependant Parameters
 
@@ -133,7 +138,8 @@ elif site == 'preixana':
 elif site == 'elsplans':
     lat = 41.590111 
     lon = 1.029363
-    datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/5min/'
+    freq = '30'  # '5' min or '30'min
+    datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/{0}min/'.format(freq)
     filename_prefix = 'LIAISE_'
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
@@ -147,22 +153,23 @@ else:
 out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
 
 # CONCATENATE multiple days
-if not os.path.exists(datafolder + out_filename_obs):
-    print("creation of file: ", out_filename_obs)
-    os.system('''
-        cd {0}
-        ncrcat {1}*.nc -o {2}
-        '''.format(datafolder, in_filenames_obs, out_filename_obs))
+if site == 'elsplans':
+    create_ukmo_nc=True
+else:
+    create_ukmo_nc=False
+tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs, 
+                       create_ukmo_nc=create_ukmo_nc)
 
 # PLOT:
-fig = plt.figure(figsize=(10, 6.5))
+fig = plt.figure(figsize=(15, 9))
     
 obs = xr.open_dataset(datafolder + out_filename_obs)
 
 if site == 'elsplans':
-    dati_arr = pd.date_range(start=obs.time.min().values, 
+#    dati_arr = pd.date_range(start=obs.time.min().values, 
+    dati_arr = pd.date_range(pd.Timestamp('20210701-0000'),
                              periods=len(obs[varname_obs]), 
-                             freq='5T')
+                             freq='{0}T'.format(freq))
     #turn outliers into NaN
     obs_var_filtered = obs[varname_obs].where(
             (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
@@ -175,24 +182,39 @@ else:
                                                    color=colordict['obs'],
                                                    linewidth=1)
 
+# correction Webb Pearman Leuning simplified
+#bowen_ratio = 20
+#Q_s = obs['WT_2m']*1200  # =Cp_air * rho_air
+#Q_le = obs['WQ_2m']*2264000  # =L_eau
+#bowen_ratio = Q_s / Q_le
+##obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.016)*(0+(1.2/300)*obs['WT_2m'])  #eq (25)
+#obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.010)*(1+0.051*bowen_ratio)  #eq (47)
+#
+#obs_var_filtered = obs['WQ_2m_WPL'].where(
+#        (obs['WQ_2m_WPL']-obs['WQ_2m_WPL'].mean()) < (4*obs['WQ_2m_WPL'].std()), 
+#        np.nan)
+#plt.plot(dati_arr, ((obs_var_filtered+offset_obs)*coeff_obs), 
+#         label='obs_WPL_corr_'+varname_obs,
+#         color='b')
 
 #%% SIMU:
 
-in_filenames_sim = 'LIAIS.{0}.SEG*.{1}.nc'.format(domain_nb, file_suffix)  # use of wildcard allowed
+in_filenames_sim = 'LIAIS.{0}.SEG??.0??{1}.nc'.format(domain_nb, file_suffix)  # use of wildcard allowed
 out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim)
 
 for model in simu_folders:
     
     # CONCATENATE multiple days
     datafolder = father_folder + simu_folders[model]
-    if not os.path.exists(datafolder + out_filename_sim):
-        print("creation of file: ", out_filename_sim)
-        os.system('''
-            cd {0}
-            ncecat -v {1} {2} {3}
-            '''.format(datafolder, varname_sim, 
-                       in_filenames_sim, out_filename_sim))
-    #command 'cdo -select,name={1} {2} {3}' may work as well, but not always...
+#    if not os.path.exists(datafolder + out_filename_sim):
+#        print("creation of file: ", out_filename_sim)
+#        os.system('''
+#            cd {0}
+#            ncecat -v {1} {2} {3}
+#            '''.format(datafolder, varname_sim, 
+#                       in_filenames_sim, out_filename_sim))
+    tools.concat_simu_files_1var(datafolder, varname_sim, 
+                                 in_filenames_sim, out_filename_sim)
 
     ds1 = xr.open_dataset(datafolder + out_filename_sim)
     
@@ -202,7 +224,11 @@ for model in simu_folders:
     var_md = ds1[varname_sim]
     
     # Set time abscisse axis
-    start = np.datetime64('2021-07-21T01:00')
+    try:
+        start = ds1.time.data[0]
+    except AttributeError:    
+        start = np.datetime64('2021-07-14T01:00')
+    
     dati_arr = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, var_md.shape[0])])
     
     # PLOT

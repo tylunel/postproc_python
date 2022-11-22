@@ -78,13 +78,6 @@ else:
 #%% OBS - LOAD DATA
 
 out_filename = 'CAT_' + date + filename_prefix + '.nc'
-
-#CREATE netCDF file from .dat if not existing yet
-#if site == 'elsplans':
-#    fnames = os.listdir(datafolder)
-#    for f in fnames:
-#        tools.open_ukmo_mast(datafolder, f, 
-#                             create_netcdf=True, remove_modi=True)
         
 # Concatenate multiple days
 tools.concat_obs_files(datafolder, in_filenames, out_filename)
