@@ -18,11 +18,11 @@ model = 'irr_d1'
 
 domain_nb = 1
 
-wanted_date = '20210729-2300'
+wanted_date = '20210722-1200'
 
 color_map = 'jet'    # BuPu, coolwarm, viridis, RdYlGn, jet
 
-var_name = 'LE_ISBA'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
+var_name = 'PRES'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
 vmin=-300
 vmax=600
 

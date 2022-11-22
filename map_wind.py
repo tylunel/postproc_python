@@ -15,6 +15,7 @@ from metpy.units import units
 import pandas as pd 
 import tools
 import shapefile
+import global_variables as gv
 
 #########################################"""
 model = 'irr_d1'
@@ -180,27 +181,16 @@ plt.plot(france_SW.lon, france_SW.lat,
          linewidth=1)
 
 #%% POINTS SITES
-#sites = {'cendrosa': {'lat': 41.6925905,
-#                      'lon': 0.9285671},
-##         'preixana': {'lat': 41.59373,
-##                      'lon': 1.07250},
-#         'elsplans': {'lat': 41.590111,
-#                      'lon': 1.029363},
-#         'tossal baltasana': {'lat': 41.3275,
-#                              'lon': 1.00336},
-#         'puig formigosa': {'lat': 41.42179,
-#                            'lon': 1.44177},
-#         'tossal gros': {'lat': 41.47857,
-#                         'lon': 1.12942},
-#         'tossal torretes': {'lat': 42.02244,
-#                             'lon': 0.93800}
-#        }
-sites = tools.sites
+
+points = ['cendrosa', 'elsplans', 'puig formigosa', 'tossal baltasana', 
+          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
+          'guara', 'caro', 'montserrat', 'joar',]
+sites = {key:gv.whole[key] for key in points}
 
 for site in sites:
     plt.scatter(sites[site]['lon'],
                 sites[site]['lat'],
-                color='r',
+                color='k',
                 s=15        #size of markers
                 )
     if site == 'elsplans':
