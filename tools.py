@@ -158,7 +158,7 @@ def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=False):
 #            }, inplace=True)
     
     #remove outliers lying outside of 4 standard deviation
-    obs_ukmo = obs_ukmo[(obs_ukmo-obs_ukmo.mean())<=(4*obs_ukmo.std())]
+    obs_ukmo = obs_ukmo[(obs_ukmo-obs_ukmo.mean()) <= (4*obs_ukmo.std())]
     
     obs_ukmo_xr = xr.Dataset.from_dataframe(obs_ukmo
 #        [['time', 'TEMP_2m','RHUM_10mB']]
@@ -360,14 +360,119 @@ def get_simu_filename(model, date='20210722-1200', domain=2,
     simu_filelist = {
         'std': '1.11_ECOII_2021_ecmwf_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
                 domain, seg_nb_str, file_suffix),
-        'irr': '2.13_irr_2021_22-27//LIAIS.{0}.SEG{1}.{2}.nc'.format(
+        'irr': '2.13_irr_2021_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
                 domain, seg_nb_str, file_suffix),
+        'irr_d2': '2.13_irr_2021_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
+                domain, seg_nb_str, file_suffix),
+#        'irr_d1': '2.14_irr_15-30/LIAIS.{0}.SEG{1}.{2}.nc'.format(
+#                domain, seg_nb_str, file_suffix)
         }
     
     filename = father_folder + simu_filelist[model]
     return filename
 
-def concat_obs_files(datafolder, in_filenames, out_filename):
+def get_simu_filename_d1(model, date='20210722-1200', domain=1,
+                         file_suffix='dg'):
+    """
+    --------------
+    To merge with get simu filename
+    --------------
+    
+    Returns the whole string for filename and path. 
+    Chooses the right SEG (segment) number and suffix corresponding to date
+    
+    Parameters:
+        model: str, 
+            'irr' or 'std'
+        wanted_date: str, with format accepted by pd.Timestamp,
+            ex: '20210722-1200'
+        domain: int,
+            domain number in case of grid nesting.
+            ex: domain 1 is the biggest, domain 2 smaller, etc
+    
+    Returns:
+        filename: str, full path and filename
+    """
+    pd_date = pd.Timestamp(date)
+    seg_nb = str(pd_date.day)        
+    suffix_nb = str(pd_date.hour)
+    # format suffix with 3 digits:
+    if len(suffix_nb) == 1:
+        suffix_nb = '00'+ suffix_nb
+    elif len(suffix_nb) == 2:
+        suffix_nb = '0'+ suffix_nb
+
+    father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
+    simu_filelist = {
+#        'std': '1.11_ECOII_2021_ecmwf_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
+#                domain, seg_nb_str, file_suffix),
+#        'irr': '2.13_irr_2021_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
+#                domain, seg_nb_str, file_suffix),
+#        'irr_d2': '2.13_irr_2021_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
+#                domain, seg_nb_str, file_suffix),
+        'irr_d1': '2.14_irr_15-30/LIAIS.{0}.SEG{1}.{2}{3}.nc'.format(
+                domain, seg_nb, suffix_nb, file_suffix)
+        }
+    
+    filename = father_folder + simu_filelist[model]
+    
+    #check if nomenclature of filename is ok
+    check_filename_datetime(filename)
+    
+    return filename
+
+def check_filename_datetime(filepath, fix=False):
+    """
+    Check that filename segment number is day and suffix number is hour
+    """
+    ds = xr.open_dataset(filepath)
+    datetime = pd.Timestamp(ds.time.data[0])
+    #get filename SEG nummber
+    filepath_nosuf = filepath.replace('dg.nc','').replace('.nc','')  #remove filetype
+    seg_nb = filepath_nosuf[-6:-4]  #get SEG number
+    suffix_nb = filepath_nosuf[-3::]  #get suffix nb
+    
+    #correct values based on datetime variable
+    correct_seg_nb = str(datetime.day)
+    correct_suffix_nb = str(datetime.hour)
+    # format suffix with 3 digits:
+    if len(correct_suffix_nb) == 1:
+        correct_suffix_nb = '00'+ correct_suffix_nb
+    elif len(correct_suffix_nb) == 2:
+        correct_suffix_nb = '0'+ correct_suffix_nb
+    
+    if seg_nb != correct_seg_nb:
+        if fix:
+            new_fpath = re.sub('SEG..\.0..', 'SEG{0}.{1}'.format(
+                    correct_seg_nb, correct_suffix_nb), filepath)
+            out = os.system('''
+                mv {0} {1}
+                '''.format(filepath, new_fpath))
+            print('OUT = {0}'.format(out))
+            print("* File '{0}' RENAMED IN: '{1}'".format(filepath, new_fpath))
+            return False
+        else:
+            raise NameError('the date in simu file do not match filename SEG')
+    
+    if suffix_nb != correct_suffix_nb:
+        if fix:
+            new_fpath = re.sub('SEG..\.0..', 'SEG{0}.{1}'.format(
+                    correct_seg_nb, correct_suffix_nb), filepath)
+            out = os.system('''
+                mv {0} {1}
+                '''.format(filepath, new_fpath))
+            print('OUT = {0}'.format(out))
+            print("* File '{0}' RENAMED IN: '{1}'".format(filepath, new_fpath))
+            return False
+        else:
+            raise NameError('the time in simu file do not match filename suffix')
+    
+    return True
+    
+    
+
+def concat_obs_files(datafolder, in_filenames, out_filename, 
+                     create_ukmo_nc=False):
     """
     Check if file already exists. If not create it by concatenating files
     that correspond to "in_filenames*". It uses shell script, and the command
@@ -385,11 +490,27 @@ def concat_obs_files(datafolder, in_filenames, out_filename):
     Returns: Nothing in python, but it should have created the output file
     in the datafolder if not existing before.        
     """
+    
+    # CREATE netCDF file from .dat if not existing yet
+    if create_ukmo_nc:
+        fnames = os.listdir(datafolder)
+        for f in fnames:
+            if '.dat' not in f:
+                pass
+            else:
+                open_ukmo_mast(datafolder, f, 
+                               create_netcdf=True, remove_modi=True)
+    # CONCATENATE
     if not os.path.exists(datafolder + out_filename):
-        os.system('''
+        print("creation of file: ", out_filename)
+        out = os.system('''
             cd {0}
             ncrcat {1}*.nc -o {2}
             '''.format(datafolder, in_filenames, out_filename))
+        if out == 0:
+            print('Creation of file {0} successful !'.format(out_filename))
+        else:
+            print('Creation of file {0} failed !'.format(out_filename))
 
 def concat_simu_files_1var(datafolder, varname_sim, in_filenames, out_filename):
     """
@@ -417,11 +538,17 @@ def concat_simu_files_1var(datafolder, varname_sim, in_filenames, out_filename):
     """
     if not os.path.exists(datafolder + out_filename):
         print("creation of file: ", out_filename)
-        os.system('''
+        out = os.system('''
             cd {0}
-            ncecat -v {1} {2} {3}
+            ncecat -v {1},time {2} {3}
             '''.format(datafolder, varname_sim, 
                        in_filenames, out_filename))
+        if out == 0:
+            print('Creation of file {0} successful !'.format(out_filename))
+        else:
+            print('Creation of file {0} failed !'.format(out_filename))
+    else:
+        print('file {0} already exists.'.format(out_filename))
     #command 'cdo -select,name={1} {2} {3}' may work as well, but not always...
 
 
@@ -469,31 +596,46 @@ def line_coords(data,
     print('ni, nj end:', ni_end, nj_end)
     
     #get line formula:
-    slope = (nj_end - nj_start)/(ni_end - ni_start)
-    y_intercept = nj_start - slope * ni_start
-    print('slope and y-intercept :', slope, y_intercept)
+    if ni_end != ni_start:
+        slope = (nj_end - nj_start)/(ni_end - ni_start)
+        y_intercept = nj_start - slope * ni_start
+        print('slope and y-intercept :', slope, y_intercept)
+
+        # approximate distance between start and end in term of indices
+        index_distance = np.ceil(np.sqrt((index_lon_end - index_lon_start)**2 + \
+                                         (index_lat_end - index_lat_start)**2))
+        
+        # distance between start and end in term of meters ...
+        # .. on i (longitude)
+        ni_step = (ni_end - ni_start)/(index_distance-1)
+        # .. on j (latitude)
+        nj_step = (nj_end - nj_start)/(index_distance-1)
+        
+        ni_range = np.linspace(ni_start - ni_step*nb_indices_exterior, 
+                               ni_end + ni_step*nb_indices_exterior,
+                               num=int(index_distance)+2*nb_indices_exterior
+                               )
+        
+        nj_range = y_intercept + slope * ni_range
+        
+    else:  # ni_end == ni_start   -   vertical line - following meridian
+        index_distance = np.abs(index_lat_end - index_lat_start) + 1
+        nj_step = (nj_end - nj_start)/(index_distance - 1)
+        ni_step = 0
+        nj_range = np.linspace(nj_start - nj_step*nb_indices_exterior, 
+                               nj_end + nj_step*nb_indices_exterior,
+                               num=int(index_distance)+2*nb_indices_exterior)
+        ni_range = np.array([ni_end]*len(nj_range))
+        slope='vertical'
     
-    # distance between start and end in term of indices
-    index_distance = np.ceil(np.sqrt((index_lon_end - index_lon_start)**2 + \
-                                     (index_lat_end - index_lat_start)**2))
-    
-    # distance between start and end in term of meters ...
-    # .. on i (longitude)
-    ni_step = (ni_end - ni_start)/(index_distance-1)
-    # .. on j (latitude)
-    nj_step = (nj_end - nj_start)/(index_distance-1)
-    # .. on section line
+    # distance in meters between two points on section line
     nij_step = np.sqrt(ni_step**2 + nj_step**2)
     
-    ni_range = np.linspace(ni_start - ni_step*nb_indices_exterior, 
-                           ni_end + ni_step*nb_indices_exterior,
-                           num=int(index_distance)+2*nb_indices_exterior
-                           )
-    
-    nj_range = y_intercept + slope * ni_range
-    
     return {'ni_range': ni_range, 'nj_range': nj_range, 'slope': slope,
-            'ni_start': ni_start, 'ni_end': ni_end, 'nij_step': nij_step} 
+            'index_distance': index_distance, 'ni_step': ni_step,
+            'nj_step': nj_step, 'nij_step': nij_step,
+            'ni_start': ni_start, 'ni_end': ni_end,
+            'nj_start': nj_start, 'nj_end': nj_end}
 
 
 def center_uvw(data):
@@ -524,13 +666,14 @@ def center_uvw(data):
     #                 ])
     
     # remove useless coordinates
-#    data_new = data.drop(['latitude_u', 'longitude_u', 
-#                          'latitude_v', 'longitude_v', ])
+    data_new = data.drop(['latitude_u', 'longitude_u', 
+                          'latitude_v', 'longitude_v',
+                          'ni_u', 'nj_u', 'ni_v', 'nj_v', 'level_w'])
     
     # consider time no longer as a dimension but just as a single coordinate
-    data = data.squeeze()
+    data_new = data_new.squeeze()
     
-    return data
+    return data_new
 
 
 def save_figure(plot_title, save_folder='./figures/', verbose=True):
@@ -771,16 +914,29 @@ def t_wb(tdb, rh):
 
 
 if __name__ == '__main__':
+    nb_points_beyond = 10
+    site_end = 'cendrosa'
+    end = (41.0, 0.90)
+    site_start = 'arbeca'
+    start = (41.04, 0.9)
+    line = line_coords(data, start, end, 
+                       nb_indices_exterior=0)
+    
+#    open_ukmo_rs('/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/30min/', filename)
+#    
+#    ds = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/1.11_ECOII_2021_ecmwf_22-27/LIAIS.1.SEG21.021.nc')
+    
+    
 #%% FOR COMPA WITH NC FILES
     
     #%% TEST for line_coords
-    ds = xr.open_dataset(
-    '/cnrm/surface/lunelt/NO_SAVE/nc_out/1.11_ECOII_2021_ecmwf_22-27/' + \
-    'LIAIS.2.SEG14.001dg.nc')
-    
-    ni_line, nj_line = line_coords(ds, 
-                       start_pt = (41.41, 0.84),
-                       end_pt = (41.705, 1.26))
+#    ds = xr.open_dataset(
+#    '/cnrm/surface/lunelt/NO_SAVE/nc_out/1.11_ECOII_2021_ecmwf_22-27/' + \
+#    'LIAIS.2.SEG14.001dg.nc')
+#    
+#    ni_line, nj_line = line_coords(ds, 
+#                       start_pt = (41.41, 0.84),
+#                       end_pt = (41.705, 1.26))
     
     #%%TEST for open_ukmo_mast
 #    obs = xr.open_dataset(

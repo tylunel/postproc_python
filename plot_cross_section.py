@@ -12,96 +12,94 @@ import numpy as np
 import xarray as xr
 import MNHPy.misc_functions as misc
 import tools
+import metpy.calc as calc
+from metpy.units import units
+import global_variables as gv
 
 ########## Independant parameters ###############
 #domain to consider: 1 or 2
 domain_nb = 1
 # Simulation to show: 'irr' or 'std'
-model = 'irr'
+model = 'irr_d1'
 # Surface variable to show below the section
 surf_var = 'WG2_ISBA'
 surf_var_label = 'Q_vol_soil'
 # Set type of wind representation: 'verti_proj' or 'horiz'
 wind_visu = 'verti_proj'
 # Datetime
-wanted_date = '20210722-2000'
+wanted_date = '20210722-1200'
 # altitude ASL or height AGL: 'asl' or 'agl'
 alti_type = 'asl'
 # maximum level (height AGL) to plot
 toplevel = 2500
-# Save the figure
-save_plot = True
-save_folder = './figures/cross_sections/domain1/'
 
 # where to place the cross section
-nb_points_beyond = 10
+nb_points_beyond = 5
+site_end = 'preixana'
 site_start = 'cendrosa'
-start = (41.6925905, 0.9285671)
-#site_start = 'preixana'
-#start = (41.59373, 1.0725)
-#site_start = 'arbeca'
-#start = (41.54236, 0.9232)
-#site_start = 'verdu'
-#start = (41.6107, 1.1428)
-#site_end = 'tarragona'
-#end = (41.1188, 1.2456)
-#site_end = 'coll_lilla'
-#end = (41.34072, 1.22014)
-#site_end = 'puig_pelat'
-#end = (41.26571, 1.05502)
-#site_end = 'st_maria'
-#end = (41.36315, 1.29917)
-site_end = 'elsplans'
-end = (41.590111, 1.029363)
+
 
 # Arrow/barbs esthetics:
 skip_barbs_x = 2
-skip_barbs_y = 5
+skip_barbs_y = 10
 arrow_size = 1  #works for arrow and barbs
+barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
-#################################################
 
+# Save the figure
+save_plot = False
+save_folder = './figures/cross_sections/domain{0}/{1}/section_{2}_{3}/{4}/'.format(
+        domain_nb, model, site_start, site_end, wind_visu)
+
+
+###########################################
+
+barb_size_increments = {
+        'weak_winds': {'half':1.94, 'full':3.88, 'flag':19.4},
+        'standard': {'half':5, 'full':10, 'flag':50},
+        }
+barb_size_description = {
+        'weak_winds': "barb increments: half=1m/s=1.94kt, full=2m/s=3.88kt, flag=10m/s=19.4kt",
+        'standard': "barb increments: half=5kt=2.57m/s, full=10kt=5.14m/s, flag=50kt=25.7m/s",
+        }
+
+
+end = (gv.sites[site_end]['lat'], gv.sites[site_end]['lon'])
+start = (gv.sites[site_start]['lat'], gv.sites[site_start]['lon'])
 
 # Dependant parameters
-filename = tools.get_simu_filename(model, wanted_date, domain=domain_nb,
-                             file_suffix='001')
+filename = tools.get_simu_filename_d1(model, wanted_date, 
+#                                      domain=domain_nb,
+#                                      file_suffix='001dg'
+                                      )
 
 #load file
 data_perso = xr.open_dataset(filename)
 data_reduced = data_perso[['THT', 'RVT', 'UT', 'VT', 'WT', 'ZS',
+                           'TEMP', 'PRES',
                            surf_var]]
 data = data_reduced
 
 
+#%% Put variables U, V, W in the middle of the grid:
 
-#%% Put all variable in the middle of the grid:
+# with external function:
+data = tools.center_uvw(data)
 
-# Interpolate in middle of grid and rename the coords
-data_UT = data['UT'].interp(ni_u=data.ni.values, nj_u=data.nj.values).rename(
-        {'ni_u': 'ni', 'nj_u': 'nj'})
-data_VT = data['VT'].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
-        {'ni_v': 'ni', 'nj_v': 'nj'})
-data_WT = data['WT'].interp(level_w=data.level.values).rename(
-        {'level_w': 'level'})
-
-# Create new datarray with everything centered in the middle
-data = xr.merge([data_UT, data_VT, data_WT, 
-                 data['THT'], data['RVT'], data['ZS'],
-                 data[surf_var],
-                 ])
-# remove useless coordinates
-data = data.drop(['latitude_u', 'longitude_u', 'latitude_v', 'longitude_v', ])
-# consider time no longer as a dimension but just as a single coordinate
-data = data.squeeze()
 
 #%% CREATE SECTION LINE
 
-line = tools.line_coords(data, start, end, nb_indices_exterior=nb_points_beyond)
+line = tools.line_coords(data, start, end, 
+                         nb_indices_exterior=nb_points_beyond)
 ni_range = line['ni_range']
 nj_range = line['nj_range']
 slope = line['slope']
 
-angle = np.arctan(slope)
+if slope == 'vertical':
+    angle = np.pi/2
+else:
+    angle = np.arctan(slope)
+    
 data['PROJ'] = misc.windvec_verti_proj(data['UT'], data['VT'], 
                                        data.level, angle)
 
@@ -111,10 +109,17 @@ section = []
 abscisse_coords = []
 abscisse_sites = {}
 
+#get total maximum height of relief on domain
+max_ZS = data['ZS'].max()
+level_range = np.arange(10, toplevel+max_ZS, 10)
+
 print('section interpolation on {0} points (~1sec/pt)'.format(len(ni_range)))
 for i, ni in enumerate(ni_range):
+    nj=nj_range[i]
     #interpolation of all variables on ni_range
-    profile = data.interp(ni=ni, nj=nj_range[i]).expand_dims({'i_sect':[i]})
+    profile = data.interp(ni=ni, 
+                          nj=nj, 
+                          level=level_range).expand_dims({'i_sect':[i]})
     section.append(profile)
     
     #store values of lat-lon for the horiz axis
@@ -124,10 +129,16 @@ for i, ni in enumerate(ni_range):
     abscisse_coords.append(latlon)
     
     #Store values of i and name of site in dict for horiz axis
-    if ni == line['ni_start']:
-        abscisse_sites[i] = site_start
-    elif ni == line['ni_end']:
-        abscisse_sites[i] = site_end
+    if slope == 'vertical':
+        if nj == line['nj_start']:
+            abscisse_sites[i] = site_start
+        elif nj == line['nj_end']:
+            abscisse_sites[i] = site_end
+    else:
+        if ni == line['ni_start']:
+            abscisse_sites[i] = site_start
+        elif ni == line['ni_end']:
+            abscisse_sites[i] = site_end
 
 #concatenation of all profile in order to create the 2D section dataset
 section_ds = xr.concat(section, dim="i_sect")
@@ -163,6 +174,13 @@ elif alti_type == 'agl':
     ylabel = 'height AGL [m]'
     
 
+#%% Computation of diagnostic variable
+    
+section_ds['DENS'] = calc.density(
+    section_ds['PRES']*units.hectopascal,
+    section_ds['THT']*units.K, 
+    section_ds['RVT']*units.gram/units.gram)
+
 ### 1. Color map (pcolor or contourf)
 data1 = section_ds['THT']
 #cm = ax[0].pcolormesh(Xmesh,
@@ -175,7 +193,10 @@ cm = ax[0].contourf(Xmesh,
                     data1.T, 
                     cmap='rainbow',
                     levels=20,
-                    vmin=305, vmax=315)
+                    vmin=300, vmax=315,  # for THT
+#                    vmin=None, vmax=None,  # for adaptative colormap
+#                    vmin=800, vmax=1000,  # for PRES
+                    )
 #manage colorbar
 divider = make_axes_locatable(ax[0])
 cax = divider.append_axes('right', size='2%', pad=0.05)
@@ -203,8 +224,13 @@ if wind_visu == 'horiz':            # 2.1 winds - flat direction and force
             length=5*arrow_size,     #length of barbs
             sizes={
     #              'spacing':1, 'height':1, 'width':1,
-                 'emptybarb':0.01}
-              )
+                    'emptybarb':0.01},
+            barb_increments=barb_size_increments[barb_size_option] # [kts], 1.94kt = 1m/s
+            )
+    ax[0].annotate(barb_size_description[barb_size_option],
+                   xy=(0.1, 0.9),
+                   xycoords='subfigure fraction'
+                   )
 elif wind_visu == 'verti_proj':     # 2.2  winds - verti and projected wind
     Q = ax[0].quiver(
             #Note that X & alti have dimensions reversed

@@ -4,7 +4,7 @@
 
 Compute wind speed difference between irrig and std run - simu only.
 """
-import os
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
