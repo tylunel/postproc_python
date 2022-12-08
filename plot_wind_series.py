@@ -15,33 +15,43 @@ import tools
 from windrose import WindroseAxes
 import metpy.calc as mpcalc
 from metpy.units import units
-
+import global_variables as gv
 
 ################%% Independant Parameters (TO FILL IN):
     
 site = 'cendrosa'
 
 #domain to consider for simu files: 1 or 2
-domain_nb = 2
+#domain_nb = 2
 
 ilevel = 3   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
-save_plot = False 
-save_folder = './figures/winds/diff/'.format(domain_nb)
-#varname_sim = 'T2M_ISBA'      # simu varname to compare obs with
-#leave None for automatic attribution
-########################################################
+save_plot = True 
+#save_folder = './figures/winds/'.format(domain_nb)
+save_folder = './figures/winds/series/'
 
-simu_folders = {
-        'irr': '2.13_irr_2021_22-27/', 
-        'std': '1.11_ECOII_2021_ecmwf_22-27/'
-         }
+########################################################
+models = [
+        'irr_d1', 'std_d1', 
+        'irr_d2', 'std_d2', 
+        ]
+simu_folders = {key:gv.simu_folders[key] for key in models}
+
+#simu_folders = {
+#        'irr': '2.13_irr_2021_22-27/', 
+#        'std': '1.11_ECOII_2021_ecmwf_22-27/'
+#         }
+
 father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
 
 date = '2021-07'
 
-colordict = {'irr': 'g', 'std': 'orange', 'obs': 'k'}
-
+colordict = {'irr_d2': 'g', 'irr_d1': 'g', 
+             'std_d2': 'r', 'std_d1': 'r', 
+             'obs': 'k'}
+styledict = {'irr_d2': '-', 'irr_d1': ':', 
+             'std_d2': '-', 'std_d1': ':', 
+             'obs': 'k'}
 
 def plot_wind_speed(ws, dates=None, start_date=None, end_date=None, 
                     fig=None, label='', **kwargs):
@@ -65,7 +75,9 @@ def plot_wind_speed(ws, dates=None, start_date=None, end_date=None,
     if start_date is not None:
         ax1.set_xlim(start_date, end_date)
     
-    ax1.plot(dates, ws, label='Wind Speed ' + label, **kwargs)
+    ax1.plot(dates, ws, 
+             label='Wind Speed ' + label, 
+             **kwargs)
     ax1.set_ylabel('Wind Speed (m/s)', multialignment='center')
     ax1.grid(visible=True, which='major', axis='y', color='k', linestyle='--',
              linewidth=0.5)
@@ -94,7 +106,7 @@ def plot_wind_dir(wd, dates=None, start_date=None, end_date=None,
         
     ax1.plot(dates, wd, 
 #             linewidth=0.5, 
-             linestyle = 'dashed',
+#             linestyle = 'dashed',
              label='Wind Direction ' + label,
              **kwargs)
     ax1.set_ylabel('Wind Direction\n(degrees)', multialignment='center')
@@ -121,49 +133,87 @@ def plot_windrose(ws, wd, start_date=None, end_date=None, fig=None, **kwargs):
 
 #%% Dependant Parameters
 
+#if site == 'cendrosa':
+#    lat = 41.6925905
+#    lon = 0.9285671
+#    varname_obs_ws = 'ws_2'
+#    varname_obs_wd = 'wd_2'
+#    datafolder = \
+#        '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
+#    filename_prefix = \
+#        'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
+#    in_filenames_obs = filename_prefix + date
+#elif site == 'preixana':
+#    lat = 41.59373 
+#    lon = 1.07250
+#    varname_obs_ws = 'ws_2'
+#    varname_obs_wd = 'wd_2'
+#    datafolder = \
+#        '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
+#    filename_prefix = \
+#        'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
+#    in_filenames_obs = filename_prefix + date
+#elif site == 'elsplans':
+#    lat = 41.590111 
+#    lon = 1.029363
+#    varname_obs_ws = 'UTOT_10m'
+#    varname_obs_wd = 'DIR_10m'
+#    datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/5min/'
+#    filename_prefix = 'LIAISE_'
+#    date = date.replace('-', '')
+#    in_filenames_obs = filename_prefix + date
+#
+#else:
+#    raise ValueError('Site name not known')
+
 if site == 'cendrosa':
-    lat = 41.6925905
-    lon = 0.9285671
     varname_obs_ws = 'ws_2'
     varname_obs_wd = 'wd_2'
-    datafolder = \
-        '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
-    filename_prefix = \
-        'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
+    datafolder = '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
+    filename_prefix = 'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'preixana':
-    lat = 41.59373 
-    lon = 1.07250
     varname_obs_ws = 'ws_2'
     varname_obs_wd = 'wd_2'
-    datafolder = \
-        '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
-    filename_prefix = \
-        'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
+    datafolder = '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
+    filename_prefix = 'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'elsplans':
-    lat = 41.590111 
-    lon = 1.029363
     varname_obs_ws = 'UTOT_10m'
     varname_obs_wd = 'DIR_10m'
-    datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/5min/'
+    freq = '30'  # '5' min or '30'min
+    datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/{0}min/'.format(freq)
     filename_prefix = 'LIAISE_'
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
-
-else:
-    raise ValueError('Site name not known')
-
-#if varname_sim is None:
-#    varname_sim = varname_sim_prefix + varname_sim_suffix
+#    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
+elif site == 'irta-corn':
+    varname_obs_ws = 'WS'
+    varname_obs_wd = 'WD'
+    datafolder = '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
+    in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
+    ilevel = 1  # because measurement were made at 3m AGL = 1m above maize
+#    raise ValueError('Site name not known')
+    
+lat = gv.sites[site]['lat']
+lon = gv.sites[site]['lon']
 
 
 #%% OBS: CONCATENATE AND LOAD
 
-out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
+if site == 'irta-corn':
+    out_filename_obs = in_filenames_obs
+    dat_to_nc = 'uib'
+elif site == 'elsplans':
+    out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
+    dat_to_nc='ukmo'
+else:
+    out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
+    dat_to_nc=None
 
 # Concatenate multiple days
-tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs)
+tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs,
+                       dat_to_nc=dat_to_nc)
 
 # Load data:
 obs = xr.open_dataset(datafolder + out_filename_obs)
@@ -181,12 +231,17 @@ ws_obs = obs[varname_obs_ws]
 wd_obs = obs[varname_obs_wd]
 
 if site == 'elsplans':
-    dati_arr = pd.date_range(start=obs.time.min().values, 
-                             periods=len(obs[varname_obs_ws]), 
-                             freq='5T')
+    dati_arr = pd.date_range(
+            start=obs.time.min().values, 
+#            start=pd.Timestamp('20210702-0000'),
+            periods=len(obs[varname_obs_ws]), 
+            freq='5T')
     #turn outliers into NaN
+#    ws_obs_filtered = ws_obs.where(
+#            (ws_obs-ws_obs.mean()) < (3*ws_obs.std()), 
+#             np.nan)
     ws_obs_filtered = ws_obs.where(
-            (ws_obs-ws_obs.mean()) < (4*ws_obs.std()), 
+            (ws_obs-ws_obs.mean()) < np.nanpercentile(ws_obs.data, 96), 
              np.nan)
     ax[0].plot(dati_arr, ws_obs_filtered, 
              label='obs_'+varname_obs_ws,
@@ -216,11 +271,14 @@ else:
 #%% SIMU:
 
 varname_sim = 'UT,VT'
-in_filenames_sim = 'LIAIS.{0}.SEG*.001.nc'.format(domain_nb)  # use of wildcard allowed
-out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim)
+#in_filenames_sim = 'LIAIS.{0}.SEG*.001.nc'.format(domain_nb)  # use of wildcard allowed
+#out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim)
 
 for model in simu_folders:
-#model='std'
+    domain_nb = model[-1]
+    file_suffix='dg'
+    in_filenames_sim = 'LIAIS.{0}.SEG??.0??{1}.nc'.format(domain_nb, file_suffix)  # use of wildcard allowed
+    out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim)
 
     datafolder = father_folder + simu_folders[model]
     
@@ -245,7 +303,11 @@ for model in simu_folders:
     vt_md = ds1['VT']
     
     # Set time abscisse axis
-    start = np.datetime64('2021-07-21T01:00')
+    try:
+        start = ds1.time.data[0]
+    except AttributeError:    
+#        start = np.datetime64('2021-07-14T01:00')
+        start = np.datetime64('2021-07-21T01:00')
     dati_arr = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, ut_md.shape[0])])
 
     # PLOT d1
@@ -265,9 +327,15 @@ for model in simu_folders:
                                vt_1d * units.meter_per_second)
     
     plot_wind_speed(ws, dates=dati_arr, fig=ax[0], 
-                    label=model +'_l'+str(ilevel), color=colordict[model])
+                    color=colordict[model],
+                    linestyle=styledict[model],
+                    label=model +'_l'+str(ilevel), 
+                    )
     plot_wind_dir(wd, dates=dati_arr, fig=ax[1], 
-                  label=model +'_l'+str(ilevel), color=colordict[model])
+                  color=colordict[model],
+                  linestyle=styledict[model],
+                  label=model +'_l'+str(ilevel), 
+                  )
 
     #fig = plt.figure()
 #    ax = plt.gca()

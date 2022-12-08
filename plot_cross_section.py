@@ -34,15 +34,15 @@ alti_type = 'asl'
 toplevel = 2500
 
 # where to place the cross section
-nb_points_beyond = 5
+nb_points_beyond = 0
 site_end = 'preixana'
 site_start = 'cendrosa'
 
 
 # Arrow/barbs esthetics:
-skip_barbs_x = 2
+skip_barbs_x = 1
 skip_barbs_y = 10
-arrow_size = 1  #works for arrow and barbs
+arrow_size = 2  #works for arrow and barbs
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
 
@@ -192,7 +192,9 @@ cm = ax[0].contourf(Xmesh,
                     alti,
                     data1.T, 
                     cmap='rainbow',
-                    levels=20,
+                    levels=np.linspace(300, 315, 16),  # to keep always same colorbar limits
+#                    levels=20,
+#                    extend = 'both',  #highlights the min and max in different color
                     vmin=300, vmax=315,  # for THT
 #                    vmin=None, vmax=None,  # for adaptative colormap
 #                    vmin=800, vmax=1000,  # for PRES

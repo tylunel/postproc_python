@@ -6,12 +6,22 @@
 Gathers global variables for use in scripts. 
 """
 
+simu_folders = {
+        'irr_d2': '2.13_irr_2021_21-24/', 
+        'irr_d1': '2.14_irr_15-30/',
+        'std_d2': '1.11_std_2021_21-24/',
+        'std_d1': '1.15_std_15-30/'
+         }
+
 sites = {'cendrosa': {'lat': 41.6925905,
                       'lon': 0.9285671},
          'preixana': {'lat': 41.59373,
                       'lon': 1.07250},
          'elsplans': {'lat': 41.590111,
                       'lon': 1.029363},
+         'irta-corn': {'lat': 41.619079,
+#                       'lon': 0.875333, # real position, but is not in 100% irr zone in model
+                       'lon': 0.845333}, 
         }
          
 towns = {'arbeca': {'lat': 41.54236,
