@@ -19,7 +19,7 @@ import global_variables as gv
 
 #########################################"""
 model = 'irr_d1'
-ilevel = 50  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070
+ilevel = 20  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070
 skip_barbs = 5 # 1/skip_barbs will be printed
 barb_length = 4.5
 # Datetime
@@ -40,21 +40,9 @@ elif speed_plane == 'horiz':
 
 zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
 
-if zoom_on == 'liaise':
-    skip_barbs = 3 # 1/skip_barbs will be printed
-    barb_length = 5.5
-    lat_range = [41.45, 41.8]
-    lon_range = [0.7, 1.2]
-elif zoom_on == 'urgell':
-    skip_barbs = 6 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [41.1, 42.1]
-    lon_range = [0.2, 1.7]
-    
-    
 save_plot = False
-save_folder = './figures/winds/domain{0}/{1}/{2}/'.format(
-        domain_nb, speed_plane, ilevel)
+save_folder = './figures/winds/{0}/domain{1}/{2}/{3}/'.format(
+        model, domain_nb, speed_plane, ilevel)
 
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
@@ -70,14 +58,22 @@ barb_size_description = {
         'standard': "barb increments: half=5kt=2.57m/s, full=10kt=5.14m/s, flag=50kt=25.7m/s",
         }
 
-filename = tools.get_simu_filename_d1(model, wanted_date)
+if zoom_on == 'liaise':
+    skip_barbs = 3 # 1/skip_barbs will be printed
+    barb_length = 5.5
+    lat_range = [41.45, 41.8]
+    lon_range = [0.7, 1.2]
+elif zoom_on == 'urgell':
+    skip_barbs = 6 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    lat_range = [41.1, 42.1]
+    lon_range = [0.2, 1.7]
+
+filename = tools.get_simu_filename(model, wanted_date)
 
 # load file, dataset and set parameters
 ds1 = xr.open_dataset(filename,
-#        datafolder + 'LIAIS.2.SEG36.001.nc', 
                       decode_coords="coordinates",
-#                      coordinates=['latitude_u', 'longitude_u'],
-#                      grid_mapping=latitude
                       )
 
 if domain_nb == 1:
@@ -204,6 +200,21 @@ for site in sites:
                  site, 
                  fontsize=9)
 
+#%% STATION PLOT
+from metpy.plots import StationPlot
+
+ax = plt.gca()
+Cendro = StationPlot(ax, sites['cendrosa']['lon'], sites['cendrosa']['lat'])
+Cendro.plot_barb(4, 5, 
+                 pivot='middle',
+                 length=barb_length*4,     #length of barbs
+                  sizes={
+        #                 'spacing':1, 
+        #                 'height':1,
+        #                 'width':1,
+                         'emptybarb':0.01},
+                  barb_increments=barb_size_increments[barb_size_option]
+                  )
 
 #%% FIGURE OPTIONS
 if speed_plane == 'horiz':

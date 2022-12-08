@@ -14,32 +14,27 @@ import pandas as pd
 import global_variables as gv
 
 ###############################################
-model = 'std_d2'
+models = ['irr_d1', 'irr_d2']
+folder_res = 'diff_d1_d2'
+domain_nb = 1
 
-#domain_nb = 1
-domain_nb = int(model[-1])
+wanted_date = '20210724-2300'
 
-wanted_date = '20210722-1200'
+color_map = 'seismic'    # jet, seismic, BuPu, coolwarm, viridis, RdYlGn, 
 
-color_map = 'binary_r'    # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
-
-var_name = 'ALBUV_S'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
-vmin = 0
-vmax = 0.3
+var_name = 'ZS'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
+vmin=-300
+vmax=300
 
 # level, only useful if var 3D
-ilevel = 10  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m
+ilevel = 1  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m
 
 zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
 
 save_plot = True
-save_folder = './figures/scalar_maps/pgd/'
-#save_folder = './figures/scalar_maps/domain{0}/{1}/{2}/'.format(
-#        domain_nb, model, var_name)
+save_folder = './figures/scalar_maps/{0}/{1}/'.format(folder_res, var_name)
 
 ##############################################
-
-
 
 if zoom_on == 'liaise':
     skip_barbs = 3 # 1/skip_barbs will be printed
@@ -52,28 +47,39 @@ elif zoom_on == 'urgell':
     lat_range = [41.1, 42.1]
     lon_range = [0.2, 1.7]
 
-filename = tools.get_simu_filename(model, wanted_date)
+#%% LOAD DATA
 
-# load dataset, default datetime okay as pgd vars are all the same along time
-ds1 = xr.open_dataset(filename)
+var_layer = {}
 
-
-#%% DATA SELECTION and ZOOM
-
-varNd = ds1[var_name]
-#remove single dimensions
-varNd = varNd.squeeze()
-
-if len(varNd.shape) == 2:
-    var2d = varNd
-elif len(varNd.shape) == 3:
-    var2d = varNd[ilevel,:,:]
+for model in models:
+#for var_name in ['T2M_ISBA', 'TEMP']:
+#    model='irr_d2'
+    filename = tools.get_simu_filename(model, wanted_date)
     
-# remove 999 values, and replace by nan
-var2d = var2d.where(~(var2d == 999))
-# filter the outliers
-#var2d = var2d.where(var2d <= vmax)
+    # load dataset, default datetime okay as pgd vars are all the same along time
+    ds1 = xr.open_dataset(filename)
+    
+    #%% DATA SELECTION and ZOOM
+    varNd = ds1[var_name]
+    #remove single dimensions
+    varNd = varNd.squeeze()
+    
+    if len(varNd.shape) == 2:
+        var2d = varNd
+    elif len(varNd.shape) == 3:
+        var2d = varNd[ilevel,:,:]
+        
+    # remove 999 values, and replace by nan
+    var2d = var2d.where(~(var2d == 999))
+    # filter the outliers
+    #var2d = var2d.where(var2d <= vmax)
 
+    var_layer[model] = var2d
+#    var_layer[var_name] = var2d
+
+
+var_diff = var_layer[models[0]] - var_layer[models[1]]
+#var_diff = var_layer['T2M_ISBA'] - var_layer['TEMP'] -273.15
 
 #%% PLOT OF VAR_NAME
 if domain_nb == 1:
@@ -81,7 +87,7 @@ if domain_nb == 1:
 elif domain_nb == 2:
     fig1 = plt.figure(figsize=(10,7))
 
-plt.contourf(var2d.longitude, var2d.latitude, var2d,
+plt.contourf(var_diff.longitude, var_diff.latitude, var_diff,
 #               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
                cmap=color_map,
                vmin=vmin, vmax=vmax,
@@ -170,20 +176,18 @@ for site in sites:
 
 #%% FIGURE OPTIONS and ZOOM
 if len(varNd.shape) == 2:
-    plot_title = '{0} - {1} for simu {2}'.format(
-        wanted_date, var_name, model)
+    plot_title = '{0} - {1} diff between {2} and {3}'.format(
+        wanted_date, var_name, models[0], models[1])
 elif len(varNd.shape) == 3:
-    plot_title = '{0} - {1} for simu {2} at {3}m'.format(
-        wanted_date, var_name, model, var2d.level.round())
+    plot_title = '{0} - {1} diff between {2} and {3} at {4}m'.format(
+        wanted_date, var_name, models[0], models[1], var2d.level.round())
 
 plt.title(plot_title)
 
-if zoom_on is None:
-    plt.ylim([var2d.latitude.min(), var2d.latitude.max()])
-    plt.xlim([var2d.longitude.min(), var2d.longitude.max()])
-else:
+if zoom_on is not None:
     plt.ylim(lat_range)
     plt.xlim(lon_range)
+
 
 if save_plot:
     tools.save_figure(plot_title, save_folder)
