@@ -14,6 +14,7 @@ import pandas as pd
 import xarray as xr
 from metpy.units import units
 import re
+import global_variables as gv
 import math   # mais on pourrait s'en passer et rendre le tout plus lisible
 #from difflib import SequenceMatcher
 
@@ -75,7 +76,7 @@ def indices_of_lat_lon(ds, lat, lon, verbose=True):
     return index_lat, index_lon
 
 
-def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=False):
+def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=True):
     """
     Open the 50m mast from UK MetOffice formatted under .txt,
     create netcdf file, and returns a xarray dataset.
@@ -104,7 +105,10 @@ def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=False):
         #Get date of file
         line = fulltext[1]
         strings = line.split(sep=' ')
-        datetime = pd.Timestamp(strings[2])
+        day = strings[2][:2]
+        month = strings[2][3:5]
+        year = strings[2][6:10]
+        datetime = pd.Timestamp('{0}-{1}-{2}'.format(year, month, day))
         
         #Get length of header (part starting by '!')
         head_len = np.array([line.startswith('!') for line in fulltext]).sum()
@@ -137,8 +141,8 @@ def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=False):
     obs_ukmo = obs_ukmo.astype(float)
     
     # add time column with datetime
-    time_list = [(pd.Timedelta(val, unit='s') + datetime).round(freq='T') for val in obs_ukmo['HOUR_time']]
-#    time_list = [(pd.Timedelta(val, unit='h') + datetime) for val in obs_ukmo['HOUR_time']]
+#    time_list = [(pd.Timedelta(val, unit='s') + datetime).round(freq='T') for val in obs_ukmo['HOUR_time']]
+    time_list = [(pd.Timedelta(val, unit='h') + datetime) for val in obs_ukmo['HOUR_time']]
     obs_ukmo['time'] = pd.to_datetime(time_list)
 #    obs_ukmo.set_index('time', inplace=True)
     
@@ -251,6 +255,104 @@ def open_ukmo_rs(datafolder, filename):
 
     return obs_ukmo_xr
 
+def open_uib_seb(QC_threshold = 9, create_netcdf=True):
+    """
+    Convert the csv files coming from UIB (universidad de los baleares)
+    into netCDF files to be used in other functions
+    
+    QC_threshold: int,
+        Threshold below which function does not keep the data.
+        1 is the highest quality data, 9 the worst
+    """
+    filename1_orig = 'LIAISE_IRTA-CORN_UIB_SEB1-10MIN_L2.dat_orig'
+    filename2_orig = 'LIAISE_IRTA-CORN_UIB_SEB2-10MIN_L2.dat_orig'
+    datafolder = '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
+    
+    filename1 = filename1_orig.replace('_orig', '')
+    filename2 = filename2_orig.replace('_orig', '')
+    
+    #replace some characters for file 1
+    os.system('''
+        cd {0}
+        cp {1} {2}
+        sed -i 's/\"//g' {2}
+        sed -i 's/\//_per_/g' {2}
+        sed -i 's/%/percent/g' {2}
+        '''.format(datafolder, filename1_orig, filename1)
+        ) #         sed -i 's/\s/_/g' {2}
+    #replace character for file 2
+    os.system('''
+        cd {0}
+        cp {1} {2}
+        sed -i 's/\"//g' {2}
+        sed -i 's/\//_per_/g' {2}
+        sed -i 's/%/percent/g' {2}
+        '''.format(datafolder, filename2_orig, filename2)
+        ) #        sed -i 's/\s/_/g' {2}
+    
+#    open_uib_seb('/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/', filename)
+    units_list = []
+    
+    with open(datafolder + filename1) as f:
+        fulltext = f.readlines()   # read all lines
+        
+        headers_line = fulltext[1]
+        headers_list = headers_line.replace('\"', '').split(sep=',')
+        units_line = fulltext[2]
+        units_list.extend(units_line.replace('\"', '').split(sep=','))
+        
+        # gather data in lists inside another list
+        data_list = []
+        for i in range(4, len(fulltext)):
+            data_list.append(fulltext[i].split(sep=','))
+        
+        df1 = pd.DataFrame(data_list, columns=headers_list)
+        
+    with open(datafolder + filename2) as f:
+        fulltext = f.readlines()    # read all lines
+        
+        headers_line = fulltext[1]
+        headers_list = headers_line.replace('\"', '').split(sep=',')
+        units_line = fulltext[2]
+        units_list.extend(units_line.replace('\"', '').split(sep=','))
+        
+        # gather data in lists inside another list
+        data_list = []
+        for i in range(4, len(fulltext)):
+            data_list.append(fulltext[i].split(sep=','))
+        
+        df2 = pd.DataFrame(data_list, columns=headers_list)
+    
+    # merge the 2 dataframe into one
+    df3 = pd.merge(df1, df2, on='TIMESTAMP')
+    # convert TIMESTAMP strings into pd.Timestamp
+    df3['time'] = [pd.Timestamp(dati) for dati in df3['TIMESTAMP']]
+    # set time as index
+    df4 = df3.set_index('time')
+    
+    df5_list = [pd.to_numeric(df4[key], errors='coerce') for key in df4.columns]
+    df5 = pd.concat(df5_list, axis=1)
+    
+    # convert to xarray dataset and sets units
+    ds = df5.to_xarray()
+    for i, key in enumerate(list(ds.keys())):
+        ds[key].attrs['unit'] = units_list[i]
+    
+    # remove last columns that contains \n everywhere and is problematic
+    # for creating netcdf
+    ds = ds.drop_vars(['LWmV_Avg\n', 'batt_volt_Min\n'])
+    
+    # Remove bad quality data - filter with Quality Check:
+    ds['LE'] = ds['LE'].where(ds['LE_QC'] <= QC_threshold)
+    ds['H'] = ds['H'].where(ds['H_QC'] <= QC_threshold)
+    ds['FC_mass'] = ds['FC_mass'].where(ds['FC_QC'] <= QC_threshold)
+    
+    if create_netcdf:    # Does not work for now
+        ds.to_netcdf(datafolder + 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc', 
+                     engine='netcdf4')
+    
+    return ds
+    
 
 def moving_average(arr, window_size = 3):
     """computes a moving average on the array given"""
@@ -328,7 +430,7 @@ def get_obs_filename_from_date(datafolder, wanted_date='20210722-1200',
     
     return filename
 
-def get_simu_filename(model, date='20210722-1200', domain=2,
+def get_simu_filename_old(model, date='20210722-1200', domain=2,
                       file_suffix='001dg'):
     """
     Returns the whole string for filename and path. 
@@ -362,8 +464,8 @@ def get_simu_filename(model, date='20210722-1200', domain=2,
                 domain, seg_nb_str, file_suffix),
         'irr': '2.13_irr_2021_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
                 domain, seg_nb_str, file_suffix),
-        'irr_d2': '2.13_irr_2021_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
-                domain, seg_nb_str, file_suffix),
+#        'irr_d2': '2.13_irr_2021_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
+#                domain, seg_nb_str, file_suffix),
 #        'irr_d1': '2.14_irr_15-30/LIAIS.{0}.SEG{1}.{2}.nc'.format(
 #                domain, seg_nb_str, file_suffix)
         }
@@ -371,7 +473,7 @@ def get_simu_filename(model, date='20210722-1200', domain=2,
     filename = father_folder + simu_filelist[model]
     return filename
 
-def get_simu_filename_d1(model, date='20210722-1200', domain=1,
+def get_simu_filename(model, date='20210722-1200', domain=1,
                          file_suffix='dg'):
     """
     --------------
@@ -404,14 +506,16 @@ def get_simu_filename_d1(model, date='20210722-1200', domain=1,
 
     father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
     simu_filelist = {
-#        'std': '1.11_ECOII_2021_ecmwf_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
-#                domain, seg_nb_str, file_suffix),
+        'std_d2': '1.11_std_2021_21-24/LIAIS.2.SEG{0}.{1}{2}.nc'.format(
+                seg_nb, suffix_nb, file_suffix),
 #        'irr': '2.13_irr_2021_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
 #                domain, seg_nb_str, file_suffix),
-#        'irr_d2': '2.13_irr_2021_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
-#                domain, seg_nb_str, file_suffix),
-        'irr_d1': '2.14_irr_15-30/LIAIS.{0}.SEG{1}.{2}{3}.nc'.format(
-                domain, seg_nb, suffix_nb, file_suffix)
+        'irr_d2': '2.13_irr_2021_21-24/LIAIS.2.SEG{0}.{1}{2}.nc'.format(
+                seg_nb, suffix_nb, file_suffix),
+        'irr_d1': '2.14_irr_15-30/LIAIS.1.SEG{0}.{1}{2}.nc'.format(
+                seg_nb, suffix_nb, file_suffix),
+        'std_d1': '1.15_std_15-30/LIAIS.1.SEG{0}.{1}{2}.nc'.format(
+                seg_nb, suffix_nb, file_suffix)
         }
     
     filename = father_folder + simu_filelist[model]
@@ -435,6 +539,12 @@ def check_filename_datetime(filepath, fix=False):
     #correct values based on datetime variable
     correct_seg_nb = str(datetime.day)
     correct_suffix_nb = str(datetime.hour)
+    
+    # special case for midnight
+    if correct_suffix_nb == '0':
+        correct_seg_nb = str(int(correct_seg_nb) - 1)
+        correct_suffix_nb = '24'
+    
     # format suffix with 3 digits:
     if len(correct_suffix_nb) == 1:
         correct_suffix_nb = '00'+ correct_suffix_nb
@@ -446,13 +556,14 @@ def check_filename_datetime(filepath, fix=False):
             new_fpath = re.sub('SEG..\.0..', 'SEG{0}.{1}'.format(
                     correct_seg_nb, correct_suffix_nb), filepath)
             out = os.system('''
-                mv {0} {1}
+                mv --backup=numbered {0} {1}
                 '''.format(filepath, new_fpath))
             print('OUT = {0}'.format(out))
             print("* File '{0}' RENAMED IN: '{1}'".format(filepath, new_fpath))
             return False
         else:
-            raise NameError('the date in simu file do not match filename SEG')
+            return False
+#            raise NameError('the date in simu file do not match filename SEG')
     
     if suffix_nb != correct_suffix_nb:
         if fix:
@@ -465,14 +576,15 @@ def check_filename_datetime(filepath, fix=False):
             print("* File '{0}' RENAMED IN: '{1}'".format(filepath, new_fpath))
             return False
         else:
-            raise NameError('the time in simu file do not match filename suffix')
+            return False
+#            raise NameError('the time in simu file do not match filename suffix')
     
     return True
     
     
 
 def concat_obs_files(datafolder, in_filenames, out_filename, 
-                     create_ukmo_nc=False):
+                     dat_to_nc=None):
     """
     Check if file already exists. If not create it by concatenating files
     that correspond to "in_filenames*". It uses shell script, and the command
@@ -486,13 +598,16 @@ def concat_obs_files(datafolder, in_filenames, out_filename,
             Used with wildcard "*" in the shell script run.
         out_filename:
             str, name of output file
+        dat_to_nc: 
+            str 'uib' or 'ukmo' or None, 
+            convert .dat files into .nc files prior to concatenation
             
     Returns: Nothing in python, but it should have created the output file
     in the datafolder if not existing before.        
     """
     
     # CREATE netCDF file from .dat if not existing yet
-    if create_ukmo_nc:
+    if dat_to_nc == 'ukmo':
         fnames = os.listdir(datafolder)
         for f in fnames:
             if '.dat' not in f:
@@ -500,6 +615,9 @@ def concat_obs_files(datafolder, in_filenames, out_filename,
             else:
                 open_ukmo_mast(datafolder, f, 
                                create_netcdf=True, remove_modi=True)
+    elif dat_to_nc == 'uib':
+        open_uib_seb(create_netcdf=True)
+    
     # CONCATENATE
     if not os.path.exists(datafolder + out_filename):
         print("creation of file: ", out_filename)
@@ -534,8 +652,9 @@ def concat_simu_files_1var(datafolder, varname_sim, in_filenames, out_filename):
             str, name of output file
             
     Returns: Nothing in python, but it should have created the output file
-    in the datafolder if not existing before.       
+    in the datafolder if not existing before.
     """
+    
     if not os.path.exists(datafolder + out_filename):
         print("creation of file: ", out_filename)
         out = os.system('''
@@ -569,10 +688,49 @@ def sm2swi(sm, wilt_pt=None, field_capa=None):
     return (sm - wilt_pt)/(field_capa - wilt_pt)
 
 
+def get_irrig_time(dtarr, stdev_threshold=5):
+    """
+    dtarr: xarray Dataarray,
+        Variable representing soil moisture of other variable 
+        strongly dependant on irrigation. Must have 'time' as coordinate.
+    """
+    # if dtarr is None (not irrigated site for ex.)
+    if dtarr is None:
+        return []
+    # derivate of variable with time
+    dtarr_dtime = dtarr.differentiate(coord='time')
+    # keep absolute values
+    dtarr_dtime_abs = np.abs(dtarr_dtime)
+    
+    # compute threshold to determine the outliers
+    avrg = dtarr_dtime_abs.mean()
+    stdev = dtarr_dtime_abs.std()
+    thres = avrg + stdev_threshold*stdev
+    
+    # only keep outliers
+    irr_dati = dtarr_dtime_abs.where(dtarr_dtime_abs > thres, drop=True).time
+    
+    # remove close datetimes
+    tdelta_min = pd.Timedelta(6, unit='h')  #minimum time delta between 2 irrig
+    irr_dati_filtered = []
+    
+    for i, dati in enumerate(irr_dati):
+        if i == 0:
+            continue
+        else:
+            if (irr_dati[i].data - irr_dati[i-1].data) > tdelta_min:
+                irr_dati_filtered.append(dati.data)
+    
+    return irr_dati_filtered
+
 #def interpolation_level(data, height=[2,10]):
     #interp à 2m et 10m par défaut
 #    data.interp(level=height)
 
+
+
+    
+    
  
 def line_coords(data, 
                 start_pt = (41.6925905, 0.9285671), # cendrosa
@@ -659,12 +817,6 @@ def center_uvw(data):
     data['WT'] = data['WT'].interp(level_w=data.level.values).rename(
             {'level_w': 'level'})
     
-    # Create new datarray with everything centered in the middle
-    #data_new = xr.merge([data_UT, data_VT, data_WT, 
-    #                 data['THT'], data['RVT'], data['ZS'],
-    ##                 data[surf_var],
-    #                 ])
-    
     # remove useless coordinates
     data_new = data.drop(['latitude_u', 'longitude_u', 
                           'latitude_v', 'longitude_v',
@@ -675,6 +827,42 @@ def center_uvw(data):
     
     return data_new
 
+def interp_iso_asl(alti_asl, ds, varname):
+    """
+    Interpolate values at same altitude ASL
+    
+    Returns:
+        np.array
+    
+    """
+    
+#    fn = get_simu_filename_d1('irr_d1', date='20210722-1200')
+#    ds = xr.open_dataset(fn)
+    ds = ds[[varname, 'ZS']].squeeze()
+    
+    # make with same asl value everywhere
+    alti_grid = np.array([[alti_asl]*len(ds.ni)]*len(ds.nj))
+    # compute the corresponding height AGL to keep iso alti ASL on each pt
+    level_grid = alti_grid - ds['ZS'].data
+    # initialize the result layer with same shape same than alti_grid
+    res_layer = level_grid*0
+    
+    # get column of correspondance between level and height AGL
+    level = ds[varname][:, :, :].level.data 
+    
+    # interpolation
+    for j in range(len(ds.nj)):
+        print('{0}/{1}'.format(j, len(ds.nj)))
+        for i in range(len(ds.ni)):
+            if level_grid[j,i] < 0:
+                res_layer[j,i] = np.nan
+            else:
+    #            res_layer[i,j] = ds['PRES'].interp(
+    #                ni=ds.ni[i], nj=ds.nj[j], level=level_grid[i,j])
+                res_layer[j,i] = np.interp(level_grid[j,i], 
+                                           level, ds['PRES'][:, j, i])
+    
+    return res_layer
 
 def save_figure(plot_title, save_folder='./figures/', verbose=True):
     """
@@ -912,91 +1100,145 @@ def t_wb(tdb, rh):
     )
     return twb
 
+def check_folder_filenames():
+    folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/1.11_std_2021_21-24/'
+#    folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.13_irr_2021_21-24/'
+    ls = os.listdir(folder)
+    
+    regex = re.compile(r'LIAIS.2.SEG.*[^0]dg.nc$')
+#    numbered_re = re.compile(r'~1~')
+#    numbered = [fn for fn in ls if numbered_re.match(fn)]
+    
+    filtered = [fn for fn in ls if regex.match(fn)]
+    filtered.sort()
+    print(filtered)
+    
+    filtered = ['LIAIS.2.SEG21.017dg.nc', 'LIAIS.2.SEG21.018dg.nc']
+    
+    pb = []
+    for fn in filtered:      
+        filepath = folder + fn
+        if not check_filename_datetime(filepath, fix=False):
+            pb.append(fn)
+            print('issue with ', fn)
+        else:
+            print(fn + ' is OK')
+
+
+def get_surface_type(ds, site, domain_nb, translate_patch = True, 
+                     nb_patch=12):
+    """
+    Returns the type and characteristics of surface for a given site
+    
+    """
+    # get indices of sites in ds
+    index_lat, index_lon = indices_of_lat_lon(ds, 
+                                              gv.sites[site]['lat'], 
+                                              gv.sites[site]['lon'])
+    
+    res = {}
+    weight = []
+    if nb_patch == 12:
+        patch_dict = {'PATCHP1': 'P1_NO',
+                     'PATCHP2': 'P2_ROCK',
+                     'PATCHP3': 'P3_SNOW',
+                     'PATCHP4': 'P4_BROADLEAF_TREES',
+                     'PATCHP5': 'P5_NEEDLELEAF_TREES', 
+                     'PATCHP6': 'P6_TRBE_tropi_broad_evergreen', 
+                     'PATCHP7': 'P7_C3',
+                     'PATCHP8': 'P8_C4',
+                     'PATCHP9': 'P9_IRRC4',
+                     'PATCHP10': 'P10_GRASSC3',
+                     'PATCHP11': 'P11_GRASSC4',
+                     'PATCHP12': 'P12_BOG_PARK',
+                     }
+    else:
+        raise ValueError('Not adapted yet to this patch number - TO DO')
+        
+    for key in patch_dict:
+        val = float(ds[key][index_lat, index_lon].data)
+        if val == 999:
+            val=0
+        if translate_patch:
+            res[patch_dict[key]] = val
+        else:
+            res[key] = val
+        weight.append(val)
+        
+    # keys aggregated
+    for key in ['LAI_ISBA', 'Z0_ISBA', 'Z0H_ISBA', 
+#                'EMIS', 
+                'CD_ISBA',  # coeff trainee
+                'CH_ISBA',  # coeff echange turbulent pour sensible heat
+                'CE_ISBA',  # coeff echange turbulent pour latent heat
+                ]:
+        sq_ds = ds[key] #.squeeze()
+        res[key] = float(sq_ds[index_lat, index_lon].data)
+    # keys by patch, to aggregate
+    
+    for key in ['CV',
+                'ALBNIR',
+                'ALBUV',
+                'ALBVIS',
+                'DROOT_DIF',]:
+        temp = []
+        for p_nb in np.arange(1, 13):  # patch number
+            keyP = '{0}P{1}'.format(key, p_nb)
+            temp.append(float(ds[keyP][index_lat, index_lon].data))
+        # remove 999 from list (replaced by 0)
+        temp = [0 if i == 999 else i for i in temp]
+        aggr_key = '{0}_ISBA'.format(key)
+        
+        res[aggr_key] = np.sum(np.array(weight) * np.array(temp))
+    
+    # Get soil type from pgd
+    if domain_nb == 2:
+        pgd = xr.open_dataset(
+            '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
+            'PGD_400M_CovCor_v26_ivars.nc')
+    elif domain_nb == 1:
+        pgd = xr.open_dataset(
+            '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
+            'PGD_2KM_CovCor_v26_ivars.nc')
+    
+    for key in ['CLAY', 'SAND', ]:
+        val = float(pgd[key][index_lat, index_lon].data)
+        res[key] = val
+        
+    return res
+
+def calc_u_star_sim(ds):
+    """
+    Compute friction velocity u* from zonal and meridian wind stress FMU_ISBA
+    and FMV_ISBA.
+    
+    Parameters:
+        ds: xarray.Dataset containing FMU_ISBA and FMV_ISBA
+    
+    Returns:
+        xarray.DataArray
+    
+    """
+    fmu_md = ds['FMU_ISBA']
+    fmv_md = ds['FMV_ISBA']
+
+    tau = np.sqrt(fmu_md**2 + fmv_md**2)
+    u_star = np.sqrt(tau)
+    
+    return u_star
+
 
 if __name__ == '__main__':
-    nb_points_beyond = 10
-    site_end = 'cendrosa'
-    end = (41.0, 0.90)
-    site_start = 'arbeca'
-    start = (41.04, 0.9)
-    line = line_coords(data, start, end, 
-                       nb_indices_exterior=0)
+#    ds2 = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/2.13_irr_2021_21-24/LIAIS.2.SEG22.012dg.nc')
+    ds1 = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/2.14_irr_15-30/LIAIS.1.SEG22.012dg.nc')
+#    res = get_surface_type(ds, 'cendrosa')
+#    site = 'cendrosa'
+#    translate_patch = True
     
-#    open_ukmo_rs('/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/30min/', filename)
-#    
-#    ds = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/1.11_ECOII_2021_ecmwf_22-27/LIAIS.1.SEG21.021.nc')
+    res1 = get_surface_type(ds1, 'cendrosa', domain_nb=1)
+#    res2 = get_surface_type(ds2, 'cendrosa', domain_nb=2)
+#    open_ukmo_mast('/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/30min/', 'LIAISE_20210713_30.dat')
     
-    
-#%% FOR COMPA WITH NC FILES
-    
-    #%% TEST for line_coords
-#    ds = xr.open_dataset(
-#    '/cnrm/surface/lunelt/NO_SAVE/nc_out/1.11_ECOII_2021_ecmwf_22-27/' + \
-#    'LIAIS.2.SEG14.001dg.nc')
-#    
-#    ni_line, nj_line = line_coords(ds, 
-#                       start_pt = (41.41, 0.84),
-#                       end_pt = (41.705, 1.26))
-    
-    #%%TEST for open_ukmo_mast
-#    obs = xr.open_dataset(
-#            '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/' + \
-#            'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_2021-07-22_V2.nc')
-#
-#    datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/5min/'
-#    for filename in os.listdir('/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/5min/'):
-#        print(filename)
-#        if '.dat' in filename:        
-#            obs_ukmo_out = open_ukmo_mast(
-#            '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/5min/',
-#            filename, create_netcdf=True, remove_modi=True )
-    
-#    obs_ukmo_out = open_ukmo_mast(
-#            '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/5min/',
-#            'LIAISE_20210723_05.dat', create_netcdf=True, remove_modi=True )
-    
-    #%% TEST for open_ukmo_rs
-#    datafolder = \
-#    '/cnrm/surface/lunelt/data_LIAISE/elsplans/radiosoundings/'
-#    filename = 'LIAISE_ELS_PLANS_20210715_050013.txt'
-#    obs_ukmo = open_ukmo_rs(datafolder, filename)
-    
-    
-    #%% TEST for filename_from_date
-#    for site in ['cendrosa', 'elsplans']:
-#        datafolder = \
-#            '/cnrm/surface/lunelt/data_LIAISE/'+ site +'/radiosoundings/'
-#        wanted_datetime = pd.Timestamp('20210721-1200')
-#            
-#        fname = filename_from_date(datafolder, wanted_datetime)
-#        print('filename is: ' + fname)
-    
-    
-    #%% TEST for indices_of_lat_lon 
-#    ds = xr.open_dataset(
-#        '/cnrm/surface/lunelt/NO_SAVE/nc_out/1.11_ECOII_2021_ecmwf_22-27/' + \
-#        'LIAIS.2.SEG14.001.nc')
-#    datetime = ds.time.values[0]   
-#    #la cendrosa:
-#    lat=41.6925905
-#    lon=0.9285671  
-#    index_lat, index_lon = indices_of_lat_lon(ds, lat, lon)    
-#    # latitude and longitude
-#    lat_dat = ds.latitude.data
-#    lon_dat = ds.longitude.data
-#    print('lat & lon available in file are:')
-#    lat_grid = lat_dat[index_lat, index_lon]
-#    lon_grid = lon_dat[index_lat, index_lon]
-#    print(lat_grid, lon_grid)   
-#    # find X and Y corresponding to lat and lon of grid point
-#    X_grid = ds.XHAT.data[index_lon]
-#    Y_grid = ds.YHAT.data[index_lat]
-#    print("X_grid={0}, Y_grid={1}".format(X_grid, Y_grid))    
-#    # find X and Y corresponding to lat and lon with interpolation
-#    X = X_grid + (ds.XHAT.data[index_lon] - ds.XHAT.data[index_lon-1])*(
-#            (lon_dat[index_lat, index_lon] - lon)/ \
-#            (lon_dat[index_lat, index_lon] - lon_dat[index_lat, index_lon-1]))   
-#    Y = Y_grid + (ds.YHAT.data[index_lat] - ds.YHAT.data[index_lat-1])*(
-#            (lat_dat[index_lat, index_lon] - lat)/ \
-#            (lat_dat[index_lat, index_lon] - lat_dat[index_lat-1, index_lon]))   
-#    print("X={0}, Y={1}".format(X, Y))
+#    u_star = calc_u_star_sim(ds1)
+
+        
