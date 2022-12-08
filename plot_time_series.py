@@ -2,10 +2,6 @@
 """
 @author: Tanguy LUNEL
 Creation : 07/01/2021
-
-Fonctionnement:
-    Seule plusieurs sections ont besoin d'être remplies, à automatiser.
-    Works fine for scalar variables, not great for wind
     
 """
 #import os
@@ -14,27 +10,33 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import xarray as xr
 import tools
+import global_variables as gv
 
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'preixana'
+site = 'cendrosa'
 
 #domain to consider for simu files: 1 or 2
-domain_nb = 1
+#domain_nb = 2  # now retrieved from model name
+
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'lhf'   # options are: (last digit is the max number available)
+varname_obs = 'u_star_1'   # options are: (last digit is the max number available)
 #-- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
-# w_h2o_cov, h2o_flux[_1], shf_1
+# w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
 # from données lentes: 1->0.2m, 2->2m, 3->10m, 4->25m, 5->50m
 # from eddy covariance measures: 1->3m, 2->25m, 3->50m
 #-- For UKMO (elsplans):
 # TEMP, RHO (=hus), WQ, WT, UTOT, DIR, ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
 # RAIN, PRES, ST01 (=soil_temp), SWDN ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
+# ST01, ST04, ST10, ST17, ST35_subsoil with number being depth in cm
+# LE_2m(_WPL) and H_2m also available by calculation
 
-varname_sim = 'LE_P4'      # simu varname to compare obs with
+#FC_mass
+
+varname_sim = 'U_STAR'      # simu varname to compare obs with
 #T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9
 #N.B.: layers depth for diff:
 #    [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6,
@@ -43,228 +45,286 @@ varname_sim = 'LE_P4'      # simu varname to compare obs with
 #If varname_sim is 3D:
 ilevel = 1   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
-longname_as_label = True  #does not work for elsplans
-if site == 'elsplans':
-    longname_as_label = False  #does not work for elsplans
+add_irrig_time = False
 
 save_plot = True
-save_folder = './figures/time_series/{0}/domain{1}/'.format(site, domain_nb)
+#save_folder = './figures/time_series/{0}/domain{1}/'.format(site, domain_nb)
+save_folder = './figures/time_series/{0}/alldomains/'.format(site)
 
 ######################################################
 
-simu_folders = {
-#        'irr': '2.13_irr_2021_22-27/', 
-        'irr_d1': '2.14_irr_15-30/',
-#        'std': '1.11_ECOII_2021_ecmwf_22-27/'
-         }
+models = ['irr_d2', 
+          'irr_d1', 
+          'std_d1', 
+          'std_d2', 
+          ]
+simu_folders = {key:gv.simu_folders[key] for key in models}
+
 father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
 
 date = '2021-07'
 
-colordict = {'irr': 'g', 'irr_d1': 'g', 'std': 'orange', 'obs': 'k'}
-
-if varname_obs in ['lhf_1', 'lhf', 'WQ_2m', 'WQ_10m']:
-    secondary_axis_latent_heat = True
-else:
-    secondary_axis_latent_heat = False
+colordict = {'irr_d2': 'g', 'irr_d1': 'g--', 
+             'std_d2': 'r', 'std_d1': 'r--', 
+             'obs': 'k'}
+    
 
 #%% Dependant Parameters
 
+# default values (can be change below)
+offset_obs = 0
+coeff_obs = 1
+secondary_axis = None
+    
 if varname_obs in ['soil_moisture_1', 'soil_moisture_2', 'soil_moisture_3']:
     ylabel = 'soil moisture [m3/m3]'
-    offset_obs = 0
-    coeff_obs = 1
-elif varname_obs in ['soil_temp_1', 'soil_temp_2', 'soil_temp_3']:
+elif varname_obs in ['soil_temp_1', 'soil_temp_2', 'soil_temp_3',
+                     'ST01_subsoil', 'ST04_subsoil', 'ST10_subsoil',
+                     'ST17_subsoil', 'ST35_subsoil']:
     ylabel = 'soil temperature [K]'
     offset_obs = 273.15
-    coeff_obs = 1
 elif varname_obs in ['swd']:
     ylabel = 'shortwave downward radiation [W/m2]'
-    offset_obs = 0
-    coeff_obs = 1
 elif varname_obs in ['lmon_1', 'lmon_2', 'lmon_3']:
     ylabel = 'monin-obukhov length [m]'
-    offset_obs = 0
-    coeff_obs = 1
 elif varname_obs in ['h2o_flux_1', 'h2o_flux_2', 'h2o_flux']:  #this includes Webb Pearman Leuning correction on w_h2o_cov
     ylabel = 'h2o flux [kg.m-2.s-1]'
-    offset_obs = 0
     coeff_obs = 0.001
-    secondary_axis_latent_heat = True
+    secondary_axis = 'le'
+elif varname_obs in ['co2_flux_1', 'co2_flux_2', 'co2_flux']:  #this includes Webb Pearman Leuning correction on w_h2o_cov
+    ylabel = 'co2 flux [kg.m-2.s-1]'
+    coeff_obs = 44e-9  # from umol/m2/s to kgCO2/m2/s
 elif varname_obs in ['w_h2o_cov_1', 'w_h2o_cov_2', 'w_h2o_cov']:
     ylabel = 'h2o turbulent flux [kg.m-2.s-1]'
-    offset_obs = 0
     coeff_obs = 0.001
-    secondary_axis_latent_heat = True
+    secondary_axis = 'le'
 elif varname_obs in ['WQ_2m', 'WQ_10m']:
     ylabel = 'h2o turbulent flux [kg.m-2.s-1]'
-    offset_obs = 0
-    coeff_obs = 1
-    secondary_axis_latent_heat = True
+    secondary_axis = 'le'
 elif varname_obs in ['ta_1', 'ta_2', 'ta_3', 'ta_4', 'ta_5', 'TEMP_2m']:
     ylabel = 'air temperature [K]'
     offset_obs = 273.15
-    coeff_obs = 1
+#    offset_obs = 0
 elif varname_obs in ['hus_1', 'hus_2', 'hus_3', 'hus_4', 'hus_5', 'RHO_2m']:
     ylabel = 'specific humidity [kg/kg]'
-    offset_obs = 0
     coeff_obs = 0.001
 elif varname_obs in ['WT_2m']:
-    ylabel = 'turbulent sensible heat flux [W/m²]'
-    offset_obs = 0
-    coeff_obs = 1005*1.20  #heat capacity * density of DRY air at 20°C
+    ylabel = 'turbulent sensible temperature flux [K.m-1.s-1]'
+elif varname_obs in ['H_2m']:
+    ylabel = 'turbulent sensible heat flux [W.m-2]'
+elif varname_obs in ['LE_2m']:
+    ylabel = 'turbulent latent heat flux [W.m-2]'
+    secondary_axis = 'evap'
+elif varname_obs in ['LE_2m_WPL']:
+    ylabel = 'turbulent latent heat flux WPL corrected [W.m-2]'
+    secondary_axis = 'evap'
+if varname_obs in ['lhf_1', 'lhf']:
+    secondary_axis = 'evap'
 else:
     ylabel = varname_obs
-    offset_obs = 0
-    coeff_obs = 1
     pass
 #    raise ValueError("nom de variable d'observation inconnue"), 'WQ_2m', 'WQ_10m'
 
+if varname_sim in ['U_STAR',]:
+    varname_sim_preproc = 'FMU_ISBA,FMV_ISBA'
+else:
+    varname_sim_preproc = varname_sim
+
 if site == 'cendrosa':
-    lat = 41.6925905
-    lon = 0.9285671
 #    varname_sim_suffix = 'P9'
-    varname_sim_suffix = '_ISBA'
+#    varname_sim_suffix = '_ISBA'
     datafolder = '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
     filename_prefix = 'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'preixana':
-    lat = 41.59373 
-    lon = 1.07250
-    varname_sim_suffix = '_ISBA'
+#    varname_sim_suffix = '_ISBA'
     datafolder = '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
     filename_prefix = 'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'elsplans':
-    lat = 41.590111 
-    lon = 1.029363
     freq = '30'  # '5' min or '30'min
     datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/{0}min/'.format(freq)
     filename_prefix = 'LIAISE_'
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
-    varname_sim_suffix = '_ISBA'
-else:
-    raise ValueError('Site name not known')
+#    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
+elif site == 'irta-corn':
+    datafolder = '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
+    in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
+#    raise ValueError('Site name not known')
+    
+lat = gv.sites[site]['lat']
+lon = gv.sites[site]['lon']
 
 
 #%% OBS: Concatenate and plot data
-
-out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
-
-# CONCATENATE multiple days
-if site == 'elsplans':
-    create_ukmo_nc=True
+if site == 'irta-corn':
+    out_filename_obs = in_filenames_obs
+    dat_to_nc = 'uib'
+elif site == 'elsplans':
+    out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
+    dat_to_nc='ukmo'
 else:
-    create_ukmo_nc=False
+    out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
+    dat_to_nc=None
+    
+# CONCATENATE multiple days
 tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs, 
-                       create_ukmo_nc=create_ukmo_nc)
+                       dat_to_nc=dat_to_nc)
+
+obs = xr.open_dataset(datafolder + out_filename_obs)
+
+# process other variables:
+# NET RADIATION
+if site in ['preixana', 'cendrosa']:
+    # net radiation
+    obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
+if site == 'elsplans':
+    ## Flux calculations
+    obs['H_2m'] = obs['WT_2m']*1200  # =Cp_air * rho_air
+    obs['LE_2m'] = obs['WQ_2m']*2264000  # =L_eau
+    
+    ## Webb Pearman Leuning correction
+    bowen_ratio = obs['H_2m'] / obs['LE_2m']
+    #obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.016)*(0+(1.2/300)*obs['WT_2m'])  #eq (25)
+    obs['LE_2m_WPL'] = obs['LE_2m']*(1.010)*(1+0.051*bowen_ratio)  #eq (47) of paper WPL
 
 # PLOT:
 fig = plt.figure(figsize=(15, 9))
-    
-obs = xr.open_dataset(datafolder + out_filename_obs)
 
-if site == 'elsplans':
-#    dati_arr = pd.date_range(start=obs.time.min().values, 
-    dati_arr = pd.date_range(pd.Timestamp('20210701-0000'),
-                             periods=len(obs[varname_obs]), 
-                             freq='{0}T'.format(freq))
-    #turn outliers into NaN
-    obs_var_filtered = obs[varname_obs].where(
-            (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
-            np.nan)
-    plt.plot(dati_arr, ((obs_var_filtered+offset_obs)*coeff_obs), 
-             label='obs_'+varname_obs,
-             color=colordict['obs'])
-else:
-    ((obs[varname_obs]+offset_obs)*coeff_obs).plot(label='obs_'+varname_obs,
-                                                   color=colordict['obs'],
-                                                   linewidth=1)
+if varname_obs != '':
+    if site == 'elsplans':
+        ## create datetime array
+    #    dati_arr = pd.date_range(start=obs.time.min().values, 
+        dati_arr = pd.date_range(pd.Timestamp('20210701-0000'),
+                                 periods=len(obs[varname_obs]), 
+                                 freq='{0}T'.format(freq))
+        
+        # filter outliers (turn into NaN)
+        obs_var_filtered = obs[varname_obs].where(
+                (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
+                np.nan)
+        plt.plot(dati_arr, ((obs_var_filtered+offset_obs)*coeff_obs), 
+                 label='obs_'+varname_obs,
+                 color=colordict['obs'])
+    else:
+        # filter outliers (turn into NaN)
+        obs_var_filtered = obs[varname_obs].where(
+                (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
+                np.nan)
+        # apply correction for comparison with models
+        obs_var_corr = ((obs[varname_obs]+offset_obs)*coeff_obs)
+        # plot
+        obs_var_corr.plot(label='obs_'+varname_obs,
+                          color=colordict['obs'],
+                          linewidth=1)
 
-# correction Webb Pearman Leuning simplified
-#bowen_ratio = 20
-#Q_s = obs['WT_2m']*1200  # =Cp_air * rho_air
-#Q_le = obs['WQ_2m']*2264000  # =L_eau
-#bowen_ratio = Q_s / Q_le
-##obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.016)*(0+(1.2/300)*obs['WT_2m'])  #eq (25)
-#obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.010)*(1+0.051*bowen_ratio)  #eq (47)
-#
-#obs_var_filtered = obs['WQ_2m_WPL'].where(
-#        (obs['WQ_2m_WPL']-obs['WQ_2m_WPL'].mean()) < (4*obs['WQ_2m_WPL'].std()), 
-#        np.nan)
-#plt.plot(dati_arr, ((obs_var_filtered+offset_obs)*coeff_obs), 
-#         label='obs_WPL_corr_'+varname_obs,
-#         color='b')
 
 #%% SIMU:
 
-in_filenames_sim = 'LIAIS.{0}.SEG??.0??{1}.nc'.format(domain_nb, file_suffix)  # use of wildcard allowed
-out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim)
-
 for model in simu_folders:
+    domain_nb = model[-1]
+    in_filenames_sim = 'LIAIS.{0}.SEG??.0??{1}.nc'.format(domain_nb, file_suffix)  # use of wildcard allowed
+    out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim_preproc)
     
     # CONCATENATE multiple days
     datafolder = father_folder + simu_folders[model]
-#    if not os.path.exists(datafolder + out_filename_sim):
-#        print("creation of file: ", out_filename_sim)
-#        os.system('''
-#            cd {0}
-#            ncecat -v {1} {2} {3}
-#            '''.format(datafolder, varname_sim, 
-#                       in_filenames_sim, out_filename_sim))
-    tools.concat_simu_files_1var(datafolder, varname_sim, 
+    
+    tools.concat_simu_files_1var(datafolder, varname_sim_preproc, 
                                  in_filenames_sim, out_filename_sim)
-
-    ds1 = xr.open_dataset(datafolder + out_filename_sim)
     
-    # find indices from lat,lon values 
-    index_lat, index_lon = tools.indices_of_lat_lon(ds1, lat, lon)
+    ds = xr.open_dataset(datafolder + out_filename_sim)
     
-    var_md = ds1[varname_sim]
+    # Compute other diag variables
+    if varname_sim == 'U_STAR':
+        ds['U_STAR'] = tools.calc_u_star_sim(ds)
+    
+    # keep variable of interested
+    var_md = ds[varname_sim]
     
     # Set time abscisse axis
     try:
-        start = ds1.time.data[0]
+        start = ds.time.data[0]
     except AttributeError:    
-        start = np.datetime64('2021-07-14T01:00')
+#        start = np.datetime64('2021-07-14T01:00')
+        start = np.datetime64('2021-07-21T01:00')
     
     dati_arr = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, var_md.shape[0])])
     
-    # PLOT
     var_md = var_md.squeeze()  # removes dimension with 1 value only
     
-    if len(var_md.shape) == 5:
-        var_1d = var_md.data[:, :, ilevel, index_lat, index_lon] #1st index is time, 2nd is ?, 3rd is Z,..
-    elif len(var_md.shape) == 4:
-        var_1d = var_md.data[:, ilevel, index_lat, index_lon] #1st index is time, 2nd is Z,..
-    elif len(var_md.shape) == 3:
-        var_1d = var_md.data[:, index_lat, index_lon]
+    # find indices from lat,lon values 
+    index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
     
-    #fig = plt.figure()
+    if len(var_md.shape) == 5:
+        var_1d = var_md[:, :, ilevel, index_lat, index_lon].data #1st index is time, 2nd is ?, 3rd is Z,..
+    elif len(var_md.shape) == 4:
+        var_1d = var_md[:, ilevel, index_lat, index_lon].data #1st index is time, 2nd is Z,..
+    elif len(var_md.shape) == 3:
+        var_1d = var_md[:, index_lat, index_lon].data
+    
+    # PLOT
+    plt.plot(dati_arr, var_1d, 
+#             color=colordict[model],
+             colordict[model],
+             label='simu_{0}_{1}'.format(model, varname_sim),
+             )
+
     ax = plt.gca()
-    ax.set_ylabel(ylabel)
-    #ax.set_ylim([0, 0.4])
     
 #    ax.set_xlim([np.min(obs.time), np.max(obs.time)])
     ax.set_xlim([np.min(dati_arr), np.max(dati_arr)])
-    
-    plt.plot(dati_arr, var_1d, 
-             label='simu_{0}_{1}'.format(model, varname_sim),
-             color=colordict[model])
 
-if longname_as_label:
-    ylabel = obs[varname_obs].long_name
+#%% Add irrigation datetime
+if add_irrig_time:
+    if site == 'irta-corn':
+        sm_var = obs['VWC_40cm_Avg']
+    if site == 'cendrosa':
+        sm_var = obs['soil_moisture_3']
+    if site == 'preixana':
+        sm_var = None
+    if site == 'elsplans':
+        sm_var = None
+    dati_list = tools.get_irrig_time(sm_var)
+    plt.vlines(dati_list, 
+               ymin=obs_var_corr.min().data, 
+               ymax=obs_var_corr.max().data, 
+               label='irrigation')
+
+#%% Plot esthetics
+
+if varname_obs == '':
+    try:
+        ylabel = ds[varname_sim].comment
+    except AttributeError:
+        ylabel = varname_sim
+else:
+    try:
+        ylabel = obs[varname_obs].long_name
+    except AttributeError:
+        try:
+            ylabel = ds[varname_sim].comment
+        except AttributeError:
+            ylabel = varname_obs
+
 
 plot_title = '{0} at {1}'.format(ylabel, site)
+ax = plt.gca()
+ax.set_ylabel(ylabel)
 
 # add secondary axis on the right, relative to the left one - (for LE)
-if secondary_axis_latent_heat:
+if secondary_axis == 'le':
     axes = plt.gca()
     secax = axes.secondary_yaxis("right",                              
         functions=(lambda evap: evap*2264000,
                    lambda le: le/2264000))
     secax.set_ylabel('latent heat flux [W/m²]')
+if secondary_axis == 'evap':
+    axes = plt.gca()
+    secax = axes.secondary_yaxis("right",                              
+        functions=(lambda le: le/2264000,
+                   lambda evap: evap*2264000))
+    secax.set_ylabel('evapotranspiration [kg/m²/s]')
 
 plt.title(plot_title)
 plt.legend()
