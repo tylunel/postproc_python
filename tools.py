@@ -473,7 +473,7 @@ def get_simu_filename_old(model, date='20210722-1200', domain=2,
     filename = father_folder + simu_filelist[model]
     return filename
 
-def get_simu_filename(model, date='20210722-1200', domain=1,
+def get_simu_filename(model, date='20210722-1200',
                          file_suffix='dg'):
     """
     --------------
@@ -485,7 +485,7 @@ def get_simu_filename(model, date='20210722-1200', domain=1,
     
     Parameters:
         model: str, 
-            'irr' or 'std'
+            'irr_d2' or 'std_d1'
         wanted_date: str, with format accepted by pd.Timestamp,
             ex: '20210722-1200'
         domain: int,
@@ -496,29 +496,31 @@ def get_simu_filename(model, date='20210722-1200', domain=1,
         filename: str, full path and filename
     """
     pd_date = pd.Timestamp(date)
-    seg_nb = str(pd_date.day)        
-    suffix_nb = str(pd_date.hour)
+    day_nb = str(pd_date.day)        
+    hour_nb = str(pd_date.hour)
     # format suffix with 3 digits:
-    if len(suffix_nb) == 1:
-        suffix_nb = '00'+ suffix_nb
-    elif len(suffix_nb) == 2:
-        suffix_nb = '0'+ suffix_nb
+    if len(hour_nb) == 1:
+        hour_nb = '00'+ hour_nb
+    elif len(hour_nb) == 2:
+        hour_nb = '0'+ hour_nb
 
     father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
     simu_filelist = {
-        'std_d2': '1.11_std_2021_21-24/LIAIS.2.SEG{0}.{1}{2}.nc'.format(
-                seg_nb, suffix_nb, file_suffix),
-#        'irr': '2.13_irr_2021_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
-#                domain, seg_nb_str, file_suffix),
-        'irr_d2': '2.13_irr_2021_21-24/LIAIS.2.SEG{0}.{1}{2}.nc'.format(
-                seg_nb, suffix_nb, file_suffix),
-        'irr_d1': '2.14_irr_15-30/LIAIS.1.SEG{0}.{1}{2}.nc'.format(
-                seg_nb, suffix_nb, file_suffix),
-        'std_d1': '1.15_std_15-30/LIAIS.1.SEG{0}.{1}{2}.nc'.format(
-                seg_nb, suffix_nb, file_suffix)
+        'std_d2': 'LIAIS.1.S{0}{1}.001{2}.nc'.format(
+                day_nb, hour_nb, file_suffix),
+        'irr_d2': 'LIAIS.1.S{0}{1}.001{2}.nc'.format(
+                day_nb, hour_nb, file_suffix),
+        'std_d2_old': 'LIAIS.2.SEG{0}.{1}{2}.nc'.format(
+                day_nb, hour_nb, file_suffix),
+        'irr_d2_old': 'LIAIS.2.SEG{0}.{1}{2}.nc'.format(
+                day_nb, hour_nb, file_suffix),
+        'irr_d1': 'LIAIS.1.SEG{0}.{1}{2}.nc'.format(
+                day_nb, hour_nb, file_suffix),
+        'std_d1': 'LIAIS.1.SEG{0}.{1}{2}.nc'.format(
+                day_nb, hour_nb, file_suffix)
         }
     
-    filename = father_folder + simu_filelist[model]
+    filename = father_folder + gv.simu_folders[model] + simu_filelist[model]
     
     #check if nomenclature of filename is ok
     check_filename_datetime(filename)
@@ -863,6 +865,7 @@ def interp_iso_asl(alti_asl, ds, varname):
                                            level, ds['PRES'][:, j, i])
     
     return res_layer
+
 
 def save_figure(plot_title, save_folder='./figures/', verbose=True):
     """
@@ -1226,6 +1229,21 @@ def calc_u_star_sim(ds):
     u_star = np.sqrt(tau)
     
     return u_star
+
+def calc_bowen_sim(ds):
+    """
+    Compute Bowen ratio from H and LE.
+    
+    Parameters:
+        ds: xarray.Dataset containing H_ISBA and LE_ISBA
+    
+    Returns:
+        xarray.DataArray
+    
+    """
+    bowen = ds['H_ISBA']/ds['LE_ISBA']
+    
+    return bowen
 
 
 if __name__ == '__main__':

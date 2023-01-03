@@ -6,12 +6,25 @@
 Gathers global variables for use in scripts. 
 """
 
+global_simu_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
+
 simu_folders = {
-        'irr_d2': '2.13_irr_2021_21-24/', 
-        'irr_d1': '2.14_irr_15-30/',
-        'std_d2': '1.11_std_2021_21-24/',
-        'std_d1': '1.15_std_15-30/'
+        'irr_d2': '2.16_irr_d2_21-22/',
+        'std_d2': '1.16_std_d2_21-22/',
+        'irr_d2_old': '2.13_irr_d1d2_21-24/', 
+        'std_d2_old': '1.11_std_d1d2_21-24/',
+        'irr_d1': '2.15_irr_d1_15-30/',
+        'std_d1': '1.15_std_d1_15-30/'
          }
+
+format_filename_simu = {            
+        'irr_d2':     'LIAIS.1.S????.001dg.nc',
+        'std_d2':     'LIAIS.1.S????.001dg.nc',
+        'irr_d2_old': 'LIAIS.2.SEG??.0??dg.nc', 
+        'std_d2_old': 'LIAIS.2.SEG??.0??dg.nc',
+        'irr_d1':     'LIAIS.1.SEG??.0??dg.nc',
+        'std_d1':     'LIAIS.1.SEG??.0??dg.nc'
+        }
 
 sites = {'cendrosa': {'lat': 41.6925905,
                       'lon': 0.9285671},
