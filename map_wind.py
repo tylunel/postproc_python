@@ -3,8 +3,6 @@
 @author: tylunel
 Creation : 07/01/2021
 
-Multiple attempts to use MetPy BarbPlot(), but multiple issues.
-Best option seems to be the simplest as follows:
 """
 
 import matplotlib.pyplot as plt
@@ -18,16 +16,16 @@ import shapefile
 import global_variables as gv
 
 #########################################"""
-model = 'irr_d1'
-ilevel = 20  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070
-skip_barbs = 5 # 1/skip_barbs will be printed
+model = 'std_d2'
+ilevel = 10  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
+skip_barbs = 10 # 1/skip_barbs will be printed
 barb_length = 4.5
 # Datetime
-wanted_date = '20210729-2300'
+wanted_date = '20210722-1200'
 
-domain_nb = 1
+domain_nb = int(model[-1])
 
-speed_plane = 'verti'  # 'horiz': horizontal 'normal' wind, 'verti' for W
+speed_plane = 'horiz'  # 'horiz': horizontal 'normal' wind, 'verti' for W
 
 if speed_plane == 'verti':
     vmax_cbar = 5
@@ -38,13 +36,14 @@ elif speed_plane == 'horiz':
     vmin_cbar = 0
     cmap_name = 'BuPu'
 
-zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'liaise'  #None for no zoom, 'liaise' or 'urgell'
 
 save_plot = False
-save_folder = './figures/winds/{0}/domain{1}/{2}/{3}/'.format(
+save_folder = './figures/winds/{0}/{1}/{2}/'.format(
         model, domain_nb, speed_plane, ilevel)
+figsize = (11,9)
 
-barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
+barb_size_option = 'standard'  # 'weak_winds' or 'standard'
 
 
 ###########################################
@@ -77,9 +76,9 @@ ds1 = xr.open_dataset(filename,
                       )
 
 if domain_nb == 1:
-    fig1 = plt.figure(figsize=(17,9))
+    fig1 = plt.figure(figsize=figsize)
 elif domain_nb == 2:
-    fig1 = plt.figure(figsize=(13,9))
+    fig1 = plt.figure(figsize=figsize)
 
 #%% WIND SPEED COLORMAP
 if speed_plane == 'horiz':
@@ -120,7 +119,7 @@ plt.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs],
           barb_increments=barb_size_increments[barb_size_option]
           )
 plt.annotate(barb_size_description[barb_size_option],
-             xy=(0.1, 0.05),
+             xy=(0.1, 0.02),
              xycoords='subfigure fraction'
              )
 
@@ -178,49 +177,54 @@ plt.plot(france_SW.lon, france_SW.lat,
 
 #%% POINTS SITES
 
-points = ['cendrosa', 'elsplans', 'puig formigosa', 'tossal baltasana', 
-          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
-          'guara', 'caro', 'montserrat', 'joar',]
+points = ['cendrosa', 'elsplans', 
+#          'puig formigosa', 'tossal baltasana', 
+#          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
+#          'guara', 'caro', 'montserrat', 'joar',
+          ]
 sites = {key:gv.whole[key] for key in points}
 
 for site in sites:
     plt.scatter(sites[site]['lon'],
                 sites[site]['lat'],
-                color='k',
+                color='r',
                 s=15        #size of markers
                 )
-    if site == 'elsplans':
-        plt.text(sites[site]['lon']-0.1,
-                 sites[site]['lat']-0.03, 
-                 site, 
-                 fontsize=9)
-    else:
-        plt.text(sites[site]['lon']+0.01,
-                 sites[site]['lat']+0.01, 
-                 site, 
-                 fontsize=9)
+#    if site == 'elsplans':
+#        plt.text(sites[site]['lon']-0.1,
+#                 sites[site]['lat']-0.03, 
+#                 site, 
+#                 fontsize=9)
+#    else:
+    plt.text(sites[site]['lon']+0.01,
+             sites[site]['lat']+0.01, 
+             site, 
+             fontsize=12)
 
 #%% STATION PLOT
-from metpy.plots import StationPlot
-
-ax = plt.gca()
-Cendro = StationPlot(ax, sites['cendrosa']['lon'], sites['cendrosa']['lat'])
-Cendro.plot_barb(4, 5, 
-                 pivot='middle',
-                 length=barb_length*4,     #length of barbs
-                  sizes={
-        #                 'spacing':1, 
-        #                 'height':1,
-        #                 'width':1,
-                         'emptybarb':0.01},
-                  barb_increments=barb_size_increments[barb_size_option]
-                  )
+#from metpy.plots import StationPlot
+#
+#ax = plt.gca()
+#Cendro = StationPlot(ax, sites['cendrosa']['lon'], sites['cendrosa']['lat'])
+#Cendro.plot_barb(4, 5, 
+#                 pivot='middle',
+#                 length=barb_length*4,     #length of barbs
+#                  sizes={
+#        #                 'spacing':1, 
+#        #                 'height':1,
+#        #                 'width':1,
+#                         'emptybarb':0.01},
+#                  barb_increments=barb_size_increments[barb_size_option]
+#                  )
 
 #%% FIGURE OPTIONS
 if speed_plane == 'horiz':
     level_agl = ws_layer.level
 if speed_plane == 'verti':
     level_agl = ws_layer.level_w
+    
+plt.xlabel('longitude')
+plt.ylabel('latitude')
         
 plot_title = '{4} winds at {0}m on {1} for simu {2} zoomed on {3}'.format(
         np.round(level_agl, decimals=1), 
@@ -230,7 +234,11 @@ plot_title = '{4} winds at {0}m on {1} for simu {2} zoomed on {3}'.format(
         speed_plane)
 plt.title(plot_title)
 
-if zoom_on is not None:
+
+if zoom_on is None:
+    plt.ylim([ws_layer.latitude.min(), ws_layer.latitude.max()])
+    plt.xlim([ws_layer.longitude.min(), ws_layer.longitude.max()])
+else:
     plt.ylim(lat_range)
     plt.xlim(lon_range)
 

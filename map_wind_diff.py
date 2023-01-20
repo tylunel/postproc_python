@@ -20,15 +20,15 @@ import shapefile
 
 
 #########################################"""
-simu_folders = ['irr_d1', 'irr_d2']
-folder_res = 'diff_d1_d2'
-domain_nb = 1
+simu_folders = ['irr_d2', 'std_d2']
+folder_res = 'diff_std_irr/d2'
+domain_nb = int(simu_folders[0][-1])
 
-ilevel = 3  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070
-skip_barbs = 4 # 1/skip_barbs will be printed
-barb_length = 4
+ilevel = 10  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070
+skip_barbs = 10 # 1/skip_barbs will be printed
+barb_length = 4.5
 # Datetime
-wanted_date = '20210721-2300'
+wanted_date = '20210722-1200'
 
 speed_plane = 'horiz'  # 'horiz': horizontal 'normal' wind, 'verti' for W
 
@@ -37,11 +37,11 @@ if speed_plane == 'verti':
     vmin_cbar = -vmax_cbar
     cmap_name = 'seismic'
 elif speed_plane == 'horiz':
-    vmax_cbar = 10
-    vmin_cbar = -10
+    vmax_cbar = 20
+    vmin_cbar = -20
     cmap_name = 'seismic'
 
-zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'liaise'  #None for no zoom, 'liaise' or 'urgell'
 
 if zoom_on == 'liaise':
     skip_barbs = 3 # 1/skip_barbs will be printed
@@ -54,11 +54,11 @@ elif zoom_on == 'urgell':
     lat_range = [41.1, 42.1]
     lon_range = [0.2, 1.7]
     
-    
+figsize = (11,9)
 save_plot = True
 save_folder = './figures/winds/{0}/{1}/'.format(folder_res, ilevel)
 
-barb_size_option = 'very_weak_winds'  # 'weak_winds' or 'standard'
+barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
 
 ###########################################
@@ -92,10 +92,7 @@ wt_layer = {}
 for model in simu_folders:
 #    datafolder = father_folder + simu_folders[model]
     
-#    if domain_nb == 1:
-    filename = tools.get_simu_filename_d1(model, wanted_date)
-#    else:
-#        filename = tools.get_simu_filename(model, wanted_date)
+    filename = tools.get_simu_filename(model, wanted_date)
     
     # load file, dataset and set parameters
     ds1 = xr.open_dataset(filename,
@@ -103,22 +100,24 @@ for model in simu_folders:
                           decode_coords="coordinates",
     #                      coordinates=['latitude_u', 'longitude_u'],
     #                      grid_mapping=latitude
-                          )    
+                          )
+    ds_centered = tools.center_uvw(ds1)
     
-    ut_layer[model] = ds1['UT'][0, ilevel, :, :]
-    vt_layer[model] = ds1['VT'][0, ilevel, :, :]
-    wt_layer[model] = ds1['WT'][0, ilevel, :, :]
+    ut_layer[model] = ds_centered['UT'][ilevel, :, :]
+    vt_layer[model] = ds_centered['VT'][ilevel, :, :]
+    wt_layer[model] = ds_centered['WT'][ilevel, :, :]
     
     if speed_plane == 'horiz':
-        ws = mpcalc.wind_speed(ds1['UT'] * units.meter_per_second, 
-                               ds1['VT'] * units.meter_per_second)
+#        ws = mpcalc.wind_speed(ds1['UT'] * units.meter_per_second, 
+#                               ds1['VT'] * units.meter_per_second)
+        ws_layer[model] = mpcalc.wind_speed(ut_layer[model], vt_layer[model])
     #wd = mpcalc.wind_direction(ds1['UT'] * units.meter_per_second, 
     #                           ds1['VT'] * units.meter_per_second)
-    elif speed_plane == 'verti':
-        ws = ds1['WT']
+#    elif speed_plane == 'verti':
+#        ws_layer[model] = wt_layer[model]
     
     # keep only layer of interest
-    ws_layer[model] = ws[0, ilevel, :, :]
+#    ws_layer[model] = ws[0, ilevel, :, :]
     
 ws_diff = ws_layer[simu_folders[0]] - ws_layer[simu_folders[1]]
 ut_diff = ut_layer[simu_folders[0]] - ut_layer[simu_folders[1]]
@@ -126,9 +125,9 @@ vt_diff = vt_layer[simu_folders[0]] - vt_layer[simu_folders[1]]
 wt_diff = wt_layer[simu_folders[0]] - wt_layer[simu_folders[1]]
 
 if domain_nb == 1:
-    fig1 = plt.figure(figsize=(17,9))
+    fig1 = plt.figure(figsize=figsize)
 elif domain_nb == 2:
-    fig1 = plt.figure(figsize=(13,9))
+    fig1 = plt.figure(figsize=figsize)
 
 #%% PLOT
     
@@ -213,7 +212,7 @@ plt.contour(pgd.longitude.data,
             irr_covers,
             levels=0,   #+1 -> number of contour to plot 
             linestyles='solid',
-            linewidths=1.,
+            linewidths=1.5,
             colors='g'
 #            colors=['None'],
 #            hatches='-'
@@ -244,9 +243,11 @@ plt.plot(france_SW.lon, france_SW.lat,
          linewidth=1)
 
 #%% POINTS SITES
-points = ['cendrosa', 'elsplans', 'puig formigosa', 'tossal baltasana', 
-          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
-          'guara', 'caro', 'montserrat', 'joar',]
+points = ['cendrosa', 'elsplans', 
+#          'puig formigosa', 'tossal baltasana', 
+#          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
+#          'guara', 'caro', 'montserrat', 'joar',
+          ]
 sites = {key:gv.whole[key] for key in points}
 
 for site in sites:
@@ -282,7 +283,10 @@ plot_title = '{4} wind diff at {0}m on {1} for simu {2} zoomed on {3}'.format(
         speed_plane)
 plt.title(plot_title)
 
-if zoom_on is not None:
+if zoom_on is None:
+    plt.ylim([ws_diff.latitude.min(), ws_diff.latitude.max()])
+    plt.xlim([ws_diff.longitude.min(), ws_diff.longitude.max()])
+else:
     plt.ylim(lat_range)
     plt.xlim(lon_range)
 
