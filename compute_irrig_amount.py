@@ -9,18 +9,17 @@ Script for computing quantity of water added during irrigation, or rain.
 #import os
 import numpy as np
 import pandas as pd
-#import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
-from tools import indices_of_lat_lon
+import tools
 import xarray as xr
 
 
 #%% Parameters -----------------------------
 dati = pd.Timestamp('2021-07-23 22:30')
-dati_start = pd.Timestamp('2021-07-23 22:30')
-dati_end = pd.Timestamp('2021-07-24 02:30')
+irr_dati_pre = pd.Timestamp('2021-07-23 22:30')
+irr_dati_post = pd.Timestamp('2021-07-24 02:30')
 
-site = 'cendrosa'
+site = 'irta-corn'
 
 varname_obs_prefix = 'soil_moisture'   #options are: soil_moisture, soil_temp
 
@@ -29,9 +28,6 @@ simu_folders = {
 #        'std': '1.11_ECOII_2021_ecmwf_22-27'
          }
 
-minute_data = False
-
-start_day = 21      #first day in simu
 plot_title = 'Soil moisture profile before and after irrigation at {0}'.format(site)
 
 save_plot = True
@@ -39,11 +35,11 @@ save_folder = './figures/soil_moisture/'
 
 #%% Automatic variable assignation:
 if varname_obs_prefix == 'soil_moisture':
-    xlabel = 'humidité du sol [m3/m3]'
+    xlabel = 'volumetric soil water content [m3/m3]'
     constant_obs = 0
     sfx_letter = 'W'    #in surfex, corresponding variables will start by this
 elif varname_obs_prefix == 'soil_temp':
-    xlabel = 'temperature du sol [K]'
+    xlabel = 'soil temperature [K]'
     constant_obs = 273.15
     sfx_letter = 'T'
 else:
@@ -51,30 +47,22 @@ else:
     
 
 if site == 'cendrosa':
-    lat = 41.6925905
-    lon = 0.9285671
-    varname_sim_suffix = 'P9'
     datafolder = \
         '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
     filename_prefix = \
          'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
-    filename_date = '2021-07-{0}_V2.nc'.format(dati.day)
-    if minute_data:
-        datafolder = \
-            '/cnrm/surface/lunelt/data_LIAISE/cendrosa/1min/'
-        filename_prefix = \
-             'LIAISE_LA-CENDROSA_CNRM_MTO-1MIN_L2_'
-        filename_date = '202107{0}_V1.nc'.format(dati.day)
+#    filename_date = '2021-07-{0}_V2.nc'.format(dati.day)
 elif site == 'preixana':
-    lat = 41.59373 
-    lon = 1.07250 
-#    lon = 1.15000 
-    alt = 'undef'
     datafolder = \
         '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
     filename_prefix = \
         'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
-    filename_date = '2021-07-{0}_V2.nc'.format(dati.day)
+#    filename_date = '2021-07-{0}_V2.nc'.format(dati.day)
+elif site == 'irta-corn':
+    datafolder = \
+        '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
+    filename_prefix = \
+         'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
 else:
     raise ValueError('Site name not known')
 
@@ -82,41 +70,57 @@ else:
 #%% ---- Method 1 - integral of profile ----
 
 #%% OBS dataset before irrig
-
-filename_date = '2021-07-{0}_V2.nc'.format(dati_start.day)
-if minute_data:
-    filename_date = '202107{0}_V1.nc'.format(dati_start.day)
-
-obs_start = xr.open_dataset(datafolder + filename_prefix + filename_date)
-obs = obs_start
 obs_arr_start = []
-obs_depth = [-0.05, -0.1, -0.3]
+    
+if site in ['cendrosa', 'preixana']:
+    filename_date = '2021-07-{0}_V2.nc'.format(irr_dati_pre.day)
+    obs = xr.open_dataset(datafolder + filename_prefix + filename_date)
+    obs_depth = [-0.05, -0.1, -0.3]
+elif site == 'irta-corn':
+    obs = xr.open_dataset(datafolder + filename_prefix)
+    irr_dati = tools.get_irrig_time(obs.VWC_40cm_Avg)[2]
+    irr_dati_pre = irr_dati - pd.Timedelta(1,'h')
+    obs_depth = [-0.05, -0.15, -0.25, -0.35, -0.45]
 
-for level in [1, 2, 3]:
-    varname_obs = varname_obs_prefix + '_' + str(level)
-    val = float(obs[varname_obs].sel(time = dati_start)) + constant_obs
+for i, level in enumerate(obs_depth):
+    if site in ['cendrosa', 'preixana']:
+        varname_obs = varname_obs_prefix + '_' + str(i+1)
+    elif site == 'irta-corn':
+        varname_obs = 'VWC_{0}0cm_Avg'.format(i+1)
+    val = float(obs[varname_obs].sel(time = irr_dati_pre)) + constant_obs
     obs_arr_start.append(val)
 
 #%% OBS dataset after irrig
 
-filename_date = '2021-07-{0}_V2.nc'.format(dati_end.day)
-if minute_data:
-    filename_date = '202107{0}_V1.nc'.format(dati_end.day)
-
-obs_end = xr.open_dataset(datafolder + filename_prefix + filename_date)
-obs = obs_end
 obs_arr_end = []
-obs_depth = [-0.05, -0.1, -0.3]
+    
+if site in ['cendrosa', 'preixana']:
+    filename_date = '2021-07-{0}_V2.nc'.format(irr_dati_post.day)
+    obs = xr.open_dataset(datafolder + filename_prefix + filename_date)
+    obs_depth = [-0.05, -0.1, -0.3]
+elif site == 'irta-corn':
+    obs = xr.open_dataset(datafolder + filename_prefix)
+    irr_dati = tools.get_irrig_time(obs.VWC_40cm_Avg)[2]
+    irr_dati_post = irr_dati + pd.Timedelta(2,'h')
+    obs_depth = [-0.05, -0.15, -0.25, -0.35, -0.45]
 
-for level in [1, 2, 3]:
-    varname_obs = varname_obs_prefix + '_' + str(level)
-    val = float(obs[varname_obs].sel(time = dati_end)) + constant_obs
+for i, level in enumerate(obs_depth):
+    if site in ['cendrosa', 'preixana']:
+        varname_obs = varname_obs_prefix + '_' + str(i+1)
+    elif site == 'irta-corn':
+        varname_obs = 'VWC_{0}0cm_Avg'.format(i+1)
+    val = float(obs[varname_obs].sel(time = irr_dati_post)) + constant_obs
     obs_arr_end.append(val)
+
 
 #%% Water added computation
 sm_diff = np.array(obs_arr_end) - np.array(obs_arr_start)
-layer_thickness = np.array([0.05, 0.05, 0.2]) #if soil moisture attributed to above layer
-#layer_thickness = np.array([0.075, 0.125, 0.1]) # if soil moist attributed to closest layer
+if site in ['cendrosa', 'preixana']:
+    layer_thickness = np.array([0.05, 0.05, 0.2]) #if soil moisture attributed to above layer
+    #layer_thickness = np.array([0.075, 0.125, 0.1]) # if soil moist attributed to closest layer
+elif site == 'irta-corn':
+    layer_thickness = np.array([0.05, 0.1, 0.1, 0.1, 0.1])
+
 
 #water added on the 30 first cm of soil [m]
 water_added_30cm = (sm_diff*layer_thickness).sum()
@@ -129,7 +133,7 @@ print('''Quantity of water added in the 30 first cm of soil
 fig = plt.figure()
 ax = plt.gca()
 
-ax.set_xlim([0, 0.5])
+ax.set_xlim([0, 0.6])
 ax.set_ylim([-0.5, 0])
 
 ax.set_xlabel(xlabel)
@@ -141,14 +145,17 @@ plt.title(plot_title)
 #    plt.plot(val_simu[key], sim_depth, marker='+', 
 #             label='simu_{0}_d{1}h{2}'.format(key, dati.day, dati.hour))
 
+irr_dati_pre = pd.Timestamp(irr_dati_pre)
+irr_dati_post = pd.Timestamp(irr_dati_post)
+
 plt.plot(obs_arr_start, obs_depth, marker='x', 
-         label='obs_d{0}h{1}m{2}'.format(dati_start.day, dati_start.hour,
-                     dati_start.minute),
+         label='obs_d{0}h{1}m{2}'.format(irr_dati_pre.day, irr_dati_pre.hour,
+                     irr_dati_pre.minute),
          color='k',
          linestyle=':')
 plt.plot(obs_arr_end, obs_depth, marker='x', 
-         label='obs_d{0}h{1}m{2}'.format(dati_end.day, dati_end.hour,
-                     dati_end.minute),
+         label='obs_d{0}h{1}m{2}'.format(irr_dati_post.day, irr_dati_post.hour,
+                     irr_dati_post.minute),
          color='k',
          linestyle='--')
 
