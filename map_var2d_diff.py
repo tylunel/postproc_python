@@ -16,18 +16,18 @@ import global_variables as gv
 ###############################################
 models = ['irr_d1', 'irr_d2']
 folder_res = 'diff_d1_d2'
-domain_nb = 1
+domain_nb = 2
 
-wanted_date = '20210724-2300'
+wanted_date = '20210722-0100'
 
 color_map = 'seismic'    # jet, seismic, BuPu, coolwarm, viridis, RdYlGn, 
 
-var_name = 'ZS'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
-vmin=-300
-vmax=300
+var_name = 'WT'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
+vmin=-0.5
+vmax=0.5
 
 # level, only useful if var 3D
-ilevel = 1  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m
+ilevel = 2  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m
 
 zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
 
@@ -87,11 +87,12 @@ if domain_nb == 1:
 elif domain_nb == 2:
     fig1 = plt.figure(figsize=(10,7))
 
-plt.contourf(var_diff.longitude, var_diff.latitude, var_diff,
+#plt.contourf(var_diff.longitude, var_diff.latitude, var_diff,
+plt.pcolormesh(var_diff.longitude, var_diff.latitude, var_diff,
 #               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
                cmap=color_map,
                vmin=vmin, vmax=vmax,
-               levels=20
+#               levels=20
                )
 
 cbar = plt.colorbar(boundaries=[vmin, vmax])
@@ -180,11 +181,15 @@ if len(varNd.shape) == 2:
         wanted_date, var_name, models[0], models[1])
 elif len(varNd.shape) == 3:
     plot_title = '{0} - {1} diff between {2} and {3} at {4}m'.format(
-        wanted_date, var_name, models[0], models[1], var2d.level.round())
+#        wanted_date, var_name, models[0], models[1], var2d.level.round())
+        wanted_date, var_name, models[0], models[1], var2d.level_w.round())
 
 plt.title(plot_title)
 
-if zoom_on is not None:
+if zoom_on is None:
+    plt.ylim([var2d.latitude.min(), var2d.latitude.max()])
+    plt.xlim([var2d.longitude.min(), var2d.longitude.max()])
+else:
     plt.ylim(lat_range)
     plt.xlim(lon_range)
 

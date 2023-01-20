@@ -14,32 +14,34 @@ import pandas as pd
 import global_variables as gv
 
 ###############################################
-model = 'std_d2'
+model = 'irr_d1'
 
-#domain_nb = 1
 domain_nb = int(model[-1])
 
-wanted_date = '20210722-1200'
+wanted_date = '20210722-1500'
 
-color_map = 'binary_r'    # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
+color_map = 'jet'    # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
 
-var_name = 'ALBUV_S'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
-vmin = 0
-vmax = 0.3
+var_name = 'MSLP'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
+vmin = 1005
+vmax = 1025
 
 # level, only useful if var 3D
-ilevel = 10  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m
+ilevel = 30  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
 
 zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
 
-save_plot = True
+save_plot = False
 save_folder = './figures/scalar_maps/pgd/'
 #save_folder = './figures/scalar_maps/domain{0}/{1}/{2}/'.format(
 #        domain_nb, model, var_name)
 
+add_winds = True
+barb_size_option = 'standard'  # 'weak_winds' or 'standard'
+skip_barbs = 8 # 1/skip_barbs will be printed
+barb_length = 4.5
+
 ##############################################
-
-
 
 if zoom_on == 'liaise':
     skip_barbs = 3 # 1/skip_barbs will be printed
@@ -91,6 +93,40 @@ plt.contourf(var2d.longitude, var2d.latitude, var2d,
 cbar = plt.colorbar(boundaries=[vmin, vmax])
 cbar.set_label(var2d.long_name)
 #cbar.set_clim(vmin, vmax)
+
+#%% WIND BARBS
+
+barb_size_increments = {
+        'weak_winds': {'half':1.94, 'full':3.88, 'flag':19.4},
+        'standard': {'half':5, 'full':10, 'flag':50},
+        }
+barb_size_description = {
+        'weak_winds': "barb increments: half=1m/s=1.94kt, full=2m/s=3.88kt, flag=10m/s=19.4kt",
+        'standard': "barb increments: half=5kt=2.57m/s, full=10kt=5.14m/s, flag=50kt=25.7m/s",
+        }
+
+if add_winds:
+    X = ds1.longitude
+    Y = ds1.latitude
+    U = ds1.UT[0, ilevel, :,:]
+    V = ds1.VT[0, ilevel, :,:]
+    
+    plt.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs], 
+              U[::skip_barbs, ::skip_barbs], V[::skip_barbs, ::skip_barbs],
+              pivot='middle',
+              length=barb_length,     #length of barbs
+              sizes={
+    #                 'spacing':1, 
+    #                 'height':1,
+    #                 'width':1,
+                     'emptybarb':0.01},
+              barb_increments=barb_size_increments[barb_size_option]
+              )
+    plt.annotate(barb_size_description[barb_size_option],
+                 xy=(0.1, 0.05),
+                 xycoords='subfigure fraction'
+                 )
+
 
 #%% IRRIGATED, SEA and COUNTRIES BORDERS
 
@@ -145,9 +181,13 @@ plt.plot(france_SW.lon, france_SW.lat,
 
 #%% POINTS SITES
 
-points = ['cendrosa', 'elsplans', 'puig formigosa', 'tossal baltasana', 
-          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
-          'guara', 'caro', 'montserrat', 'joar',]
+points = ['cendrosa', 
+#          'elsplans', 'irta-corn',
+          'lleida', 'zaragoza']
+#          'puig formigosa', 'tossal baltasana', 
+#          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
+#          'guara', 'caro', 'montserrat', 'joar',]
+
 sites = {key:gv.whole[key] for key in points}
 
 for site in sites:
