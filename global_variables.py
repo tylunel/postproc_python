@@ -32,9 +32,12 @@ sites = {'cendrosa': {'lat': 41.6925905,
                       'lon': 1.07250},
          'elsplans': {'lat': 41.590111,
                       'lon': 1.029363},
-         'irta-corn': {'lat': 41.619079,
-#                       'lon': 0.875333, # real position, but is not in 100% irr zone in model
-                       'lon': 0.845333}, 
+         'irta-corn': {
+#                         'lat': 41.619079, # real position, but is not in 100% irr zone in model
+#                         'lon': 0.875333,} # real position, but is not in 100% irr zone in model
+#                       'lon': 0.805333},  # wrong position, but 100% irr zone in model
+                         'lat': 41.5922,  # wrong position, but 100% irr zone in model
+                         'lon': 0.8585},  # wrong position, but 100% irr zone in model
         }
          
 towns = {'arbeca': {'lat': 41.54236,
@@ -80,3 +83,17 @@ mountains = {'tossal baltasana': {'lat': 41.3275,
             }
 
 whole = {**sites, **towns, **mountains}
+
+field_capa = {'cendrosa': {1: 0.28, 2: 0.18, 3: 0.23},  # To determine via plot on August
+              'preixana': {1: 0.25, 2: 0.30, 3: 0.187}, # To determine via plot on May
+              'irta-corn': {1: 0.39, 2:  0.39, 3: 0.33, 4: 0.34, 5: 0.38}  #estimated at 20cm
+              }       
+
+wilt_pt = {'cendrosa': {1: 0.141, 2: 0.07, 3: 0.125} ,  # To determine via plot on August
+           'preixana': {1: 0.065, 2: 0.135, 3: 0.115}, # To determine via plot on May
+           'irta-corn': {1: 0.05, 2:  0.05, 3: 0.05, 4: 0.05, 5: 0.05}  #estimated at 20cm
+           }   
+
+
+
+
