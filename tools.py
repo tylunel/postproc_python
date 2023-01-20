@@ -15,7 +15,6 @@ import xarray as xr
 from metpy.units import units
 import re
 import global_variables as gv
-import math   # mais on pourrait s'en passer et rendre le tout plus lisible
 #from difflib import SequenceMatcher
 
 
@@ -347,7 +346,8 @@ def open_uib_seb(QC_threshold = 9, create_netcdf=True):
     ds['H'] = ds['H'].where(ds['H_QC'] <= QC_threshold)
     ds['FC_mass'] = ds['FC_mass'].where(ds['FC_QC'] <= QC_threshold)
     
-    if create_netcdf:    # Does not work for now
+    if create_netcdf:
+        # BUG: if file already existing, it raises 'ascii' codec rerror
         ds.to_netcdf(datafolder + 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc', 
                      engine='netcdf4')
     
@@ -473,12 +473,8 @@ def get_simu_filename_old(model, date='20210722-1200', domain=2,
     filename = father_folder + simu_filelist[model]
     return filename
 
-def get_simu_filename(model, date='20210722-1200',
-                         file_suffix='dg'):
+def get_simu_filename(model, date='20210722-1200', file_suffix='dg'):
     """
-    --------------
-    To merge with get simu filename
-    --------------
     
     Returns the whole string for filename and path. 
     Chooses the right SEG (segment) number and suffix corresponding to date
@@ -498,26 +494,29 @@ def get_simu_filename(model, date='20210722-1200',
     pd_date = pd.Timestamp(date)
     day_nb = str(pd_date.day)        
     hour_nb = str(pd_date.hour)
-    # format suffix with 3 digits:
+    # format suffix with 2 digits:
     if len(hour_nb) == 1:
-        hour_nb = '00'+ hour_nb
+        hour_nb_2f = '0'+ hour_nb
     elif len(hour_nb) == 2:
-        hour_nb = '0'+ hour_nb
+        hour_nb_2f = hour_nb
+    # format suffix with 3 digits:
+    hour_nb_3f = '0'+ hour_nb_2f
+
 
     father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
     simu_filelist = {
         'std_d2': 'LIAIS.1.S{0}{1}.001{2}.nc'.format(
-                day_nb, hour_nb, file_suffix),
+                day_nb, hour_nb_2f, file_suffix),
         'irr_d2': 'LIAIS.1.S{0}{1}.001{2}.nc'.format(
-                day_nb, hour_nb, file_suffix),
+                day_nb, hour_nb_2f, file_suffix),
         'std_d2_old': 'LIAIS.2.SEG{0}.{1}{2}.nc'.format(
-                day_nb, hour_nb, file_suffix),
+                day_nb, hour_nb_3f, file_suffix),
         'irr_d2_old': 'LIAIS.2.SEG{0}.{1}{2}.nc'.format(
-                day_nb, hour_nb, file_suffix),
+                day_nb, hour_nb_3f, file_suffix),
         'irr_d1': 'LIAIS.1.SEG{0}.{1}{2}.nc'.format(
-                day_nb, hour_nb, file_suffix),
+                day_nb, hour_nb_3f, file_suffix),
         'std_d1': 'LIAIS.1.SEG{0}.{1}{2}.nc'.format(
-                day_nb, hour_nb, file_suffix)
+                day_nb, hour_nb_3f, file_suffix)
         }
     
     filename = father_folder + gv.simu_folders[model] + simu_filelist[model]
@@ -673,44 +672,30 @@ def concat_simu_files_1var(datafolder, varname_sim, in_filenames, out_filename):
     #command 'cdo -select,name={1} {2} {3}' may work as well, but not always...
 
 
-def sm2swi(sm, wilt_pt=None, field_capa=None):
-    """
-    inputs:
-        sm: soil_moisture
-        wilt_pt: wilting_point
-        field_capa: field capacity
-    
-    returns:
-        soil water index (swi)
-    """
-    
-    if None in [wilt_pt, field_capa]:
-        plt.plot(sm)
-        raise ValueError('Fill in wilting_point and field_capa values.')
-    return (sm - wilt_pt)/(field_capa - wilt_pt)
 
 
-def get_irrig_time(dtarr, stdev_threshold=5):
+
+def get_irrig_time(soil_moist, stdev_threshold=5):
     """
-    dtarr: xarray Dataarray,
+    soil_moist: xarray Dataarray,
         Variable representing soil moisture of other variable 
         strongly dependant on irrigation. Must have 'time' as coordinate.
     """
-    # if dtarr is None (not irrigated site for ex.)
-    if dtarr is None:
+    # if soil_moist is None (not irrigated site for ex.)
+    if soil_moist is None:
         return []
     # derivate of variable with time
-    dtarr_dtime = dtarr.differentiate(coord='time')
+    soil_moist_dtime = soil_moist.differentiate(coord='time')
     # keep absolute values
-    dtarr_dtime_abs = np.abs(dtarr_dtime)
+    soil_moist_dtime_abs = np.abs(soil_moist_dtime)
     
     # compute threshold to determine the outliers
-    avrg = dtarr_dtime_abs.mean()
-    stdev = dtarr_dtime_abs.std()
+    avrg = soil_moist_dtime_abs.mean()
+    stdev = soil_moist_dtime_abs.std()
     thres = avrg + stdev_threshold*stdev
     
     # only keep outliers
-    irr_dati = dtarr_dtime_abs.where(dtarr_dtime_abs > thres, drop=True).time
+    irr_dati = soil_moist_dtime_abs.where(soil_moist_dtime_abs > thres, drop=True).time
     
     # remove close datetimes
     tdelta_min = pd.Timedelta(6, unit='h')  #minimum time delta between 2 irrig
@@ -800,8 +785,8 @@ def line_coords(data,
 
 def center_uvw(data):
     """
-    Interpolate in middle of grid for variable UT, VT and WT
-    and rename the associated coordinates.
+    Interpolate in middle of grid for variable UT, VT and WT,
+    rename the associated coordinates, and squeezes the result.
     Useful for operation on winds in post processing.
     
     Inputs:
@@ -871,13 +856,19 @@ def save_figure(plot_title, save_folder='./figures/', verbose=True):
     """
     Save the plot
     """
-    if not os.path.isdir(save_folder):
-        os.mkdir(save_folder)
+    #split the save_folder name at each /
+    for i in range(2, len(save_folder.split('/'))):
+        # recreate the path step by step and check its existence at each step.
+        # If not existing, make a new folder
+        path = '/'.join(save_folder.split('/')[0:i])
+        if not os.path.isdir(path):
+            print('Make directory: {0}'.format(path))
+            os.mkdir(path)
     filename = (plot_title)
     filename = filename.replace('=', '').replace('(', '').replace(')', '')
     filename = filename.replace(' ', '_').replace(',', '').replace('.', '_')
     filename = filename.replace('/', 'over')
-    plt.savefig(save_folder +str(filename))
+    plt.savefig(save_folder + '/' + str(filename))
     if verbose:
         print('figure {0} saved in {1}'.format(plot_title, save_folder))
 
@@ -1023,36 +1014,37 @@ def p_sat(tdb):
     """
 
     ta_k = tdb + 273.15
-    c1 = -5674.5359
-    c2 = 6.3925247
-    c3 = -0.9677843 * math.pow(10, -2)
-    c4 = 0.62215701 * math.pow(10, -6)
-    c5 = 0.20747825 * math.pow(10, -8)
-    c6 = -0.9484024 * math.pow(10, -12)
-    c7 = 4.1635019
+
+#    if ta_k < 273.15:
+#        c1 = -5674.5359
+#        c2 = 6.3925247
+#        c3 = -0.9677843e-2
+#        c4 = 0.62215701 * np.pow(10, -6)
+#        c5 = 0.20747825 * np.pow(10, -8)
+#        c6 = -0.9484024 * np.pow(10, -12)
+#        c7 = 4.1635019
+#        pascals = np.exp(
+#            c1 / ta_k
+#            + c2
+#            + ta_k * (c3 + ta_k * (c4 + ta_k * (c5 + c6 * ta_k)))
+#            + c7 * np.log(ta_k)
+#        )
+#    else:
     c8 = -5800.2206
     c9 = 1.3914993
     c10 = -0.048640239
-    c11 = 0.41764768 * math.pow(10, -4)
-    c12 = -0.14452093 * math.pow(10, -7)
+    c11 = 0.41764768e-4
+    c12 = -0.14452093e-7
     c13 = 6.5459673
+    
+    pascals = np.exp(
+        c8 / ta_k
+        + c9
+        + ta_k * (c10 + ta_k * (c11 + ta_k * c12))
+        + c13 * np.log(ta_k)
+    )
 
-    if ta_k < 273.15:
-        pascals = math.exp(
-            c1 / ta_k
-            + c2
-            + ta_k * (c3 + ta_k * (c4 + ta_k * (c5 + c6 * ta_k)))
-            + c7 * math.log(ta_k)
-        )
-    else:
-        pascals = math.exp(
-            c8 / ta_k
-            + c9
-            + ta_k * (c10 + ta_k * (c11 + ta_k * c12))
-            + c13 * math.log(ta_k)
-        )
-
-    return round(pascals, 1)
+    return np.round(pascals, 1)
 
 def t_dp(tdb, rh):
     """Calculates the dew point temperature.
@@ -1074,9 +1066,9 @@ def t_dp(tdb, rh):
     b = 18.678
     d = 234.5
 
-    gamma_m = math.log(rh / 100 * math.exp((b - tdb / d) * (tdb / (c + tdb))))
+    gamma_m = np.log(rh / 100 * np.exp((b - tdb / d) * (tdb / (c + tdb))))
 
-    return round(c * gamma_m / (b - gamma_m), 1)
+    return np.round(c * gamma_m / (b - gamma_m), 1)
 
 def t_wb(tdb, rh):
     """Calculates the wet-bulb temperature using the Stull equation [6]_
@@ -1093,11 +1085,11 @@ def t_wb(tdb, rh):
     tdb: float
         wet-bulb temperature, [°C]
     """
-    twb = round(
-        tdb * math.atan(0.151977 * (rh + 8.313659) ** (1 / 2))
-        + math.atan(tdb + rh)
-        - math.atan(rh - 1.676331)
-        + 0.00391838 * rh ** (3 / 2) * math.atan(0.023101 * rh)
+    twb = np.round(
+        tdb * np.arctan(0.151977 * (rh + 8.313659) ** (1 / 2))
+        + np.arctan(tdb + rh)
+        - np.arctan(rh - 1.676331)
+        + 0.00391838 * rh ** (3 / 2) * np.arctan(0.023101 * rh)
         - 4.686035,
         1,
     )
@@ -1128,12 +1120,21 @@ def check_folder_filenames():
             print(fn + ' is OK')
 
 
-def get_surface_type(ds, site, domain_nb, translate_patch = True, 
+def get_surface_type(site, domain_nb, ds=None, translate_patch = True, 
                      nb_patch=12):
     """
     Returns the type and characteristics of surface for a given site
     
     """
+    
+    if ds is None:
+        if domain_nb==2:
+            ds = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/' + \
+                             '2.13_irr_d1d2_21-24/LIAIS.2.SEG22.012dg.nc')
+        elif domain_nb==1:
+            ds = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/' + \
+                             '2.13_irr_d1d2_21-24/LIAIS.1.SEG22.012dg.nc')
+    
     # get indices of sites in ds
     index_lat, index_lon = indices_of_lat_lon(ds, 
                                               gv.sites[site]['lat'], 
@@ -1245,18 +1246,56 @@ def calc_bowen_sim(ds):
     
     return bowen
 
+def calc_swi(sm, wilt_pt=None, field_capa=None):
+    """
+    inputs:
+        sm: soil_moisture
+        wilt_pt: wilting_point
+        field_capa: field capacity
+    
+    returns:
+        soil water index (swi)
+    
+    Proposed values: see global_variables.py
 
+    
+    """
+    
+    if None in [wilt_pt, field_capa]:
+        plt.plot(sm)
+        raise ValueError('Fill in wilting_point and field_capa values.')
+    return (sm - wilt_pt)/(field_capa - wilt_pt)
+
+def calc_ws_wd(ut, vt):
+    """
+    Compute wind speed and wind direction from ut and vt
+    """
+    
+    ws = np.sqrt(ut**2 + vt**2)
+    wd_temp = np.arctan2(-ut, -vt)*180/np.pi
+    wd = xr.where(wd_temp<0, wd_temp+360, wd_temp)
+    return ws, wd
+    
+    
+
+    
 if __name__ == '__main__':
 #    ds2 = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/2.13_irr_2021_21-24/LIAIS.2.SEG22.012dg.nc')
-    ds1 = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/2.14_irr_15-30/LIAIS.1.SEG22.012dg.nc')
+#    ds1 = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/2.14_irr_15-30/LIAIS.1.SEG22.012dg.nc')
 #    res = get_surface_type(ds, 'cendrosa')
 #    site = 'cendrosa'
 #    translate_patch = True
     
-    res1 = get_surface_type(ds1, 'cendrosa', domain_nb=1)
+#    res1 = get_surface_type(ds1, 'cendrosa', domain_nb=1)
 #    res2 = get_surface_type(ds2, 'cendrosa', domain_nb=2)
 #    open_ukmo_mast('/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/30min/', 'LIAISE_20210713_30.dat')
     
 #    u_star = calc_u_star_sim(ds1)
-
+    
+#    out_filename_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
+#    datafolder = '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
+#    obs = xr.open_dataset(datafolder + out_filename_obs)
+#    open_uib_seb()
+    print(get_surface_type('irta-corn', 2))
+    
         
