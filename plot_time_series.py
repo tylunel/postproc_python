@@ -17,55 +17,65 @@ import global_variables as gv
     
 site = 'cendrosa'
 
-#domain to consider for simu files: 1 or 2
-#domain_nb = 2  # now retrieved from model name
-
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'u_star_1'   # options are: (last digit is the max number available)
-#-- For CNRM:
+varname_obs = 'ta_2'
+# -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
 # from données lentes: 1->0.2m, 2->2m, 3->10m, 4->25m, 5->50m
 # from eddy covariance measures: 1->3m, 2->25m, 3->50m
-#-- For UKMO (elsplans):
+# -- For UKMO (elsplans):
 # TEMP, RHO (=hus), WQ, WT, UTOT, DIR, ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
 # RAIN, PRES, ST01 (=soil_temp), SWDN ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
 # ST01, ST04, ST10, ST17, ST35_subsoil with number being depth in cm
 # LE_2m(_WPL) and H_2m also available by calculation
+# -- For IRTA-corn
+#LE, H, FC_mass, WS, WD, Ux,
+#VWC_40cm_Avg: Average volumetric water content at 35 cm (m3/m3) 
+#T_20cm_Avg (_Std for standard deviation)
+#TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
+#Q_1_1_1
 
-#FC_mass
-
-varname_sim = 'U_STAR'      # simu varname to compare obs with
-#T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9
+varname_sim = 'T2M_ISBA'
+# T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9
 #N.B.: layers depth for diff:
 #    [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6,
 #     -0.8, -1, -1.5, -2, -3, -5, -8, -12]
+# U_STAR, BOWEN
 
 #If varname_sim is 3D:
 ilevel = 1   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
 add_irrig_time = False
+figsize = (9, 6) #small for presentation: (6,6), big: (15,9)
+save_plot = False
+save_folder = './figures/time_series/{0}/domain1/'.format(site)
 
-save_plot = True
-#save_folder = './figures/time_series/{0}/domain{1}/'.format(site, domain_nb)
-save_folder = './figures/time_series/{0}/alldomains/'.format(site)
+models = [
+#        'irr_d2_old', 
+#        'std_d2_old',
+#        'irr_d2', 
+#        'std_d2', 
+#        'irr_d1', 
+#        'std_d1',
+         ]
 
+errors_computation = True
 ######################################################
 
-models = ['irr_d2', 
-          'irr_d1', 
-          'std_d1', 
-          'std_d2', 
-          ]
 simu_folders = {key:gv.simu_folders[key] for key in models}
 
 father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
 
 date = '2021-07'
 
-colordict = {'irr_d2': 'g', 'irr_d1': 'g--', 
-             'std_d2': 'r', 'std_d1': 'r--', 
+colordict = {'irr_d2': 'g', 
+             'std_d2': 'r',
+             'irr_d1': 'g--', 
+             'std_d1': 'r--', 
+             'irr_d2_old': 'g:', 
+             'std_d2_old': 'r:', 
              'obs': 'k'}
     
 
@@ -80,7 +90,9 @@ if varname_obs in ['soil_moisture_1', 'soil_moisture_2', 'soil_moisture_3']:
     ylabel = 'soil moisture [m3/m3]'
 elif varname_obs in ['soil_temp_1', 'soil_temp_2', 'soil_temp_3',
                      'ST01_subsoil', 'ST04_subsoil', 'ST10_subsoil',
-                     'ST17_subsoil', 'ST35_subsoil']:
+                     'ST17_subsoil', 'ST35_subsoil',
+                     'T_10cm_Avg', 'T_20cm_Avg', 'T_30cm_Avg', 'T_40cm_Avg',
+                     'T_50cm_Avg']:
     ylabel = 'soil temperature [K]'
     offset_obs = 273.15
 elif varname_obs in ['swd']:
@@ -101,7 +113,8 @@ elif varname_obs in ['w_h2o_cov_1', 'w_h2o_cov_2', 'w_h2o_cov']:
 elif varname_obs in ['WQ_2m', 'WQ_10m']:
     ylabel = 'h2o turbulent flux [kg.m-2.s-1]'
     secondary_axis = 'le'
-elif varname_obs in ['ta_1', 'ta_2', 'ta_3', 'ta_4', 'ta_5', 'TEMP_2m']:
+elif varname_obs in ['ta_1', 'ta_2', 'ta_3', 'ta_4', 'ta_5', 'TEMP_2m',
+                     'TA_1_1_1']:
     ylabel = 'air temperature [K]'
     offset_obs = 273.15
 #    offset_obs = 0
@@ -127,6 +140,8 @@ else:
 
 if varname_sim in ['U_STAR',]:
     varname_sim_preproc = 'FMU_ISBA,FMV_ISBA'
+elif varname_sim in ['BOWEN',]:
+    varname_sim_preproc = 'H_ISBA,LE_ISBA'
 else:
     varname_sim_preproc = varname_sim
 
@@ -150,7 +165,7 @@ elif site == 'elsplans':
 #    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
 elif site == 'irta-corn':
     datafolder = '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
-    in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
+    in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN.nc'
 #    raise ValueError('Site name not known')
     
 lat = gv.sites[site]['lat']
@@ -160,13 +175,14 @@ lon = gv.sites[site]['lon']
 #%% OBS: Concatenate and plot data
 if site == 'irta-corn':
     out_filename_obs = in_filenames_obs
-    dat_to_nc = 'uib'
+#    dat_to_nc = 'uib'  #To create a new netcdf file
+    dat_to_nc = None   #To keep existing netcdf file
 elif site == 'elsplans':
     out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
-    dat_to_nc='ukmo'
+    dat_to_nc = 'ukmo'
 else:
     out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
-    dat_to_nc=None
+    dat_to_nc = None
     
 # CONCATENATE multiple days
 tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs, 
@@ -179,18 +195,35 @@ obs = xr.open_dataset(datafolder + out_filename_obs)
 if site in ['preixana', 'cendrosa']:
     # net radiation
     obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
-if site == 'elsplans':
+    # bowen ratio -  diff from bowen_ratio_1
+    obs['bowen'] = obs['shf_1'] / obs['lhf_1']
+    for i in [2,3]:
+        obs['swi_{0}'.format(i)] = tools.sm2swi(
+                obs['soil_moisture_{0}'.format(i)],
+                gv.wilt_pt[site][i],
+                gv.field_capa[site][i],) 
+elif site == 'irta-corn':
+    for i in [2,3,4,5]:
+        obs['swi_{0}'.format(i)] = tools.sm2swi(
+                obs['VWC_{0}0cm_Avg'.format(i)],
+                gv.wilt_pt[site][i],
+                gv.field_capa[site][i],)
+    obs['Q_1_1_1'] = tools.psy_ta_rh(
+        obs['TA_1_1_1'], 
+        obs['RH_1_1_1'],
+        obs['PA']*1000)['hr']
+elif site == 'elsplans':
     ## Flux calculations
     obs['H_2m'] = obs['WT_2m']*1200  # =Cp_air * rho_air
     obs['LE_2m'] = obs['WQ_2m']*2264000  # =L_eau
     
     ## Webb Pearman Leuning correction
-    bowen_ratio = obs['H_2m'] / obs['LE_2m']
+    obs['BOWEN_2m'] = obs['H_2m'] / obs['LE_2m']
     #obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.016)*(0+(1.2/300)*obs['WT_2m'])  #eq (25)
-    obs['LE_2m_WPL'] = obs['LE_2m']*(1.010)*(1+0.051*bowen_ratio)  #eq (47) of paper WPL
+    obs['LE_2m_WPL'] = obs['LE_2m']*(1.010)*(1+0.051*obs['BOWEN_2m'])  #eq (47) of paper WPL
 
 # PLOT:
-fig = plt.figure(figsize=(15, 9))
+fig = plt.figure(figsize=figsize)
 
 if varname_obs != '':
     if site == 'elsplans':
@@ -204,7 +237,8 @@ if varname_obs != '':
         obs_var_filtered = obs[varname_obs].where(
                 (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
                 np.nan)
-        plt.plot(dati_arr, ((obs_var_filtered+offset_obs)*coeff_obs), 
+        obs_var_corr = (obs_var_filtered+offset_obs)*coeff_obs
+        plt.plot(dati_arr, obs_var_corr, 
                  label='obs_'+varname_obs,
                  color=colordict['obs'])
     else:
@@ -221,11 +255,17 @@ if varname_obs != '':
 
 
 #%% SIMU:
+diff = {}
+rmse = {}
+bias = {}
+obs_sorted = {}
+sim_sorted = {}
 
 for model in simu_folders:
-    domain_nb = model[-1]
-    in_filenames_sim = 'LIAIS.{0}.SEG??.0??{1}.nc'.format(domain_nb, file_suffix)  # use of wildcard allowed
-    out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim_preproc)
+#    domain_nb = model[-1]
+    in_filenames_sim = gv.format_filename_simu[model]
+    out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(
+            in_filenames_sim[6], varname_sim_preproc)
     
     # CONCATENATE multiple days
     datafolder = father_folder + simu_folders[model]
@@ -238,6 +278,8 @@ for model in simu_folders:
     # Compute other diag variables
     if varname_sim == 'U_STAR':
         ds['U_STAR'] = tools.calc_u_star_sim(ds)
+    elif varname_sim == 'BOWEN':
+        ds['BOWEN'] = tools.calc_bowen_sim(ds)
     
     # keep variable of interested
     var_md = ds[varname_sim]
@@ -274,6 +316,21 @@ for model in simu_folders:
     
 #    ax.set_xlim([np.min(obs.time), np.max(obs.time)])
     ax.set_xlim([np.min(dati_arr), np.max(dati_arr)])
+    
+    if errors_computation:
+        ## Errors computation
+        obs_sorted[model] = []
+        sim_sorted[model] = []
+        for i, date in enumerate(dati_arr):
+            val = obs_var_corr.where(obs.time == date, drop=True).data
+            if len(val) != 0:
+                sim_sorted[model].append(var_1d[i])
+                obs_sorted[model].append(float(val))
+        
+        diff[model] = np.array(sim_sorted[model]) - np.array(obs_sorted[model])
+        bias[model] = np.nanmean(diff[model])
+        rmse[model] = np.sqrt(np.nanmean((np.array(obs_sorted[model]) - np.array(sim_sorted[model]))**2))
+    
 
 #%% Add irrigation datetime
 if add_irrig_time:
@@ -304,13 +361,21 @@ else:
     except AttributeError:
         try:
             ylabel = ds[varname_sim].comment
-        except AttributeError:
+        except (AttributeError, KeyError):
             ylabel = varname_obs
-
 
 plot_title = '{0} at {1}'.format(ylabel, site)
 ax = plt.gca()
 ax.set_ylabel(ylabel)
+
+# add grey zones for night
+days = np.arange(14,30)
+for day in days:
+    sunrise = pd.Timestamp('202107{0}-1930'.format(day))
+    sunset = pd.Timestamp('202107{0}-0500'.format(day+1))
+    ax.axvspan(sunset, sunrise, ymin=0, ymax=1, 
+               color = '0.9'  #'1'=white, '0'=black, '0.8'=light gray
+               )
 
 # add secondary axis on the right, relative to the left one - (for LE)
 if secondary_axis == 'le':
