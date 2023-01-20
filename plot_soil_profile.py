@@ -12,9 +12,8 @@ Fonctionnement:
 #import os
 import numpy as np
 import pandas as pd
-#import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
-from find_xy_from_latlon import indices_of_lat_lon
+import tools
 import xarray as xr
 
 
@@ -34,7 +33,7 @@ simu_folders = {
 start_day = 21      #first day in simu
 plot_title = 'Ground profile at {0} on {1}'.format(site, dati)
 save_plot = False
-
+save_folder = './figures/soil_profiles/{0}/'.format(site)
 ########################################
 
 #Automatic variable assignation:
@@ -73,14 +72,17 @@ else:
 
 #%% OBS dataset
 
-obs = xr.open_dataset(datafolder + filename_prefix + filename_date)
-obs_arr = []
-obs_depth = [-0.05, -0.1, -0.3]
-
-for level in [1, 2, 3]:
-    varname_obs = varname_obs_prefix + '_' + str(level)
-    val = float(obs[varname_obs].sel(time = dati)) + constant_obs
-    obs_arr.append(val)
+#obs = xr.open_dataset(datafolder + filename_prefix + filename_date)
+#obs_arr = []
+#obs_depth = [-0.05, -0.1, -0.3]
+#
+#for level in [1, 2, 3]:
+#    varname_obs = varname_obs_prefix + '_' + str(level)
+#    val = float(obs[varname_obs].sel(time = dati)) + constant_obs
+#    obs_arr.append(val)
+#
+#plt.plot(obs_arr, obs_depth, marker='x', 
+#         label='obs_d{0}h{1}'.format(dati.day, dati.hour))
 
 #%% SIMU datasets 
 
@@ -92,20 +94,25 @@ if cisba == 'dif':      # if CISBA = DIF in simu
                  -1, -1.5, -2, -3, -5, -8, -12]     # in meters
 
 val_simu = {}
-for key in simu_folders:
-    ds = xr.open_dataset(
-        '/cnrm/surface/lunelt/NO_SAVE/nc_out/{0}/LIAIS.2.SEG{1}.001.nc'.format(
-                simu_folders[key], (dati.day - start_day)*24 + dati.hour))
 
-    index_lat, index_lon = indices_of_lat_lon(ds, lat, lon)
+#for key in simu_folders:
+key = 'PREP_400M_SEG21.001'
+datafolder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
+filename = './PREP_400M_SEG21.001.nc'
+ds = xr.open_dataset(
+#        datafolder + filename
+    filename
+    )
 
-    val_simu[key] = []
-    for level in range(1, nb_layer+1):
-        var2d = ds['{0}G{1}P9'.format(sfx_letter, str(level))]
-        val = var2d.data[index_lat, index_lon]
-        if val == 999:
-            val = np.NaN
-        val_simu[key].append(val)
+index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
+
+val_simu[key] = []
+for level in range(1, nb_layer+1):
+    var2d = ds['{0}G{1}P9'.format(sfx_letter, str(level))]
+    val = var2d.data[index_lat, index_lon]
+    if val == 999:
+        val = np.NaN
+    val_simu[key].append(val)
     
 
 #%% PLOTs
@@ -113,8 +120,8 @@ for key in simu_folders:
 #fig = plt.figure()
 ax = plt.gca()
 
-ax.set_xlim([0, 0.5])
-ax.set_ylim([-0.5, 0])
+#ax.set_xlim([0, 0.5])
+#ax.set_ylim([-0.5, 0])
 
 ax.set_xlabel(xlabel)
 ax.set_ylabel('depth (m)')
@@ -125,15 +132,10 @@ for key in val_simu:
     plt.plot(val_simu[key], sim_depth, marker='+', 
              label='simu_{0}_d{1}h{2}'.format(key, dati.day, dati.hour))
 
-plt.plot(obs_arr, obs_depth, marker='x', 
-         label='obs_d{0}h{1}'.format(dati.day, dati.hour))
 plt.legend()
 plt.grid()
 #plt.show()
 
 if save_plot:
-    filename = (plot_title + ' for ' + xlabel)
-    filename = filename.replace('=', '').replace('(', '').replace(')', '')
-    filename = filename.replace(' ', '_').replace(',', '').replace('.', '_')
-    plt.savefig(filename)
+    tools.save_figure(plot_title + ' for ' + xlabel, save_folder)
 

@@ -19,8 +19,8 @@ import xarray as xr
 
 
 ########## Independant parameters ###############
-#wanted_date = '20210722-2000'
-wanted_date = '20210722-2000'
+#wanted_date = '20210722-2300'
+wanted_date = '20210722-1200'
 
 site = 'cendrosa'
 
@@ -29,12 +29,12 @@ site = 'cendrosa'
 # variable names from obs files: 'windSpeed' and 'windDirection'
 
 #Barbs
-add_barbs = True
+add_barbs = False
 interpolated_barbs = True
 barb_length = 5
 
-simu_list = ['irr', 
-             'std'
+simu_list = ['irr_d2', 
+             'std_d2'
              ]
 
 # highest level AGL plotted
@@ -53,12 +53,20 @@ elif site == 'elsplans':
 else:
     raise ValueError('Site without radiosounding')
 
-
-fig, ax = plt.subplots(1, 3, sharey=True, figsize=[10, 7],
-                       gridspec_kw={'width_ratios': [2, 2, 1]})
-
-colordict = {'obs': 'k', 'irr': 'g', 'std': 'orange'}
-
+if add_barbs:
+    fig, ax = plt.subplots(1, 3, sharey=True, figsize=[10, 7],
+                           gridspec_kw={'width_ratios': [2, 2, 1]})
+else:
+    fig, ax = plt.subplots(1, 2, sharey=True, figsize=[8, 7],
+#                           gridspec_kw={'width_ratios': [2, 2]}
+                           )
+colordict = {'irr_d2': 'g', 
+             'std_d2': 'r',
+             'irr_d1': 'g--', 
+             'std_d1': 'r--', 
+             'irr_d2_old': 'g:', 
+             'std_d2_old': 'r:', 
+             'obs': 'k'}
 #parameter for placing the barbs from left to right
 barb_pos = 0
 
@@ -105,7 +113,7 @@ ax[0].plot(obs_low['windSpeed'], obs_low.height,
 ax[1].scatter(obs_low['windDirection'], obs_low.height, 
            label='obs', 
            color=colordict['obs'],
-           s=1  #size of marker
+           s=1.5  #size of marker
            )
 
 #Barbs plot
@@ -224,7 +232,7 @@ if add_barbs:
     ax[2].set_xlim([-0.9, barb_pos+0.9])
     ax[2].spines[['top', 'right', 'left']].set_visible(False)
     ax[2].set_xticks(range(barb_pos))
-    ax[2].set_xticklabels(colordict.keys(), 
+    ax[2].set_xticklabels(['obs',] + simu_list, 
                           rotation=0, fontsize=12)
 
 plot_title = 'Vertical profile for wind at {0} on {1}'.format(

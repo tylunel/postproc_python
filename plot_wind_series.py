@@ -4,9 +4,9 @@
 Creation : 07/01/2021
 
 Fonctionnement:
-    Seule plusieurs sections ont besoin d'être remplies, à automatiser.    
+    Seule plusieurs sections ont besoin d'être remplies.    
 """
-import os
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,39 +19,56 @@ import global_variables as gv
 
 ################%% Independant Parameters (TO FILL IN):
     
-site = 'cendrosa'
+site = 'elsplans'
 
 #domain to consider for simu files: 1 or 2
 #domain_nb = 2
 
 ilevel = 3   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
-save_plot = True 
+save_plot = False 
 #save_folder = './figures/winds/'.format(domain_nb)
-save_folder = './figures/winds/series/'
+save_folder = './figures/wind_series/'
+figsize = (10, 6) #small for presentation: (6,6), big: (15,9)
+
+models = [
+#        'irr_d1', 
+#        'std_d1',
+#        'irr_d2_old', 
+#        'std_d2_old',
+        'irr_d2', 
+        'std_d2', 
+         ]
 
 ########################################################
-models = [
-        'irr_d1', 'std_d1', 
-        'irr_d2', 'std_d2', 
-        ]
-simu_folders = {key:gv.simu_folders[key] for key in models}
 
-#simu_folders = {
-#        'irr': '2.13_irr_2021_22-27/', 
-#        'std': '1.11_ECOII_2021_ecmwf_22-27/'
-#         }
+
+simu_folders = {key:gv.simu_folders[key] for key in models}
 
 father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
 
 date = '2021-07'
 
-colordict = {'irr_d2': 'g', 'irr_d1': 'g', 
-             'std_d2': 'r', 'std_d1': 'r', 
+#colordict = {'irr_d2': 'g', 'irr_d1': 'g', 
+#             'std_d2': 'r', 'std_d1': 'r', 
+#             'obs': 'k'}
+#styledict = {'irr_d2': '-', 'irr_d1': ':', 
+#             'std_d2': '-', 'std_d1': ':', 
+#             'obs': 'k'}
+colordict = {'irr_d2': 'g', 
+             'std_d2': 'r',
+             'irr_d1': 'g', 
+             'std_d1': 'r', 
+             'irr_d2_old': 'g', 
+             'std_d2_old': 'r', 
              'obs': 'k'}
-styledict = {'irr_d2': '-', 'irr_d1': ':', 
-             'std_d2': '-', 'std_d1': ':', 
-             'obs': 'k'}
+styledict = {'irr_d2': '-', 
+             'std_d2': '-',
+             'irr_d1': '--', 
+             'std_d1': '--', 
+             'irr_d2_old': ':', 
+             'std_d2_old': ':', 
+             'obs': '-'}
 
 def plot_wind_speed(ws, dates=None, start_date=None, end_date=None, 
                     fig=None, label='', **kwargs):
@@ -106,14 +123,14 @@ def plot_wind_dir(wd, dates=None, start_date=None, end_date=None,
         
     ax1.plot(dates, wd, 
 #             linewidth=0.5, 
-#             linestyle = 'dashed',
+#             linestyle = ':',
+#             marker='*', markersize=0.5,
              label='Wind Direction ' + label,
              **kwargs)
     ax1.set_ylabel('Wind Direction\n(degrees)', multialignment='center')
     ax1.set_ylim(0, 360)
     ax1.set_yticks(np.arange(0, 360, 90))
     ax1.set_yticklabels(['0 (N)', '90 (E)', '180 (S)', '270 (W)'])
-
 
 
 def plot_windrose(ws, wd, start_date=None, end_date=None, fig=None, **kwargs):
@@ -221,11 +238,11 @@ obs = xr.open_dataset(datafolder + out_filename_obs)
 #fig_speed=plt.figure()
 #fig_dir=plt.figure()
 
-fig, ax = plt.subplots(2, 1, figsize=(15,9))
+fig, ax = plt.subplots(2, 1, figsize=figsize)
 
 #%% PLOT OBS
 start_date = pd.Timestamp('20210721-0000')
-end_date = pd.Timestamp('20210725-0000')
+end_date = pd.Timestamp('20210723-0000')
 
 ws_obs = obs[varname_obs_ws]
 wd_obs = obs[varname_obs_wd]
@@ -235,7 +252,7 @@ if site == 'elsplans':
             start=obs.time.min().values, 
 #            start=pd.Timestamp('20210702-0000'),
             periods=len(obs[varname_obs_ws]), 
-            freq='5T')
+            freq='30T')
     #turn outliers into NaN
 #    ws_obs_filtered = ws_obs.where(
 #            (ws_obs-ws_obs.mean()) < (3*ws_obs.std()), 
@@ -271,28 +288,17 @@ else:
 #%% SIMU:
 
 varname_sim = 'UT,VT'
-#in_filenames_sim = 'LIAIS.{0}.SEG*.001.nc'.format(domain_nb)  # use of wildcard allowed
-#out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim)
 
 for model in simu_folders:
-    domain_nb = model[-1]
-    file_suffix='dg'
-    in_filenames_sim = 'LIAIS.{0}.SEG??.0??{1}.nc'.format(domain_nb, file_suffix)  # use of wildcard allowed
-    out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(domain_nb, varname_sim)
+    in_filenames_sim = gv.format_filename_simu[model]
+    out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(
+            in_filenames_sim[6], varname_sim)
 
     datafolder = father_folder + simu_folders[model]
     
     #concatenate multiple days for 1 variable
     tools.concat_simu_files_1var(datafolder, varname_sim, 
                                  in_filenames_sim, out_filename_sim)
-    
-#    if not os.path.exists(datafolder + out_filename_sim):
-#        print("creation of file: ", out_filename_sim)
-#        os.system('''
-#            cd {0}
-#            ncecat -v {1} {2} {3}
-#            '''.format(datafolder, varname_sim, 
-#                       in_filenames_sim, out_filename_sim))
     
     ds1 = xr.open_dataset(datafolder + out_filename_sim)
     
@@ -337,6 +343,7 @@ for model in simu_folders:
                   label=model +'_l'+str(ilevel), 
                   )
 
+
     #fig = plt.figure()
 #    ax = plt.gca()
     #    ax.set_ylabel(ylabel)
@@ -356,6 +363,14 @@ ax[1].legend(loc='lower right')
 ax[0].grid(visible=True, axis='both')
 ax[1].grid(visible=True, axis='both')
 
+days = [20, 21, 22]
+for day in days:
+    for subplt in ax:
+        sunrise = pd.Timestamp('202107{0}-1930'.format(day))
+        sunset = pd.Timestamp('202107{0}-0500'.format(day+1))
+        subplt.axvspan(sunset, sunrise, ymin=0, ymax=1, 
+                   color = '0.9'  #'1'=white, '0'=black, '0.8'=light gray
+                   )
 
 
 #%% Save figure

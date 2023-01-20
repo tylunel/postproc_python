@@ -21,22 +21,24 @@ import xarray as xr
 
 
 ########## Independant parameters ###############
-wanted_date = pd.Timestamp('20210722-1200')
-site = 'elsplans'
+wanted_date = '20210722-1200'
+site = 'cendrosa'
 
 # variable name from MNH files: 'THT', 'RVT'
-var_simu = 'UT'
+var_simu = 'RVT'
 # variable name from obs files: 'potentialTemperature', 'mixingRatio',
-var_obs = 'windSpeed'
+var_obs = 'mixingRatio'
 coeff_corr = 1  #to switch from obs to simu
 
-simu_list = ['irr', 'std']
+simu_list = ['irr_d2', 
+             'std_d2'
+             ]
 
 # highest level AGL plotted
 toplevel = 2500
 
 save_plot = True
-save_folder = 'figures/verti_profiles/'
+save_folder = 'figures/verti_profiles/{0}/'.format(site)
 ##################################################
 
 if site == 'cendrosa':
@@ -48,10 +50,18 @@ elif site == 'elsplans':
 else:
     raise ValueError('Site without radiosounding')
 
+if var_obs == 'mixingRatio':
+    coeff_corr = 0.001
 
-fig = plt.figure(figsize=(9, 5))
+fig = plt.figure(figsize=(6, 7))
 
-colordict = {'irr': 'g', 'std': 'orange', 'obs': 'k'}
+colordict = {'irr_d2': 'g', 
+             'std_d2': 'r',
+             'irr_d1': 'g--', 
+             'std_d1': 'r--', 
+             'irr_d2_old': 'g:', 
+             'std_d2_old': 'r:', 
+             'obs': 'k'}
 
 #%% OBS PARAMETERS
 
