@@ -15,11 +15,11 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'cendrosa'
+site = 'irta-corn'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'ta_2'
+varname_obs = 'FC_mass'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -29,6 +29,7 @@ varname_obs = 'ta_2'
 # TEMP, RHO (=hus), WQ, WT, UTOT, DIR, ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
 # RAIN, PRES, ST01 (=soil_temp), SWDN ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
 # ST01, ST04, ST10, ST17, ST35_subsoil with number being depth in cm
+# PR10, PR20, PR40_subsoil (=vol water content), SWI10, SWI40_subsoil
 # LE_2m(_WPL) and H_2m also available by calculation
 # -- For IRTA-corn
 #LE, H, FC_mass, WS, WD, Ux,
@@ -37,8 +38,8 @@ varname_obs = 'ta_2'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim = 'T2M_ISBA'
-# T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9
+varname_sim = 'SFCO2'
+# T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 #N.B.: layers depth for diff:
 #    [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6,
 #     -0.8, -1, -1.5, -2, -3, -5, -8, -12]
@@ -48,15 +49,15 @@ varname_sim = 'T2M_ISBA'
 ilevel = 1   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
 add_irrig_time = False
-figsize = (9, 6) #small for presentation: (6,6), big: (15,9)
-save_plot = False
+figsize = (7, 7) #small for presentation: (6,6), big: (15,9)
+save_plot = True
 save_folder = './figures/time_series/{0}/domain1/'.format(site)
 
 models = [
 #        'irr_d2_old', 
 #        'std_d2_old',
-#        'irr_d2', 
-#        'std_d2', 
+        'irr_d2', 
+        'std_d2', 
 #        'irr_d1', 
 #        'std_d1',
          ]
@@ -65,8 +66,7 @@ errors_computation = True
 ######################################################
 
 simu_folders = {key:gv.simu_folders[key] for key in models}
-
-father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
+father_folder = gv.global_simu_folder
 
 date = '2021-07'
 
@@ -121,6 +121,9 @@ elif varname_obs in ['ta_1', 'ta_2', 'ta_3', 'ta_4', 'ta_5', 'TEMP_2m',
 elif varname_obs in ['hus_1', 'hus_2', 'hus_3', 'hus_4', 'hus_5', 'RHO_2m']:
     ylabel = 'specific humidity [kg/kg]'
     coeff_obs = 0.001
+elif varname_obs in ['FC_mass']:
+    ylabel = 'CO2 flux in kg/m2/s'
+    coeff_obs = 0.000001
 elif varname_obs in ['WT_2m']:
     ylabel = 'turbulent sensible temperature flux [K.m-1.s-1]'
 elif varname_obs in ['H_2m']:
@@ -179,7 +182,8 @@ if site == 'irta-corn':
     dat_to_nc = None   #To keep existing netcdf file
 elif site == 'elsplans':
     out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
-    dat_to_nc = 'ukmo'
+#    dat_to_nc = 'ukmo'
+    dat_to_nc = None   #To keep existing netcdf file
 else:
     out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
     dat_to_nc = None
@@ -191,20 +195,19 @@ tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs,
 obs = xr.open_dataset(datafolder + out_filename_obs)
 
 # process other variables:
-# NET RADIATION
 if site in ['preixana', 'cendrosa']:
     # net radiation
     obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
     # bowen ratio -  diff from bowen_ratio_1
     obs['bowen'] = obs['shf_1'] / obs['lhf_1']
     for i in [2,3]:
-        obs['swi_{0}'.format(i)] = tools.sm2swi(
+        obs['swi_{0}'.format(i)] = tools.calc_swi(
                 obs['soil_moisture_{0}'.format(i)],
                 gv.wilt_pt[site][i],
                 gv.field_capa[site][i],) 
 elif site == 'irta-corn':
     for i in [2,3,4,5]:
-        obs['swi_{0}'.format(i)] = tools.sm2swi(
+        obs['swi_{0}'.format(i)] = tools.calc_swi(
                 obs['VWC_{0}0cm_Avg'.format(i)],
                 gv.wilt_pt[site][i],
                 gv.field_capa[site][i],)
@@ -221,7 +224,12 @@ elif site == 'elsplans':
     obs['BOWEN_2m'] = obs['H_2m'] / obs['LE_2m']
     #obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.016)*(0+(1.2/300)*obs['WT_2m'])  #eq (25)
     obs['LE_2m_WPL'] = obs['LE_2m']*(1.010)*(1+0.051*obs['BOWEN_2m'])  #eq (47) of paper WPL
-
+    for i in [10,20,30,40]:
+        obs['SWI{0}_subsoil'.format(i)] = tools.calc_swi(
+                obs['PR{0}_subsoil'.format(i)]*0.01,  #conversion from % to decimal
+                gv.wilt_pt[site][i],
+                gv.field_capa[site][i],)
+    
 # PLOT:
 fig = plt.figure(figsize=figsize)
 
@@ -361,7 +369,7 @@ else:
     except AttributeError:
         try:
             ylabel = ds[varname_sim].comment
-        except (AttributeError, KeyError):
+        except (AttributeError, KeyError, NameError):
             ylabel = varname_obs
 
 plot_title = '{0} at {1}'.format(ylabel, site)

@@ -28,7 +28,7 @@ surf_var_label = 'Q_vol_soil'
 # Set type of wind representation: 'verti_proj' or 'horiz'
 wind_visu = 'verti_proj'
 # Datetime
-wanted_date = '20210722-2300'
+wanted_date = '20210722-1100'
 # altitude ASL or height AGL: 'asl' or 'agl'
 alti_type = 'asl'
 # maximum level (height AGL) to plot
@@ -38,7 +38,9 @@ toplevel = 2500
 nb_points_beyond = 15
 site_end = 'elsplans'
 site_start = 'cendrosa'
-
+# THT color for contourf plot
+vmin_tht = 305
+vmax_tht = 315
 
 # Arrow/barbs esthetics:
 skip_barbs_x = 2
@@ -48,7 +50,7 @@ barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
 
 # Save the figure
-figsize = (15,9)
+figsize = (12,7)
 save_plot = True
 save_folder = './figures/cross_sections/{0}/section_{1}_{2}/{3}/'.format(
         model, site_start, site_end, wind_visu)
@@ -194,10 +196,11 @@ cm = ax[0].contourf(Xmesh,
                     alti,
                     data1.T, 
                     cmap='rainbow',
-                    levels=np.linspace(298, 315, 18),  # to keep always same colorbar limits
+#                    levels=np.linspace(298, 315, 18),  # to keep always same colorbar limits
+                    levels=np.linspace(vmin_tht, vmax_tht, vmax_tht-vmin_tht+1),  # to keep always same colorbar limits
 #                    levels=20,
 #                    extend = 'both',  #highlights the min and max in different color
-                    vmin=298, vmax=315,  # for THT
+                    vmin=vmin_tht, vmax=vmax_tht,  # for THT
 #                    vmin=None, vmax=None,  # for adaptative colormap
 #                    vmin=800, vmax=1000,  # for PRES
                     )

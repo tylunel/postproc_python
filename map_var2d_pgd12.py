@@ -22,9 +22,9 @@ wanted_date = '20210724-2300'
 
 color_map = 'seismic'    # jet, seismic, BuPu, coolwarm, viridis, RdYlGn, 
 
-var_name = 'FRAC_NATURE'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
-vmin=-300
-vmax=300
+var_name = 'PATCHP9'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
+vmin=0
+vmax=1
 
 # level, only useful if var 3D
 ilevel = 1  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m
