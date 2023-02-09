@@ -16,16 +16,16 @@ import shapefile
 import global_variables as gv
 
 #########################################"""
-model = 'std_d2'
-ilevel = 10  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
+model = 'irr_d2'
+ilevel = 50  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
 skip_barbs = 10 # 1/skip_barbs will be printed
-barb_length = 4.5
+barb_length = 4  #OVERWRITTEN if zoom_on != None
 # Datetime
 wanted_date = '20210722-1200'
 
 domain_nb = int(model[-1])
 
-speed_plane = 'horiz'  # 'horiz': horizontal 'normal' wind, 'verti' for W
+speed_plane = 'verti'  # 'horiz': horizontal 'normal' wind, 'verti' for W
 
 if speed_plane == 'verti':
     vmax_cbar = 5
@@ -36,12 +36,12 @@ elif speed_plane == 'horiz':
     vmin_cbar = 0
     cmap_name = 'BuPu'
 
-zoom_on = 'liaise'  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'urgell'  #None for no zoom, 'liaise' or 'urgell'
 
-save_plot = False
-save_folder = './figures/winds/{0}/{1}/{2}/'.format(
-        model, domain_nb, speed_plane, ilevel)
-figsize = (11,9)
+save_plot = True
+save_folder = './figures/winds/{0}/{1}/{2}/zoom_{3}/'.format(
+        model, speed_plane, ilevel, zoom_on)
+figsize = (9,7)
 
 barb_size_option = 'standard'  # 'weak_winds' or 'standard'
 
@@ -49,21 +49,24 @@ barb_size_option = 'standard'  # 'weak_winds' or 'standard'
 ###########################################
 
 barb_size_increments = {
-        'weak_winds': {'half':1.94, 'full':3.88, 'flag':19.4},
-        'standard': {'half':5, 'full':10, 'flag':50},
+        'weak_winds': {'half':1, 'full':2, 'flag':10},
+        'standard': {'half':2.57, 'full':5.14, 'flag':25.7},
+        'm_per_s': {'half':5, 'full':10, 'flag':50},
         }
 barb_size_description = {
-        'weak_winds': "barb increments: half=1m/s=1.94kt, full=2m/s=3.88kt, flag=10m/s=19.4kt",
+        'weak_winds': "barb increments: half=1m/s, full=2m/s, flag=10m/s",
         'standard': "barb increments: half=5kt=2.57m/s, full=10kt=5.14m/s, flag=50kt=25.7m/s",
+        'm_per_s': "barb increments: half=5m/s, full=10m/s, flag=50m/s",
+        'm_per_s_detailled': "barb increments: dot < 2.5m/s < half barb < 7.5m/s < full < 12.5m/s, flag=50kt=25.7m/s",
         }
 
 if zoom_on == 'liaise':
     skip_barbs = 3 # 1/skip_barbs will be printed
-    barb_length = 5.5
+    barb_length = 4.5
     lat_range = [41.45, 41.8]
     lon_range = [0.7, 1.2]
 elif zoom_on == 'urgell':
-    skip_barbs = 6 # 1/skip_barbs will be printed
+    skip_barbs = 10 # 1/skip_barbs will be printed
     barb_length = 4.5
     lat_range = [41.1, 42.1]
     lon_range = [0.2, 1.7]
