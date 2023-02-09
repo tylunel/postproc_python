@@ -8,67 +8,83 @@ Cf also plot_verti_profile.py
 example for skewT graph here:
     https://unidata.github.io/MetPy/latest/examples/plots/Skew-T_Layout.html#sphx-glr-examples-plots-skew-t-layout-py
 """
-#import os
 #import numpy as np
+import tools
 import pandas as pd
-#import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
-from tools import indices_of_lat_lon, get_obs_filename_from_date, get_simu_filename, open_ukmo_rs
-#from metpy.plots import SkewT
 from metpy.units import units
 import metpy.calc as mpcalc
 import xarray as xr
 
 
 ########## Independant parameters ###############
-wanted_date = '20210722-1200'
-site = 'cendrosa'
+wanted_date = '20210715-1600'
+site = 'elsplans'
 
 # variable name from MNH files: 'THT', 'RVT'
 var_simu = 'RVT'
 # variable name from obs files: 'potentialTemperature', 'mixingRatio',
 var_obs = 'mixingRatio'
-coeff_corr = 1  #to switch from obs to simu
+coeff_corr = 1  #to switch from obs to simu2
 
-simu_list = ['irr_d2', 
-             'std_d2'
-             ]
+simu_list = [
+            'irr_d1', 
+            'std_d1'
+            ]
+
+# Vertical path to show in simu:
+# Path in simu is the direct 1d column
+straight_profile = False
+# Path in simu is average of neighbouring grid points
+mean_profile = True
+column_width = 3
+# Path in simu follows real RS path  #issue: fix discontinuities
+follow_rs_position = False
+
 
 # highest level AGL plotted
 toplevel = 2500
 
 save_plot = True
-save_folder = 'figures/verti_profiles/{0}/'.format(site)
+save_folder = 'figures/verti_profiles/{0}/{1}/'.format(site, var_simu)
+figsize=(6, 7)
+
 ##################################################
 
 if site == 'cendrosa':
     lat = 41.6925905
     lon = 0.9285671
 elif site == 'elsplans':
-    lat = 41.590111 
-    lon = 1.029363  
+    lat = 41.590111
+    lon = 1.029363
+elif site == 'elsplans_alt':
+    lat = 41.5967
+    lon = 1.0033
 else:
     raise ValueError('Site without radiosounding')
 
 if var_obs == 'mixingRatio':
     coeff_corr = 0.001
 
-fig = plt.figure(figsize=(6, 7))
+fig = plt.figure(figsize=figsize)
 
 colordict = {'irr_d2': 'g', 
              'std_d2': 'r',
-             'irr_d1': 'g--', 
-             'std_d1': 'r--', 
+             'irr_d1': 'g', 
+             'std_d1': 'r', 
              'irr_d2_old': 'g:', 
              'std_d2_old': 'r:', 
              'obs': 'k'}
 
 #%% OBS PARAMETERS
-
-datafolder = \
+if site == 'elsplans_alt':
+    datafolder = \
+            '/cnrm/surface/lunelt/data_LIAISE/'+ 'elsplans' +'/radiosoundings/'
+else:
+    datafolder = \
             '/cnrm/surface/lunelt/data_LIAISE/'+ site +'/radiosoundings/'
 
-filename = get_obs_filename_from_date(
+filename = tools.get_obs_filename_from_date(
         datafolder, 
         wanted_date,
         dt_threshold=pd.Timedelta('0 days 00:45:00'),
@@ -78,8 +94,8 @@ filename = get_obs_filename_from_date(
 #%% LOAD OBS DATASET
 if site == 'cendrosa':
     obs = xr.open_dataset(datafolder + filename)
-elif site == 'elsplans':
-    obs = open_ukmo_rs(datafolder, filename)
+elif 'elsplans' in site:
+    obs = tools.open_ukmo_rs(datafolder, filename)
     
 #%% OBS PLOT
 
@@ -135,40 +151,86 @@ plt.grid()
 #skew.shade_cin(p_obs, T_obs, Tparcel)
 
 #%% LOAD SIMU DATASET
+var1d = {}
+height = {}
 
 for model in simu_list:     # model will be 'irr' or 'std'
     # retrieve and open file
-    filename_simu = get_simu_filename(model, wanted_date)
+    filename_simu = tools.get_simu_filename(model, wanted_date)
     ds = xr.open_dataset(filename_simu)
     
     # find indices from lat,lon values 
-    index_lat, index_lon = indices_of_lat_lon(ds, lat, lon)
+    index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
     # keep only variable of interest
     var3d = ds[var_simu]
     # keep only low layer of atmos (~ABL)
     var3d_low = var3d.where(var3d.level<toplevel, drop=True)
-    var1d = var3d_low[0, :, index_lat, index_lon] #1st index is time, 2nd is Z,..
     
-    # SIMU PLOT
-    plt.plot(var1d.data, var1d.level, 
-             ls='--', 
-             color=colordict[model], 
-             label=model
-             )
+    if mean_profile:
+        var3d_column = var3d_low[
+            0, :, 
+            int(index_lat-column_width/2):int(index_lat+column_width/2), 
+            int(index_lon-column_width/2):int(index_lon+column_width/2)]
+        var1d_column = var3d_column.mean(dim=['nj', 'ni'])
+        var1d_column_std = var3d_column.std(dim=['nj', 'ni'])
+        plt.plot(var1d_column.data, var1d_column.level, 
+                 label='mean_&_std_{0}'.format(model), 
+                 c=colordict[model],
+                 )
+        plt.fill_betweenx(var1d_column.level, 
+                          var1d_column.data - var1d_column_std.data,
+                          var1d_column.data + var1d_column_std.data,
+                          alpha=0.3, 
+                          facecolor=colordict[model],
+                          )
+    if straight_profile:
+        var1d_column = var3d_low[0, :, index_lat, index_lon] #1st index is time, 2nd is Z,..
+        # SIMU PLOT
+        plt.plot(var1d_column.data, var1d_column.level, 
+                 ls='--', 
+                 color=colordict[model], 
+                 label=model
+                 )
+        
+    # Realistic path of radiosounding (with interpolation)
+    if follow_rs_position:
+        var1d[model] = []
+        height[model] = []
+        for i, h in enumerate(obs.height):
+            if not pd.isna(h):
+                lat_i = obs.latitude[i].data
+                lon_i = obs.longitude[i].data
+                index_lat, index_lon = tools.indices_of_lat_lon(ds, lat_i.data, lon_i.data)
+                var1d_temp = var3d_low[0, :, index_lat, index_lon]
+                height[model].append(float(h))
+                var1d[model].append(float(var1d_temp.interp(level=h)))
+    
+        plt.plot(var1d[model], height[model], 
+                 ls=':', 
+                 color=colordict[model], 
+                 label=model+'_interp'
+                 )
 
 #TODO: add wind barbs
 #TODO: add CAPE and CIN ?
 
 
-
 #%% GRAPH ESTHETIC
 #add special lines
-
-plot_title = 'Vertical profile for {0} at {1} on {2}'.format(
+if mean_profile:
+    plot_title = 'Vertical mean profile for {0} above {1} \n on {2} averaged over {3}x{3}pts'.format(
+        var_simu, site, wanted_date, column_width)
+    figname = 'verti mean profile {0}-{1}-{2}-{3}pts'.format(
+        var_simu, site, wanted_date, column_width)
+else:
+    plot_title = 'Vertical profile for {0} at {1} on {2}'.format(
         var_simu, site, wanted_date)
+    figname = 'verti profile {0}-{1}-{2}'.format(
+        var_simu, site, wanted_date)
+
 plt.title(plot_title)
 plt.ylabel('height AGL (m)')
-plt.xlabel(var1d.standard_name + '_[' + var1d.units + ']')
+plt.xlabel(var3d_low.standard_name + '_[' + var3d_low.units + ']')
 plt.legend()
 
 plt.show()
@@ -218,9 +280,7 @@ print("hbl_bulk_Ri = " + str(hbl_bulk_Ri))
 
 #%% Save plot
 if save_plot:
-    filename = (plot_title)
-    filename = filename.replace('=', '').replace('(', '').replace(')', '')
-    filename = filename.replace(' ', '_').replace(',', '').replace('.', '_')
-    plt.savefig(save_folder+filename)
+    tools.save_figure(figname, save_folder)
+
 
     
