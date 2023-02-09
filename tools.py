@@ -8,6 +8,7 @@ Useful for example for XY station coordinate to put in MNH - &NAM_STATIONn
 
 """
 import os
+from scipy.stats import circmean
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -484,9 +485,6 @@ def get_simu_filename(model, date='20210722-1200', file_suffix='dg'):
             'irr_d2' or 'std_d1'
         wanted_date: str, with format accepted by pd.Timestamp,
             ex: '20210722-1200'
-        domain: int,
-            domain number in case of grid nesting.
-            ex: domain 1 is the biggest, domain 2 smaller, etc
     
     Returns:
         filename: str, full path and filename
@@ -523,6 +521,48 @@ def get_simu_filename(model, date='20210722-1200', file_suffix='dg'):
     
     #check if nomenclature of filename is ok
     check_filename_datetime(filename)
+    
+    return filename
+
+def get_simu_filename_000(model, date='20210722-1200'):
+    """
+    Returns the whole string for filename and path. 
+    Chooses the right SEG (segment) number and suffix corresponding to date
+    
+    Parameters:
+        model: str, 
+            'irr_d2' or 'std_d1'
+        wanted_date: str, with format accepted by pd.Timestamp,
+            ex: '20210722-1200'
+    
+    Returns:
+        filename: str, full path and filename
+    """
+    pd_date = pd.Timestamp(date)
+    day_nb = str(pd_date.day)        
+    hour_nb = str(pd_date.hour)
+    # format suffix with 2 digits:
+    if len(hour_nb) == 1:
+        hour_nb_2f = '0'+ hour_nb
+    elif len(hour_nb) == 2:
+        hour_nb_2f = hour_nb
+
+    simu_filelist = {
+        'std_d2': 'LIAIS.1.S{0}{1}.000.nc'.format(
+                day_nb, hour_nb_2f),
+        'irr_d2': 'LIAIS.1.S{0}{1}.000.nc'.format(
+                day_nb, hour_nb_2f),
+        'std_d2_old': 'LIAIS.2.SEG{0}.000.nc'.format(
+                day_nb),
+        'irr_d2_old': 'LIAIS.2.SEG{0}.000.nc'.format(
+                day_nb),
+        'irr_d1': 'LIAIS.1.SEG{0}.000.nc'.format(
+                day_nb),
+        'std_d1': 'LIAIS.1.SEG{0}.000.nc'.format(
+                day_nb)
+        }
+    
+    filename = gv.global_simu_folder + gv.simu_folders[model] + simu_filelist[model]
     
     return filename
 
@@ -801,13 +841,19 @@ def center_uvw(data):
             {'ni_u': 'ni', 'nj_u': 'nj'})
     data['VT'] = data['VT'].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
             {'ni_v': 'ni', 'nj_v': 'nj'})
-    data['WT'] = data['WT'].interp(level_w=data.level.values).rename(
-            {'level_w': 'level'})
-    
     # remove useless coordinates
     data_new = data.drop(['latitude_u', 'longitude_u', 
                           'latitude_v', 'longitude_v',
-                          'ni_u', 'nj_u', 'ni_v', 'nj_v', 'level_w'])
+                          'ni_u', 'nj_u', 'ni_v', 'nj_v'])
+    
+    # TRY loop in case no WT found in file
+    try:
+        data['WT'] = data['WT'].interp(level_w=data.level.values).rename(
+                {'level_w': 'level'})
+        # remove useless coordinates
+        data_new = data.drop(['level_w'])
+    except KeyError:
+        pass
     
     # consider time no longer as a dimension but just as a single coordinate
     data_new = data_new.squeeze()
@@ -1276,26 +1322,13 @@ def calc_ws_wd(ut, vt):
     wd = xr.where(wd_temp<0, wd_temp+360, wd_temp)
     return ws, wd
     
+def wind_direction_mean(data):
+    """
+    Computing the mean of circular data is not trivial (cf https://en.wikipedia.org/wiki/Directional_statistics)
     
-
+    use function 'circmean', 'circstd' from scipy.stats    
+    """
+    
     
 if __name__ == '__main__':
-#    ds2 = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/2.13_irr_2021_21-24/LIAIS.2.SEG22.012dg.nc')
-#    ds1 = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/2.14_irr_15-30/LIAIS.1.SEG22.012dg.nc')
-#    res = get_surface_type(ds, 'cendrosa')
-#    site = 'cendrosa'
-#    translate_patch = True
-    
-#    res1 = get_surface_type(ds1, 'cendrosa', domain_nb=1)
-#    res2 = get_surface_type(ds2, 'cendrosa', domain_nb=2)
-#    open_ukmo_mast('/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/30min/', 'LIAISE_20210713_30.dat')
-    
-#    u_star = calc_u_star_sim(ds1)
-    
-#    out_filename_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
-#    datafolder = '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
-#    obs = xr.open_dataset(datafolder + out_filename_obs)
-#    open_uib_seb()
-    print(get_surface_type('irta-corn', 2))
-    
-        
+    print('nothing to run')
