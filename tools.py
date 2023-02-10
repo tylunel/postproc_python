@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import xarray as xr
 from metpy.units import units
+import metpy.calc as mcalc
 import re
 import global_variables as gv
 #from difflib import SequenceMatcher
@@ -1002,9 +1003,11 @@ def apparent_temperature(tdb, rh, v=0, q=None, **kwargs):
 def psy_ta_rh(tdb, rh, p_atm=101325):
     """Calculates psychrometric values of air based on dry bulb air temperature and
     relative humidity.
+    
+    Comes from package 'pythermalcomfort'.
+    
     For more accurate results we recommend the use of the the Python package
     `psychrolib`_.
-
     .. _psychrolib: https://pypi.org/project/PsychroLib/
 
     Parameters
@@ -1018,6 +1021,8 @@ def psy_ta_rh(tdb, rh, p_atm=101325):
 
     Returns
     -------
+    p_vap_sat: float
+        partial pressure of water vapor in saturated moist air, [Pa]
     p_vap: float
         partial pressure of water vapor in moist air, [Pa]
     hr: float
@@ -1027,7 +1032,7 @@ def psy_ta_rh(tdb, rh, p_atm=101325):
     t_dp: float
         dew point temperature, [°C]
     h: float
-        enthalpy [J/kg dry air]
+#        enthalpy [J/kg dry air]
     """
     p_saturation = p_sat(tdb)
     p_vap = rh / 100 * p_saturation
@@ -1037,7 +1042,7 @@ def psy_ta_rh(tdb, rh, p_atm=101325):
 #    h = enthalpy(tdb, hr)
 
     return {
-        "p_sat": p_saturation,
+        "p_vap_sat": p_saturation,
         "p_vap": p_vap,
         "hr": hr,
         "t_wb": twb,
@@ -1046,7 +1051,7 @@ def psy_ta_rh(tdb, rh, p_atm=101325):
     }
     
 def p_sat(tdb):
-    """Calculates vapour pressure of water at different temperatures
+    """Calculates saturated vapour pressure of water at different temperatures
 
     Parameters
     ----------
@@ -1056,11 +1061,13 @@ def p_sat(tdb):
     Returns
     -------
     p_sat: float
-        operative temperature, [Pa]
+        saturated vapour pressure, [Pa]
     """
 
     ta_k = tdb + 273.15
 
+    # Low temperature case commented to allow for calculation on array of ta_k
+    # (if not "np.array < 273.15" is ambiguous)
 #    if ta_k < 273.15:
 #        c1 = -5674.5359
 #        c2 = 6.3925247
@@ -1091,6 +1098,46 @@ def p_sat(tdb):
     )
 
     return np.round(pascals, 1)
+
+
+def rel_humidity(spec_humidity, t_dry_bulb, pressure):
+    """Calculates the relative humidity.
+
+    Parameters
+    ----------
+    t_dry_bulb: float
+        dry bulb air temperature, [°C]
+    spec_hum: float
+        specific humidity, (kg/kg)
+
+    Returns
+    -------
+    rel_humidity: float
+        relative humidity
+    """
+    sat_mix_ratio = sat_mixing_ratio(pressure, t_dry_bulb)
+    rel_humidity = spec_humidity / ((1-spec_humidity)*sat_mix_ratio)
+    return rel_humidity
+    
+
+def sat_mixing_ratio(pressure, t_dry_bulb):
+    """
+    Calculates the saturation_mixing_ratio
+        Parameters
+    ----------
+    t_dry_bulb: float
+        dry bulb air temperature, [°C]
+    pressure: float
+        atmospheric pressure, (Pa)
+
+    Returns
+    -------
+    saturation mixing ratio: float
+        (kg/kg)
+    """
+    sat_mixing_ratio = 0.622*p_sat(t_dry_bulb) / (pressure-p_sat(t_dry_bulb))
+    return sat_mixing_ratio
+
 
 def t_dp(tdb, rh):
     """Calculates the dew point temperature.
@@ -1321,6 +1368,47 @@ def calc_ws_wd(ut, vt):
     wd_temp = np.arctan2(-ut, -vt)*180/np.pi
     wd = xr.where(wd_temp<0, wd_temp+360, wd_temp)
     return ws, wd
+
+
+def calc_fao56_et_0(rn, t_2m, ws_2m, rh_2m, p_atm, gnd_flx=0, gamma=66):
+    """
+    Compute wind speed and wind direction from ut and vt
+    
+    rn = Net irradiance (W m−2)
+    t_2m = Air temperature at 2m (°C)
+    ws_2m = Wind speed at 2m height (m−1)
+    rh_2m = relative humidity (%)
+    p_atm = atmospheric pressure (Pa)
+    
+    gnd_flx = Ground heat flux (W m−2), usually taken as zero
+    gamma = Psychrometric constant (γ ≈ 66 Pa K−1)
+    
+    Returns:
+        ET_0: float
+            Potential evapotranspiration in mm.day-1
+    """
+    psychro = psy_ta_rh(t_2m, rh_2m, p_atm)
+    
+    vap_pres_deficit = (psychro['p_vap_sat'] - psychro['p_vap'])/1000  #in kPa
+    delta = p_sat(t_2m+0.5) - p_sat(t_2m-0.5)
+    
+    # Convert W.m-2 to MJ.m-2.day-1
+    rn_MJ = rn * 3600*24 / 1e6
+    gnd_flx_MJ = gnd_flx * 3600*24 / 1e6
+    
+    # potential ET [mm.day-1] (exactly as in FAO 56)
+    ET_0 = (0.408*delta*(rn_MJ - gnd_flx_MJ) + \
+            (900/(t_2m + 273.15))*gamma*ws_2m*vap_pres_deficit) / \
+           (delta + gamma*(1 + 0.34*ws_2m))
+    
+    # potential ET [mm.s-1 = kg/m2/s]
+    ET_0 = ET_0 / (24*3600)
+    
+    # equivalent Latent Heat Flux [W/m2] (2257 J/g is latent heat of vaporization)
+    LE_0 = 1000 * 2257 * ET_0
+    
+    return {'ET_0': ET_0, 'LE_0': LE_0}
+    
     
 def wind_direction_mean(data):
     """
@@ -1331,4 +1419,13 @@ def wind_direction_mean(data):
     
     
 if __name__ == '__main__':
-    print('nothing to run')
+    rn = 500
+    t_2m = 15
+    ws_2m = 2
+    rh_2m = 60
+    p_atm = 100000
+    res = psy_ta_rh(t_2m, rh_2m, p_atm)
+    vap_pres_deficit = res['p_vap_sat'] - res['p_vap']
+    delta = p_sat(t_2m+0.5) - p_sat(t_2m-0.5)
+    et0 = calc_fao56_et_0(rn, t_2m, ws_2m, rh_2m, p_atm)
+    

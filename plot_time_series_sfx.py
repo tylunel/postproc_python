@@ -16,10 +16,10 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'cendrosa'
+site = 'irta-corn'
 
 varname_sim = 'LE'
-varname_obs = 'lhf_1'
+varname_obs = 'LE'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -53,8 +53,9 @@ models_idnumber = {'irr_d1': '2.15',
                    'std_d1': '1.15',
                    }
 
-secondary_axis = 'le'
 errors_computation = True
+
+add_fao56_et = False
 ######################################################
 
 simu_folders = {key:gv.simu_folders[key] for key in models}
@@ -64,8 +65,8 @@ date = '2021-07'
 
 colordict = {'irr_d2': 'g', 
              'std_d2': 'r',
-             'irr_d1': 'g--', 
-             'std_d1': 'r--',
+             'irr_d1': 'g', 
+             'std_d1': 'r',
              'obs': 'k'}
 
 if site in ['cendrosa', 'irta-corn']:
@@ -146,6 +147,14 @@ if site in ['preixana', 'cendrosa']:
     obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
     # bowen ratio -  diff from bowen_ratio_1
     obs['bowen'] = obs['shf_1'] / obs['lhf_1']
+    # potential evapotranspiration
+    obs['lhf_0_fao56'] = tools.calc_fao56_et_0(
+        obs['rn'], 
+        obs['ta_2'], 
+        obs['ws_1'], 
+        obs['hur_2'], 
+        obs['pa']*100,
+        gnd_flx=obs['soil_heat_flux'])['LE_0']
     for i in [2,3]:
         obs['swi_{0}'.format(i)] = tools.calc_swi(
                 obs['soil_moisture_{0}'.format(i)],
@@ -161,6 +170,13 @@ elif site == 'irta-corn':
         obs['TA_1_1_1'], 
         obs['RH_1_1_1'],
         obs['PA']*1000)['hr']
+    obs['LE_0_FAO56'] = tools.calc_fao56_et_0(
+        obs.NETRAD, 
+        obs.TA_1_1_1, 
+        obs.WS, 
+        obs.RH_1_1_1, 
+        obs.PA*1000,
+        gnd_flx=obs.G_plate_1_1_1)['LE_0']
 elif site == 'elsplans':
     ## Flux calculations
     obs['H_2m'] = obs['WT_2m']*1200  # =Cp_air * rho_air
@@ -206,6 +222,11 @@ if varname_obs != '':
         obs_var_corr.plot(label='obs_'+varname_obs,
                           color=colordict['obs'],
                           linewidth=1)
+        if add_fao56_et:
+            obs['LE_0_FAO56'].plot(label='obs_LE_0',
+                                   color=colordict['obs'],
+                                   linestyle=':',
+                                   linewidth=1)
 
 
 #%% SIMU:
@@ -229,6 +250,22 @@ for model in simu_folders:
         ds['U_STAR'] = tools.calc_u_star_sim(ds)
     elif varname_sim == 'BOWEN':
         ds['BOWEN'] = tools.calc_bowen_sim(ds)
+    elif add_fao56_et:
+        ds_forcing = xr.open_dataset(datafolder + 'FORCING_{0}_{1}.nc'.format(
+                site, models_idnumber[model]))
+        ds_forcing['REHU'] = tools.rel_humidity(
+                ds_forcing['Qair'], 
+                ds_forcing['Tair']-273.15,
+                ds_forcing['PSurf'],
+                )
+        ds['LE_0_ISBA'] = tools.calc_fao56_et_0(
+            ds['RN'], 
+            ds_forcing['Tair'], 
+            ds_forcing['Wind'], 
+            ds_forcing['REHU'], 
+            ds_forcing['PSurf'],
+            gnd_flx= ds['GFLUX'])['LE_0'].dropna(dim='time', how='any')
+        LE_0 =  ds['LE_0_ISBA'].dropna(dim='time', how='any').squeeze()
     
     # keep variable of interested
     var_1d = ds[varname_sim].squeeze()
@@ -244,15 +281,23 @@ for model in simu_folders:
     
     # PLOT
     plt.plot(var_1d.time, var_1d, 
-#             color=colordict[model],
-             colordict[model],
+             color=colordict[model],
+#             colordict[model],
+             linestyle='--',
              label='simu_{0}_{1}'.format(model, varname_sim),
+             )
+    if add_fao56_et:
+        plt.plot(LE_0.time, LE_0, 
+             color=colordict[model],
+#             colordict[model],
+             linestyle=':',
+             label='simu_{0}_LE_0_FAO56'.format(model),
              )
 
     ax = plt.gca()
     
 #    ax.set_xlim([np.min(obs.time), np.max(obs.time)])
-#    ax.set_xlim([np.min(dati_arr), np.max(dati_arr)])
+    ax.set_xlim([np.min(var_1d.time), np.max(var_1d.time)])
     
     if errors_computation:
         ## Errors computation
@@ -292,6 +337,7 @@ if add_irrig_time:
                label='irrigation')
 
 #%% Plot esthetics
+
 
 #if varname_obs == '':
 #    try:
@@ -334,13 +380,17 @@ if secondary_axis == 'evap':
                    lambda evap: evap*2264000))
     secax.set_ylabel('evapotranspiration [kg/m²/s]')
 
-plt.text(.01, .95, 'RMSE: {0}'.format(rmse), 
-         ha='left', va='top', transform=ax.transAxes)
-plt.text(.01, .99, 'Bias: {0}'.format(bias), 
-         ha='left', va='top', transform=ax.transAxes)
+# add errors values on graph
+if errors_computation:
+    plt.text(.01, .95, 'RMSE: {0}'.format(rmse), 
+             ha='left', va='top', transform=ax.transAxes)
+    plt.text(.01, .99, 'Bias: {0}'.format(bias), 
+             ha='left', va='top', transform=ax.transAxes)
+    plt.legend(loc='upper right')
+else:
+    plt.legend(loc='best')
 
 plt.title(plot_title)
-plt.legend()
 plt.grid()
 
 
