@@ -9,12 +9,14 @@ Gathers global variables for use in scripts.
 global_simu_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
 
 simu_folders = {
-        'irr_d2': '2.16_irr_d2_21-22/',
-        'std_d2': '1.16_std_d2_21-22/',
+        'irr_d2': '2.17_irr_d2_21-22_bugfix/',
+        'std_d2': '1.17_std_d2_21-22_bugfix/',
         'irr_d2_old': '2.13_irr_d1d2_21-24/', 
         'std_d2_old': '1.11_std_d1d2_21-24/',
         'irr_d1': '2.15_irr_d1_15-30/',
-        'std_d1': '1.15_std_d1_15-30/'
+        'std_d1': '1.15_std_d1_15-30/',
+#        'lagrip100_d1': '5.15_lagrip100_d1_15-30/',  #param had issue
+        'irrlagrip30_d1': '7.15_irrlagrip30_d1_15-30/'
          }
 
 format_filename_simu = {            
@@ -23,7 +25,9 @@ format_filename_simu = {
         'irr_d2_old': 'LIAIS.2.SEG??.0??dg.nc', 
         'std_d2_old': 'LIAIS.2.SEG??.0??dg.nc',
         'irr_d1':     'LIAIS.1.SEG??.0??dg.nc',
-        'std_d1':     'LIAIS.1.SEG??.0??dg.nc'
+        'std_d1':     'LIAIS.1.SEG??.0??dg.nc',
+#        'lagrip100_d1': 'LIAIS.1.SEG??.0??.nc',
+        'irrlagrip30_d1': 'LIAIS.1.SEG??.0??dg.nc',
         }
 
 sites = {'cendrosa': {'lat': 41.6925905,
@@ -33,11 +37,12 @@ sites = {'cendrosa': {'lat': 41.6925905,
          'elsplans': {'lat': 41.590111,
                       'lon': 1.029363},
          'irta-corn': {
-#                         'lat': 41.619079, # real position, but is not in 100% irr zone in model
-#                         'lon': 0.875333,} # real position, but is not in 100% irr zone in model
 #                       'lon': 0.805333},  # wrong position, but 100% irr zone in model
                          'lat': 41.5922,  # wrong position, but 100% irr zone in model
                          'lon': 0.8585},  # wrong position, but 100% irr zone in model
+         'irta-corn-real': {
+                     'lat': 41.619079, # real position, but is not in 100% irr zone in model
+                     'lon': 0.875333,} # real position, but is not in 100% irr zone in model
         }
          
 towns = {'arbeca': {'lat': 41.54236,
