@@ -19,7 +19,7 @@ import global_variables as gv
 
 ################%% Independant Parameters (TO FILL IN):
     
-site = 'elsplans'
+site = 'cendrosa'
 
 #domain to consider for simu files: 1 or 2
 #domain_nb = 2
@@ -32,13 +32,16 @@ save_folder = './figures/wind_series/'
 figsize = (10, 6) #small for presentation: (6,6), big: (15,9)
 
 models = [
-#        'irr_d1', 
-#        'std_d1',
+        'irr_d1', 
+        'std_d1',
+        'irrlagrip30_d1',
 #        'irr_d2_old', 
 #        'std_d2_old',
-        'irr_d2', 
-        'std_d2', 
+#        'irr_d2', 
+#        'std_d2', 
          ]
+
+errors_computation = True
 
 ########################################################
 
@@ -59,6 +62,7 @@ colordict = {'irr_d2': 'g',
              'std_d2': 'r',
              'irr_d1': 'g', 
              'std_d1': 'r', 
+             'irrlagrip30_d1': 'y',
              'irr_d2_old': 'g', 
              'std_d2_old': 'r', 
              'obs': 'k'}
@@ -66,6 +70,7 @@ styledict = {'irr_d2': '-',
              'std_d2': '-',
              'irr_d1': '--', 
              'std_d1': '--', 
+             'irrlagrip30_d1': '--',
              'irr_d2_old': ':', 
              'std_d2_old': ':', 
              'obs': '-'}
@@ -150,39 +155,6 @@ def plot_windrose(ws, wd, start_date=None, end_date=None, fig=None, **kwargs):
 
 #%% Dependant Parameters
 
-#if site == 'cendrosa':
-#    lat = 41.6925905
-#    lon = 0.9285671
-#    varname_obs_ws = 'ws_2'
-#    varname_obs_wd = 'wd_2'
-#    datafolder = \
-#        '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
-#    filename_prefix = \
-#        'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
-#    in_filenames_obs = filename_prefix + date
-#elif site == 'preixana':
-#    lat = 41.59373 
-#    lon = 1.07250
-#    varname_obs_ws = 'ws_2'
-#    varname_obs_wd = 'wd_2'
-#    datafolder = \
-#        '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
-#    filename_prefix = \
-#        'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
-#    in_filenames_obs = filename_prefix + date
-#elif site == 'elsplans':
-#    lat = 41.590111 
-#    lon = 1.029363
-#    varname_obs_ws = 'UTOT_10m'
-#    varname_obs_wd = 'DIR_10m'
-#    datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/5min/'
-#    filename_prefix = 'LIAISE_'
-#    date = date.replace('-', '')
-#    in_filenames_obs = filename_prefix + date
-#
-#else:
-#    raise ValueError('Site name not known')
-
 if site == 'cendrosa':
     varname_obs_ws = 'ws_2'
     varname_obs_wd = 'wd_2'
@@ -241,8 +213,7 @@ obs = xr.open_dataset(datafolder + out_filename_obs)
 fig, ax = plt.subplots(2, 1, figsize=figsize)
 
 #%% PLOT OBS
-start_date = pd.Timestamp('20210721-0000')
-end_date = pd.Timestamp('20210723-0000')
+
 
 ws_obs = obs[varname_obs_ws]
 wd_obs = obs[varname_obs_wd]
@@ -260,32 +231,47 @@ if site == 'elsplans':
     ws_obs_filtered = ws_obs.where(
             (ws_obs-ws_obs.mean()) < np.nanpercentile(ws_obs.data, 96), 
              np.nan)
-    ax[0].plot(dati_arr, ws_obs_filtered, 
-             label='obs_'+varname_obs_ws,
-             color=colordict['obs'],
-             linewidth=1)
-    ax[1].plot(dati_arr, wd_obs, 
-             label='obs_'+varname_obs_wd,
-             color=colordict['obs'],
-             linewidth=1)
-    ax[0].set_xlim(start_date, end_date)
-    ax[1].set_xlim(start_date, end_date)
 else:
-    plot_wind_speed(ws_obs,
-                    start_date=start_date, end_date=end_date, fig=ax[0],
-    #                label='obs_'+ ws_obs.long_name[-6:],
-                    label='obs_'+ varname_obs_ws,
-                    color=colordict['obs'])
-    plot_wind_dir(wd_obs,
-                  start_date=start_date, end_date=end_date, fig=ax[1],
-    #              label='obs_'+ wd_obs.long_name[-6:],
-                    label='obs_'+ varname_obs_wd,
-                  color=colordict['obs'])
+    ws_obs_filtered = ws_obs  # no filtering
+    dati_arr = ws_obs.time
+    
+ax[0].plot(dati_arr, ws_obs_filtered, 
+         label='obs_' + varname_obs_ws,
+         color=colordict['obs'],
+         linewidth=1)
+ax[1].plot(dati_arr, wd_obs, 
+         label='obs_' + varname_obs_wd,
+         color=colordict['obs'],
+         linewidth=1)
+
+#start_date = pd.Timestamp('20210721-0000')
+#end_date = pd.Timestamp('20210723-0000')
+#ax[0].set_xlim(start_date, end_date)
+#ax[1].set_xlim(start_date, end_date)
+
+#plot_wind_speed(ws_obs,
+#                start_date=start_date, end_date=end_date, fig=ax[0],
+##                label='obs_'+ ws_obs.long_name[-6:],
+#                label='obs_'+ varname_obs_ws,
+#                color=colordict['obs'])
+#plot_wind_dir(wd_obs,
+#              start_date=start_date, end_date=end_date, fig=ax[1],
+##              label='obs_'+ wd_obs.long_name[-6:],
+#                label='obs_'+ varname_obs_wd,
+#              color=colordict['obs'])
+
+
 #plot_windrose(ws_obs, wd_obs, 
 #              start_date=start_date, end_date=end_date
 #              )
 
 #%% SIMU:
+
+diff = {}
+rmse = {}
+bias = {}
+obs_sorted = {}
+sim_sorted = {}
 
 varname_sim = 'UT,VT'
 
@@ -342,7 +328,22 @@ for model in simu_folders:
                   linestyle=styledict[model],
                   label=model +'_l'+str(ilevel), 
                   )
-
+    
+    if errors_computation:
+        ## Errors computation
+        obs_sorted[model] = []
+        sim_sorted[model] = []
+        for i, date in enumerate(dati_arr):
+            val = ws_obs_filtered.where(ws_obs.time == date, drop=True).data
+            if len(val) != 0:
+                sim_sorted[model].append(ws[i])
+                obs_sorted[model].append(float(val))
+        
+        diff[model] = np.array(sim_sorted[model]) - np.array(obs_sorted[model])
+        # compute bias and rmse, and keep values with 3 significant figures
+        bias[model] = float('%.3g' % np.nanmean(diff[model]))
+#        rmse[model] = np.sqrt(np.nanmean((np.array(obs_sorted[model]) - np.array(sim_sorted[model]))**2))
+        rmse[model] = float('%.3g' % np.sqrt(np.nanmean(diff[model]**2)))
 
     #fig = plt.figure()
 #    ax = plt.gca()
@@ -363,15 +364,32 @@ ax[1].legend(loc='lower right')
 ax[0].grid(visible=True, axis='both')
 ax[1].grid(visible=True, axis='both')
 
-days = [20, 21, 22]
+# add grey zones for night
+days = np.arange(1,30)
 for day in days:
-    for subplt in ax:
-        sunrise = pd.Timestamp('202107{0}-1930'.format(day))
-        sunset = pd.Timestamp('202107{0}-0500'.format(day+1))
-        subplt.axvspan(sunset, sunrise, ymin=0, ymax=1, 
-                   color = '0.9'  #'1'=white, '0'=black, '0.8'=light gray
-                   )
+    # zfill(2) allows to have figures with two digits
+    sunrise = pd.Timestamp('202107{0}-1930'.format(str(day).zfill(2)))
+    sunset = pd.Timestamp('202107{0}-0500'.format(str(day+1).zfill(2)))
+    ax[0].axvspan(sunset, sunrise, ymin=0, ymax=1, 
+               color = '0.9'  #'1'=white, '0'=black, '0.8'=light gray
+               )
+    ax[1].axvspan(sunset, sunrise, ymin=0, ymax=1, 
+               color = '0.9'  #'1'=white, '0'=black, '0.8'=light gray
+               )
 
+# add errors on graph
+if errors_computation:
+    ax[0].text(.01, .95, 'RMSE: {0}'.format(rmse), 
+             ha='left', va='top', 
+#             transform=ax.transAxes
+             )
+    ax[0].text(.01, .99, 'Bias: {0}'.format(bias), 
+             ha='left', va='top', 
+#             transform=ax.transAxes
+             )
+    plt.legend(loc='upper right')
+else:
+    plt.legend(loc='best')
 
 #%% Save figure
 

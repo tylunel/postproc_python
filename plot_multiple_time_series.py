@@ -23,7 +23,7 @@ import tools
 
 #######################%% Independant Parameters (TO FILL IN):
 
-site = 'elsplans'
+site = 'irta-corn'
 
 minute_data = False
 
@@ -44,33 +44,26 @@ linestylemap = ['-', '-', '--', '--', '-.', '-.', ':']
 #%% Dependant Parameters
 
 if site == 'cendrosa':
-    lat = 41.6925905
-    lon = 0.9285671
-    datafolder = \
-        '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
-    filename_prefix = \
-         'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
-    if minute_data:
-        datafolder = \
-            '/cnrm/surface/lunelt/data_LIAISE/cendrosa/1min/'
-        filename_prefix = \
-             'LIAISE_LA-CENDROSA_CNRM_MTO-1MIN_L2_'
-    in_filenames = filename_prefix + date
+#    varname_sim_suffix = 'P9'
+#    varname_sim_suffix = '_ISBA'
+    datafolder = '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
+    filename_prefix = 'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
+    in_filenames_obs = filename_prefix + date
 elif site == 'preixana':
-    lat = 41.59373 
-    lon = 1.07250
-    datafolder = \
-        '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
-    filename_prefix = \
-        'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
-    in_filenames = filename_prefix + date
+#    varname_sim_suffix = '_ISBA'
+    datafolder = '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
+    filename_prefix = 'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
+    in_filenames_obs = filename_prefix + date
 elif site == 'elsplans':
-    lat = 41.590111 
-    lon = 1.029363
-    datafolder = \
-        '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/30min/'
+    freq = '30'  # '5' min or '30'min
+    datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/{0}min/'.format(freq)
     filename_prefix = 'LIAISE_'
-    in_filenames = filename_prefix + date.replace("-", "")
+    date = date.replace('-', '')
+    in_filenames_obs = filename_prefix + date
+#    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
+elif site in ['irta-corn', 'irta-corn-real']:
+    datafolder = '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
+    in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
 else:
     raise ValueError('Site name not known')
 
@@ -80,7 +73,7 @@ else:
 out_filename = 'CAT_' + date + filename_prefix + '.nc'
         
 # Concatenate multiple days
-tools.concat_obs_files(datafolder, in_filenames, out_filename)
+tools.concat_obs_files(datafolder, in_filenames_obs, out_filename)
 
 # Load data:
 obs = xr.open_dataset(datafolder + out_filename)

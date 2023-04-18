@@ -4,6 +4,7 @@
 Creation : 07/01/2021
     
 """
+
 #import os
 import numpy as np
 import pandas as pd
@@ -12,14 +13,13 @@ import xarray as xr
 import tools
 import global_variables as gv
 
-
 ############# Independant Parameters (TO FILL IN):
     
 site = 'irta-corn'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'FC_mass'
+varname_obs = 'T_10cm_Avg'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -38,7 +38,7 @@ varname_obs = 'FC_mass'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim = 'SFCO2'
+varname_sim = 'TG9_ISBA'
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 #N.B.: layers depth for diff:
 #    [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6,
@@ -49,20 +49,23 @@ varname_sim = 'SFCO2'
 ilevel = 1   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
 add_irrig_time = False
-figsize = (7, 7) #small for presentation: (6,6), big: (15,9)
+figsize = (6.5, 6) #small for presentation: (6,6), big: (15,9)
 save_plot = True
-save_folder = './figures/time_series/{0}/domain1/'.format(site)
+save_folder = './figures/time_series/{0}/domain2/'.format(site)
 
 models = [
 #        'irr_d2_old', 
 #        'std_d2_old',
-        'irr_d2', 
-        'std_d2', 
+#        'irr_d2', 
+#        'std_d2', 
 #        'irr_d1', 
-#        'std_d1',
+        'std_d1',
+#        'irrlagrip30_d1',
+#        'lagrip100_d1',
          ]
 
-errors_computation = True
+errors_computation = False
+add_seb_residue = False
 ######################################################
 
 simu_folders = {key:gv.simu_folders[key] for key in models}
@@ -73,6 +76,8 @@ date = '2021-07'
 colordict = {'irr_d2': 'g', 
              'std_d2': 'r',
              'irr_d1': 'g--', 
+             'lagrip100_d1': 'b--',
+             'irrlagrip30_d1': 'y--',
              'std_d1': 'r--', 
              'irr_d2_old': 'g:', 
              'std_d2_old': 'r:', 
@@ -166,24 +171,25 @@ elif site == 'elsplans':
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
 #    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
-elif site == 'irta-corn':
+elif site in ['irta-corn', 'irta-corn-real']:
     datafolder = '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
-    in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN.nc'
-#    raise ValueError('Site name not known')
+    in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
+else:
+    raise ValueError('Site name not known')
     
 lat = gv.sites[site]['lat']
 lon = gv.sites[site]['lon']
 
 
 #%% OBS: Concatenate and plot data
-if site == 'irta-corn':
+if site in ['irta-corn', 'irta-corn-real']:
     out_filename_obs = in_filenames_obs
 #    dat_to_nc = 'uib'  #To create a new netcdf file
     dat_to_nc = None   #To keep existing netcdf file
 elif site == 'elsplans':
     out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
-#    dat_to_nc = 'ukmo'
-    dat_to_nc = None   #To keep existing netcdf file
+    dat_to_nc = 'ukmo'
+#    dat_to_nc = None   #To keep existing netcdf file
 else:
     out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
     dat_to_nc = None
@@ -200,13 +206,19 @@ if site in ['preixana', 'cendrosa']:
     obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
     # bowen ratio -  diff from bowen_ratio_1
     obs['bowen'] = obs['shf_1'] / obs['lhf_1']
-    for i in [2,3]:
+    obs['SEB_RESIDUE'] = obs['rn']-obs['lhf_1']-obs['shf_1']-obs['soil_heat_flux']
+    obs['EVAP_FRAC'] = obs['lhf_1'] / (obs['lhf_1'] + obs['shf_1'])
+    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
+    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
+    for i in [1,2,3]:
         obs['swi_{0}'.format(i)] = tools.calc_swi(
                 obs['soil_moisture_{0}'.format(i)],
                 gv.wilt_pt[site][i],
                 gv.field_capa[site][i],) 
-elif site == 'irta-corn':
-    for i in [2,3,4,5]:
+elif site in ['irta-corn', 'irta-corn-real']:
+    for i in [1,2,3,4,5]:
+        site = 'irta-corn'
         obs['swi_{0}'.format(i)] = tools.calc_swi(
                 obs['VWC_{0}0cm_Avg'.format(i)],
                 gv.wilt_pt[site][i],
@@ -215,6 +227,13 @@ elif site == 'irta-corn':
         obs['TA_1_1_1'], 
         obs['RH_1_1_1'],
         obs['PA']*1000)['hr']
+    obs['air_density'] = obs['PA']*1000/(287.05*(obs['TA_1_1_1']+273.15))
+    obs['U_STAR'] = np.sqrt(obs['TAU']/obs['air_density'])
+    obs['SEB_RESIDUE'] = obs['NETRAD']-obs['LE']-obs['H']-obs['G_plate_1_1_1']
+    obs['EVAP_FRAC'] = obs['LE'] / (obs['LE'] + obs['H'])
+    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
+    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
 elif site == 'elsplans':
     ## Flux calculations
     obs['H_2m'] = obs['WT_2m']*1200  # =Cp_air * rho_air
@@ -237,9 +256,11 @@ if varname_obs != '':
     if site == 'elsplans':
         ## create datetime array
     #    dati_arr = pd.date_range(start=obs.time.min().values, 
-        dati_arr = pd.date_range(pd.Timestamp('20210701-0000'),
-                                 periods=len(obs[varname_obs]), 
-                                 freq='{0}T'.format(freq))
+        dati_arr = pd.date_range(
+#                pd.Timestamp('20210701-0000'),
+                pd.Timestamp(obs[varname_obs]['time'][0].values),
+                periods=len(obs[varname_obs]), 
+                freq='{0}T'.format(freq))
         
         # filter outliers (turn into NaN)
         obs_var_filtered = obs[varname_obs].where(
@@ -257,9 +278,34 @@ if varname_obs != '':
         # apply correction for comparison with models
         obs_var_corr = ((obs[varname_obs]+offset_obs)*coeff_obs)
         # plot
-        obs_var_corr.plot(label='obs_'+varname_obs,
+        obs_var_corr.plot(label='obs',
+#                          label='obs_'+varname_obs,
                           color=colordict['obs'],
                           linewidth=1)
+        
+        if add_seb_residue:
+            
+            obs_uncertainty = obs['SEB_RESIDUE'].data
+            
+            if varname_obs in ['LE', 'lhf_1']:
+                obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*obs['EVAP_FRAC_FILTERED'].data
+            elif varname_obs in ['H', 'shf_1']:
+                obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*(1-obs['EVAP_FRAC_FILTERED'].data)
+            else:
+                raise ValueError('add_seb_residue available only on LE and H')
+                
+            obs_residue_corr.plot(
+                label='obs_residue_corr',
+                color=colordict['obs'],
+                linestyle=':',
+                linewidth=1)
+            
+            plt.fill_between(obs_var_corr.time, 
+                              obs_var_corr.data,
+                              obs_var_corr.data + obs_uncertainty.data,
+                              alpha=0.2, 
+                              facecolor=colordict['obs'],
+                              )
 
 
 #%% SIMU:
@@ -317,7 +363,8 @@ for model in simu_folders:
     plt.plot(dati_arr, var_1d, 
 #             color=colordict[model],
              colordict[model],
-             label='simu_{0}_{1}'.format(model, varname_sim),
+#             label='simu_{0}_{1}'.format(model, varname_sim),
+             label='simu_{0}'.format(model),
              )
 
     ax = plt.gca()
@@ -325,7 +372,7 @@ for model in simu_folders:
 #    ax.set_xlim([np.min(obs.time), np.max(obs.time)])
     ax.set_xlim([np.min(dati_arr), np.max(dati_arr)])
     
-    if errors_computation:
+    if errors_computation and varname_obs != '':
         ## Errors computation
         obs_sorted[model] = []
         sim_sorted[model] = []
@@ -336,8 +383,10 @@ for model in simu_folders:
                 obs_sorted[model].append(float(val))
         
         diff[model] = np.array(sim_sorted[model]) - np.array(obs_sorted[model])
-        bias[model] = np.nanmean(diff[model])
-        rmse[model] = np.sqrt(np.nanmean((np.array(obs_sorted[model]) - np.array(sim_sorted[model]))**2))
+        # compute bias and rmse, and keep values with 3 significant figures
+        bias[model] = float('%.3g' % np.nanmean(diff[model]))
+#        rmse[model] = np.sqrt(np.nanmean((np.array(obs_sorted[model]) - np.array(sim_sorted[model]))**2))
+        rmse[model] = float('%.3g' % np.sqrt(np.nanmean(diff[model]**2)))
     
 
 #%% Add irrigation datetime
@@ -377,10 +426,11 @@ ax = plt.gca()
 ax.set_ylabel(ylabel)
 
 # add grey zones for night
-days = np.arange(14,30)
+days = np.arange(1,30)
 for day in days:
-    sunrise = pd.Timestamp('202107{0}-1930'.format(day))
-    sunset = pd.Timestamp('202107{0}-0500'.format(day+1))
+    # zfill(2) allows to have figures with two digits
+    sunrise = pd.Timestamp('202107{0}-1930'.format(str(day).zfill(2)))
+    sunset = pd.Timestamp('202107{0}-0500'.format(str(day+1).zfill(2)))
     ax.axvspan(sunset, sunrise, ymin=0, ymax=1, 
                color = '0.9'  #'1'=white, '0'=black, '0.8'=light gray
                )
@@ -395,16 +445,31 @@ if secondary_axis == 'le':
 if secondary_axis == 'evap':
     axes = plt.gca()
     secax = axes.secondary_yaxis("right",                              
-        functions=(lambda le: le/2264000,
-                   lambda evap: evap*2264000))
-    secax.set_ylabel('evapotranspiration [kg/m²/s]')
+        functions=(lambda le: (le/2264000)*3600,
+                   lambda evap: (evap*2264000)/3600))
+    secax.set_ylabel('evapotranspiration [mm/h]')
+
+# add errors values on graph
+if errors_computation:
+    plt.text(.01, .95, 'RMSE: {0}'.format(rmse), 
+             ha='left', va='top', transform=ax.transAxes)
+    plt.text(.01, .99, 'Bias: {0}'.format(bias), 
+             ha='left', va='top', transform=ax.transAxes)
+    plt.legend(loc='upper right')
+else:
+    plt.legend(loc='best')
+
 
 plt.title(plot_title)
-plt.legend()
+#plt.title('test')
 plt.grid()
 
+# keep only hours
+plt.xticks(dati_arr[1:25:2], labels=np.arange(2,25,2))
+plt.tick_params(rotation=0)
 
 #%% Save figure
 
 if save_plot:
     tools.save_figure(plot_title, save_folder)
+    tools.save_figure(plot_title, '/d0/images/lunelt/figures/')

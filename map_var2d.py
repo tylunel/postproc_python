@@ -6,6 +6,7 @@ Creation : 07/01/2021
 Script for plotting simple colormaps 
 """
 
+import numpy as np
 import matplotlib.pyplot as plt
 import xarray as xr
 import tools
@@ -14,29 +15,29 @@ import pandas as pd
 import global_variables as gv
 
 ###############################################
-model = 'irr_d1'
+model = 'irr_d2'
 
 domain_nb = int(model[-1])
 
 wanted_date = '20210722-1500'
 
-color_map = 'jet'    # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
+color_map = 'RdYlGn'    # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
 
-var_name = 'MSLP'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
-vmin = 1005
-vmax = 1025
+var_name = 'ALBVISP9'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
+vmin = 0
+vmax = 0.4
 
 # level, only useful if var 3D
 ilevel = 30  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
 
-zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'urgell-paper'  #None for no zoom, 'liaise' or 'urgell'
 
-save_plot = False
+save_plot = True
 save_folder = './figures/scalar_maps/pgd/'
 #save_folder = './figures/scalar_maps/domain{0}/{1}/{2}/'.format(
 #        domain_nb, model, var_name)
 
-add_winds = True
+add_winds = False
 barb_size_option = 'standard'  # 'weak_winds' or 'standard'
 skip_barbs = 8 # 1/skip_barbs will be printed
 barb_length = 4.5
@@ -53,6 +54,11 @@ elif zoom_on == 'urgell':
     barb_length = 4.5
     lat_range = [41.1, 42.1]
     lon_range = [0.2, 1.7]
+elif zoom_on == 'urgell-paper':
+    skip_barbs = 6 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    lat_range = [41.37, 41.92]
+    lon_range = [0.6, 1.4]
 
 filename = tools.get_simu_filename(model, wanted_date)
 
@@ -86,6 +92,8 @@ elif domain_nb == 2:
 plt.contourf(var2d.longitude, var2d.latitude, var2d,
 #               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
                cmap=color_map,
+#               levels=np.linspace(vmin, vmax, (vmax-vmin)*4+1), # fixed colorbar
+#               extend = 'both',  #highlights the min and max in edges values
                vmin=vmin, vmax=vmax,
                levels=20
                )
@@ -181,31 +189,34 @@ plt.plot(france_SW.lon, france_SW.lat,
 
 #%% POINTS SITES
 
-points = ['cendrosa', 
-#          'elsplans', 'irta-corn',
-          'lleida', 'zaragoza']
+points = ['cendrosa',
+          'elsplans', 
+#          'irta-corn',
+          'lleida', 
+#          'zaragoza',
 #          'puig formigosa', 'tossal baltasana', 
 #          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
-#          'guara', 'caro', 'montserrat', 'joar',]
+#          'guara', 'caro', 'montserrat', 'joar',
+          ]
 
 sites = {key:gv.whole[key] for key in points}
 
 for site in sites:
     plt.scatter(sites[site]['lon'],
                 sites[site]['lat'],
-                color='k',
-                s=10        #size of markers
+                color='r',
+                s=12        #size of markers
                 )
-    if site == 'elsplans':
-        plt.text(sites[site]['lon']-0.1,
-                 sites[site]['lat']-0.03, 
-                 site, 
-                 fontsize=9)
-    else:
-        plt.text(sites[site]['lon']+0.01,
-                 sites[site]['lat']+0.01, 
-                 site, 
-                 fontsize=9)
+#    if site == 'elsplans':
+#        plt.text(sites[site]['lon']-0.1,
+#                 sites[site]['lat']-0.03, 
+#                 site, 
+#                 fontsize=9)
+#    else:
+    plt.text(sites[site]['lon']+0.01,
+             sites[site]['lat']+0.01, 
+             site.capitalize(), 
+             fontsize=14)
 
 
 #%% FIGURE OPTIONS and ZOOM
@@ -217,6 +228,8 @@ elif len(varNd.shape) == 3:
         wanted_date, var_name, model, var2d.level.round())
 
 plt.title(plot_title)
+plt.xlabel('longitude')
+plt.ylabel('latitude')
 
 if zoom_on is None:
     plt.ylim([var2d.latitude.min(), var2d.latitude.max()])

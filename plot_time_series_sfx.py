@@ -19,6 +19,8 @@ import global_variables as gv
 site = 'irta-corn'
 
 varname_sim = 'LE'
+VER_USER_sfx = 'JAR_NOIRRIG'
+        #IRRSWI10_SUP=IRR2, NOIRRIG=MASTER, IRRLAGRIP2=IRRLAGRIP30, others are normal
 varname_obs = 'LE'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
@@ -39,26 +41,28 @@ varname_obs = 'LE'
 #Q_1_1_1
 
 
-add_irrig_time = True
-figsize = (15, 9) #small for presentation: (6,6), big: (15,9)
+add_irrig_time = False
+figsize = (6, 6) #small for presentation: (6,6), big: (15,9)
 save_plot = True
-save_folder = './figures/time_series_sfx/{0}/domain1/'.format(site)
+save_folder = './figures/time_series_sfx/compa_forcings/{0}/'.format(site)
 
 models = [
-        'irr_d1', 
+#        'irr_d1', 
         'std_d1',
+#        'irrlagrip30_d1',
          ]
 
 models_idnumber = {'irr_d1': '2.15',
                    'std_d1': '1.15',
+                   'irrlagrip30_d1': '7.15',
                    }
 
-errors_computation = True
-
+errors_computation = False
+add_seb_residue = False
 add_fao56_et = False
 ######################################################
 
-simu_folders = {key:gv.simu_folders[key] for key in models}
+#simu_folders = {key:gv.simu_folders[key] for key in models}
 father_folder = gv.global_simu_folder
 
 date = '2021-07'
@@ -67,9 +71,13 @@ colordict = {'irr_d2': 'g',
              'std_d2': 'r',
              'irr_d1': 'g', 
              'std_d1': 'r',
+             'irrlagrip30_d1': 'y',
              'obs': 'k'}
 
-if site in ['cendrosa', 'irta-corn']:
+if site == 'irta-corn-real':
+    site = 'irta-corn'
+
+if site in ['cendrosa', 'irta-corn', 'elsplans']:
     folder = '/cnrm/surface/lunelt/NO_SAVE/sfx_out/{0}/'.format(site)
 else:
     raise KeyError('No simulation data for this site')
@@ -115,7 +123,7 @@ elif site == 'elsplans':
 #    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
 elif site == 'irta-corn':
     datafolder = '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
-    in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN.nc'
+    in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
 #    raise ValueError('Site name not known')
     
 lat = gv.sites[site]['lat']
@@ -155,11 +163,16 @@ if site in ['preixana', 'cendrosa']:
         obs['hur_2'], 
         obs['pa']*100,
         gnd_flx=obs['soil_heat_flux'])['LE_0']
-    for i in [2,3]:
+    for i in [1,2,3]:
         obs['swi_{0}'.format(i)] = tools.calc_swi(
                 obs['soil_moisture_{0}'.format(i)],
                 gv.wilt_pt[site][i],
                 gv.field_capa[site][i],) 
+    obs['SEB_RESIDUE'] = obs['rn']-obs['lhf_1']-obs['shf_1']-obs['soil_heat_flux']
+    obs['EVAP_FRAC'] = obs['lhf_1'] / (obs['lhf_1'] + obs['shf_1'])
+    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
+    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
 elif site == 'irta-corn':
     for i in [2,3,4,5]:
         obs['swi_{0}'.format(i)] = tools.calc_swi(
@@ -177,6 +190,13 @@ elif site == 'irta-corn':
         obs.RH_1_1_1, 
         obs.PA*1000,
         gnd_flx=obs.G_plate_1_1_1)['LE_0']
+    obs['air_density'] = obs['PA']*1000/(287.05*(obs['TA_1_1_1']+273.15))
+    obs['U_STAR'] = np.sqrt(obs['TAU']/obs['air_density'])
+    obs['SEB_RESIDUE'] = obs['NETRAD']-obs['LE']-obs['H']-obs['G_plate_1_1_1']
+    obs['EVAP_FRAC'] = obs['LE'] / (obs['LE'] + obs['H'])
+    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
+    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
 elif site == 'elsplans':
     ## Flux calculations
     obs['H_2m'] = obs['WT_2m']*1200  # =Cp_air * rho_air
@@ -202,31 +222,66 @@ if varname_obs != '':
         dati_arr = pd.date_range(pd.Timestamp('20210701-0000'),
                                  periods=len(obs[varname_obs]), 
                                  freq='{0}T'.format(freq))
+        obs['time']=dati_arr
+#        # filter outliers (turn into NaN)
+#        obs_var_filtered = obs[varname_obs].where(
+#                (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
+#                np.nan)
+#        obs_var_corr = (obs_var_filtered+offset_obs)*coeff_obs
+##        plt.plot(dati_arr, obs_var_corr, 
+##                 label='obs_'+varname_obs,
+##                 color=colordict['obs'])
+#        obs_var_corr.plot(
+##            label='obs_'+varname_obs,
+#            label='obs',
+#            color=colordict['obs'],
+#            linewidth=1)
+#    else:
+    # filter outliers (turn into NaN)
+    obs_var_filtered = obs[varname_obs].where(
+            (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
+            np.nan)
+    # apply correction for comparison with models
+#    obs_var_corr = ((obs[varname_obs] + offset_obs)*coeff_obs)
+    obs_var_corr = ((obs_var_filtered + offset_obs)*coeff_obs)
+    
+    # plot
+    obs_var_corr.plot(
+#            label='obs_'+varname_obs,
+        label='obs',
+        color=colordict['obs'],
+        linewidth=1)
         
-        # filter outliers (turn into NaN)
-        obs_var_filtered = obs[varname_obs].where(
-                (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
-                np.nan)
-        obs_var_corr = (obs_var_filtered+offset_obs)*coeff_obs
-        plt.plot(dati_arr, obs_var_corr, 
-                 label='obs_'+varname_obs,
-                 color=colordict['obs'])
-    else:
-        # filter outliers (turn into NaN)
-        obs_var_filtered = obs[varname_obs].where(
-                (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
-                np.nan)
-        # apply correction for comparison with models
-        obs_var_corr = ((obs[varname_obs]+offset_obs)*coeff_obs)
-        # plot
-        obs_var_corr.plot(label='obs_'+varname_obs,
-                          color=colordict['obs'],
-                          linewidth=1)
+    if site != 'elsplans':
         if add_fao56_et:
-            obs['LE_0_FAO56'].plot(label='obs_LE_0',
-                                   color=colordict['obs'],
-                                   linestyle=':',
-                                   linewidth=1)
+            pass  #LE_0 from FAO has no sense hourly, plot horizontal bar at best
+#            obs['LE_0_FAO56'].plot(label='obs_LE_0',
+#                                   color=colordict['obs'],
+#                                   linestyle=':',
+#                                   linewidth=1)
+        if add_seb_residue:
+            
+            obs_uncertainty = obs['SEB_RESIDUE'].data
+            
+            if varname_obs in ['LE', 'lhf_1']:
+                obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*obs['EVAP_FRAC_FILTERED'].data
+            elif varname_obs in ['H', 'shf_1']:
+                obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*(1-obs['EVAP_FRAC_FILTERED'].data)
+            else:
+                raise ValueError('add_seb_residue available only on LE and H')
+                
+            obs_residue_corr.plot(
+                label='obs_residue_corr',
+                color=colordict['obs'],
+                linestyle=':',
+                linewidth=1)
+            
+            plt.fill_between(obs_var_corr.time, 
+                              obs_var_corr.data,
+                              obs_var_corr.data + obs_uncertainty.data,
+                              alpha=0.2, 
+                              facecolor=colordict['obs'],
+                              )
 
 
 #%% SIMU:
@@ -235,13 +290,16 @@ rmse = {}
 bias = {}
 obs_sorted = {}
 sim_sorted = {}
+fao_mean_LE_0 = {}
 
 #fig = plt.figure(figsize=figsize)
 
 
-for model in simu_folders:
-
-    datafolder = folder + 'forcing_{0}/'.format(models_idnumber[model])
+for model in models:
+    datafolder = folder + 'forcing_{0}_{1}/{2}/'.format(
+                                   models_idnumber[model],
+                                   VER_USER_sfx[:3],
+                                   VER_USER_sfx[4:])
     
     ds = xr.open_dataset(datafolder + 'SURF_ATM_DIAGNOSTICS.OUT.nc')
     
@@ -251,7 +309,8 @@ for model in simu_folders:
     elif varname_sim == 'BOWEN':
         ds['BOWEN'] = tools.calc_bowen_sim(ds)
     elif add_fao56_et:
-        ds_forcing = xr.open_dataset(datafolder + 'FORCING_{0}_{1}.nc'.format(
+        runfolder = '/home/lunelt/Logiciels/SFX/open_SURFEX_V8_1/MY_RUN/LaCendrosa/'
+        ds_forcing = xr.open_dataset(runfolder + 'FORCING_{0}_{1}.nc'.format(
                 site, models_idnumber[model]))
         ds_forcing['REHU'] = tools.rel_humidity(
                 ds_forcing['Qair'], 
@@ -259,13 +318,16 @@ for model in simu_folders:
                 ds_forcing['PSurf'],
                 )
         ds['LE_0_ISBA'] = tools.calc_fao56_et_0(
-            ds['RN'], 
-            ds_forcing['Tair'], 
-            ds_forcing['Wind'], 
-            ds_forcing['REHU'], 
-            ds_forcing['PSurf'],
-            gnd_flx= ds['GFLUX'])['LE_0'].dropna(dim='time', how='any')
-        LE_0 =  ds['LE_0_ISBA'].dropna(dim='time', how='any').squeeze()
+            ds['RN'].mean()*3600*24/1e6, 
+            (ds_forcing['Tair'].max()+ds_forcing['Tair'].min())/2 - 273.15, 
+            ds_forcing['Wind'].mean(), 
+            ds_forcing['REHU'].mean()*100, 
+            ds_forcing['PSurf'].mean(),
+            gnd_flx= ds['GFLUX'].mean())['LE_0']
+#            .dropna(dim='time', how='any')
+        LE_0 =  ds['LE_0_ISBA']
+#            .dropna(dim='time', how='any').squeeze()
+        fao_mean_LE_0[model] = float(LE_0)
     
     # keep variable of interested
     var_1d = ds[varname_sim].squeeze()
@@ -284,15 +346,17 @@ for model in simu_folders:
              color=colordict[model],
 #             colordict[model],
              linestyle='--',
-             label='simu_{0}_{1}'.format(model, varname_sim),
+#             label='simu_{0}_{1}'.format(model, varname_sim),
+             label='simu_{0}'.format(model),
              )
     if add_fao56_et:
-        plt.plot(LE_0.time, LE_0, 
-             color=colordict[model],
-#             colordict[model],
-             linestyle=':',
-             label='simu_{0}_LE_0_FAO56'.format(model),
-             )
+        pass
+#            plt.plot(LE_0.time, LE_0, 
+#                 color=colordict[model],
+#    #             colordict[model],
+#                 linestyle=':',
+#                 label='simu_{0}_LE_0_FAO56'.format(model),
+#                 )
 
     ax = plt.gca()
     
@@ -316,8 +380,10 @@ for model in simu_folders:
                 print('Weird: val = {0} at date {1}'.format(val, date))
         
         diff[model] = np.array(sim_sorted[model]) - np.array(obs_sorted[model])
-        bias[model] = np.nanmean(diff[model])
-        rmse[model] = np.sqrt(np.nanmean((np.array(obs_sorted[model]) - np.array(sim_sorted[model]))**2))
+        # compute bias and rmse, and keep values with 3 significant figures
+        bias[model] = float('%.3g' % np.nanmean(diff[model]))
+#        rmse[model] = np.sqrt(np.nanmean((np.array(obs_sorted[model]) - np.array(sim_sorted[model]))**2))
+        rmse[model] = float('%.3g' % np.sqrt(np.nanmean(diff[model]**2)))
     
 
 #%% Add irrigation datetime
@@ -376,9 +442,9 @@ if secondary_axis == 'le':
 if secondary_axis == 'evap':
     axes = plt.gca()
     secax = axes.secondary_yaxis("right",                              
-        functions=(lambda le: le/2264000,
-                   lambda evap: evap*2264000))
-    secax.set_ylabel('evapotranspiration [kg/m²/s]')
+        functions=(lambda le: (le/2264000)*3600,
+                   lambda evap: evap*2264000/3600))
+    secax.set_ylabel('evapotranspiration [mm/h]')
 
 # add errors values on graph
 if errors_computation:
@@ -392,7 +458,21 @@ else:
 
 plt.title(plot_title)
 plt.grid()
+plt.tick_params(rotation=30)
 
+### print inline the interesting results for forcing comparison
+#mean = {}
+#for model in models:
+#    mean[model] = np.array(sim_sorted[model]).mean()
+#diff = (mean['std_d1']-mean['irr_d1'])
+#diff_percent = diff / mean['irr_d1']
+#
+#print(VER_USER_sfx)
+#print('Mean LE: ', mean)
+#print(diff_percent)
+#print('FAO mean LE_0: ', fao_mean_LE_0)
+#FAO_diff_percent = (fao_mean_LE_0['std_d1']-fao_mean_LE_0['irr_d1']) / mean['irr_d1']
+#print(FAO_diff_percent)
 
 #%% Save figure
 

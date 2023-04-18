@@ -15,60 +15,63 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import tools
 import xarray as xr
+import global_variables as gv
 
 
 ##########################################
-dati = pd.Timestamp('2021-07-24 01:00')
-     #first day of simulation
+wanted_date = '20210715-1500'
 
 site = 'cendrosa'
 
 varname_obs_prefix = 'soil_moisture'   #options are: soil_moisture, soil_temp
 
-simu_folders = {
-#        'irr': '2.13_irr_2021_22-27', 
-#        'std': '1.11_ECOII_2021_ecmwf_22-27'
-         }
+models = [
+#        'irr_d2_old', 
+#        'std_d2_old',
+#        'irr_d2', 
+#        'std_d2', 
+#        'irr_d1', 
+#        'std_d1',
+        'lagrip100_d1',
+         ]
 
-start_day = 21      #first day in simu
-plot_title = 'Ground profile at {0} on {1}'.format(site, dati)
+plot_title = 'Ground profile at {0} on {1}'.format(site, wanted_date)
 save_plot = False
 save_folder = './figures/soil_profiles/{0}/'.format(site)
+
+wilt_and_fc = True
+root_frac = True
+
 ########################################
+
+simu_folders = {key:gv.simu_folders[key] for key in models}
+father_folder = gv.global_simu_folder
+
+
+colordict = {'irr_d2': 'g', 
+             'std_d2': 'r',
+             'irr_d1': 'g--', 
+             'lagrip100_d1': 'b--',
+             'std_d1': 'r--', 
+             'irr_d2_old': 'g:', 
+             'std_d2_old': 'r:', 
+             'obs': 'k'}
+
+lat = gv.sites[site]['lat']
+lon = gv.sites[site]['lon']
 
 #Automatic variable assignation:
 if varname_obs_prefix == 'soil_moisture':
-    xlabel = 'humidité du sol [m3/m3]'
+    xlabel = 'volumetric soil moisture [m3/m3]'
     constant_obs = 0
     sfx_letter = 'W'    #in surfex, corresponding variables will start by this
 elif varname_obs_prefix == 'soil_temp':
-    xlabel = 'temperature du sol [K]'
+    xlabel = 'soil temperature [K]'
     constant_obs = 273.15
     sfx_letter = 'T'
 else:
     raise ValueError('Unknown value')
     
-if site == 'cendrosa':
-    lat = 41.6925905
-    lon = 0.9285671
-    alt = 'undef'
-    datafolder = \
-        '/cnrm/surface/lunelt/data_LIAISE/cendrosa_50m/30min/'
-    filename_prefix = \
-            'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
-    filename_date = '2021-07-{0}_V2.nc'.format(dati.day)
-elif site == 'preixana':
-    lat = 41.59373 
-    lon = 1.07250 
-#    lon = 1.15000 
-    alt = 'undef'
-    datafolder = \
-        '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
-    filename_prefix = \
-        'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
-    filename_date = '2021-07-{0}_V2.nc'.format(dati.day)
-else:
-    raise ValueError('Site name not known')
 
 #%% OBS dataset
 
@@ -95,43 +98,79 @@ if cisba == 'dif':      # if CISBA = DIF in simu
 
 val_simu = {}
 
-#for key in simu_folders:
-key = 'PREP_400M_SEG21.001'
-datafolder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
-filename = './PREP_400M_SEG21.001.nc'
-ds = xr.open_dataset(
-#        datafolder + filename
-    filename
-    )
-
-index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
-
-val_simu[key] = []
-for level in range(1, nb_layer+1):
-    var2d = ds['{0}G{1}P9'.format(sfx_letter, str(level))]
-    val = var2d.data[index_lat, index_lon]
-    if val == 999:
-        val = np.NaN
-    val_simu[key].append(val)
+for model in simu_folders:
+    datafolder = father_folder + simu_folders[model]
+    filename = tools.get_simu_filename(model, wanted_date)
+    
+    # load dataset, default datetime okay as pgd vars are all the same along time
+    ds = xr.open_dataset(filename)
+    
+    index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
+    
+    val_simu[model] = []
+    val_simu[model+'_wilt'] = []
+    val_simu[model+'_fc'] = []
+    val_simu[model+'_root'] = []
+    
+    for level in range(1, nb_layer+1):
+        var2d = ds['{0}G{1}P9'.format(sfx_letter, level)]
+        val = var2d.data[index_lat, index_lon]
+        if val == 999:
+            val = np.NaN
+        val_simu[model].append(val)
+        #get wilting pt and field capa
+        if wilt_and_fc:
+            wilt_pt = ds['WWILT{0}'.format(level)][index_lat, index_lon]
+            val_simu[model+'_wilt'].append(float(wilt_pt))
+            fc = ds['WFC{0}'.format(level)][index_lat, index_lon]
+            val_simu[model+'_fc'].append(float(fc))
+        if root_frac:
+            root_frac = ds['ROOTFRAC{0}P9'.format(level)][index_lat, index_lon]
+            if root_frac == 999:
+                root_frac = np.nan
+            val_simu[model+'_root'].append(float(root_frac))
+            
     
 
 #%% PLOTs
 
-#fig = plt.figure()
-ax = plt.gca()
-
-#ax.set_xlim([0, 0.5])
-#ax.set_ylim([-0.5, 0])
-
-ax.set_xlabel(xlabel)
-ax.set_ylabel('depth (m)')
+fig = plt.figure()
 
 plt.title(plot_title)
 
-for key in val_simu:
-    plt.plot(val_simu[key], sim_depth, marker='+', 
-             label='simu_{0}_d{1}h{2}'.format(key, dati.day, dati.hour))
+for model in simu_folders:
+    plt.plot(val_simu[model], sim_depth, marker='+', 
+             label='simu_{0}_{1}'.format(model, wanted_date))
+    if wilt_and_fc:
+#        plt.vlines()
+        plt.plot(val_simu[model+'_wilt'], sim_depth, marker='+', 
+                 label='simu_{0}_wilt'.format(model))
+        plt.plot(val_simu[model+'_fc'], sim_depth, marker='+', 
+                 label='simu_{0}_fc'.format(model))
+    if root_frac:
+        #cumulated root frac
+        plt.plot(val_simu[model+'_root'], sim_depth, marker='+',
+                 linestyle='--',
+                 color='k',
+                 label='simu_{0}_root'.format(model))
+        
+        #density of roots
+#        cumulated_root_frac = [0] + val_simu['lagrip100_d1_root']
+#        sim_layer_thickness = [0] + sim_depth
+#        
+#        root_distribution = np.diff(cumulated_root_frac)  # in %/layer
+#        normalized_root_density = root_distribution/(np.diff(sim_layer_thickness)*(-1))  # in %/cm
+#        plt.plot(normalized_root_density, sim_depth, marker='+', 
+#                 label='simu_{0}_root_density'.format(model))
 
+
+ax = plt.gca()
+
+#ax.set_xlim([0, 0.5])
+ax.set_ylim([-2, 0.5])
+
+ax.set_xlabel(xlabel)
+ax.set_ylabel('depth (m)')
 plt.legend()
 plt.grid()
 #plt.show()
