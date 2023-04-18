@@ -17,6 +17,7 @@ from metpy.units import units
 import metpy.calc as mcalc
 import re
 import global_variables as gv
+from datetime import datetime as dt
 #from difflib import SequenceMatcher
 
 
@@ -325,11 +326,39 @@ def open_uib_seb(QC_threshold = 9, create_netcdf=True):
         df2 = pd.DataFrame(data_list, columns=headers_list)
     
     # merge the 2 dataframe into one
-    df3 = pd.merge(df1, df2, on='TIMESTAMP')
+#    df3 = pd.merge(df1, df2, on='TIMESTAMP')
+    df3 = pd.merge(df1, df2, how='outer', on='TIMESTAMP')
+    df3 = df3.sort_values(by='TIMESTAMP')
+    
     # convert TIMESTAMP strings into pd.Timestamp
-    df3['time'] = [pd.Timestamp(dati) for dati in df3['TIMESTAMP']]
+    res = []
+    for dati in df3['TIMESTAMP']:
+        year = int(dati[0:4])
+        month = int(dati[5:7])
+        day = int(dati[8:10])
+        hour = int(dati[11:13])
+        minu = int(dati[14:15])
+        if hour == 24:
+            # convert T24:00 to d+1T00:00 / BUT PB if join 'outer' (repeat twice the midnight timestamp)
+#            date = pd.Timestamp(year, month, day)
+#            unixdate = (date - pd.Timestamp("1970-01-01")) // pd.Timedelta('1s')
+#            unixtime = unixdate + hour*3600 + minu*60
+#            res.append(pd.to_datetime(unixtime, unit='s'))
+            pass
+        else:
+            res.append(pd.Timestamp(dati))
+#        except:
+#            print(dati)
+#            res.append(res[-1])
+    
+#    df3['time'] = [pd.Timestamp(dati) for dati in df3['TIMESTAMP']]
+#    df3['time'] = [dt.strptime(dati, '%Y-%m-%d %H:%M:%S') for dati in df3['TIMESTAMP']]
+    df3['time'] = pd.Series(res)
+    
+    
     # set time as index
     df4 = df3.set_index('time')
+    df4 = df4.sort_values(by='time')
     
     df5_list = [pd.to_numeric(df4[key], errors='coerce') for key in df4.columns]
     df5 = pd.concat(df5_list, axis=1)
@@ -344,6 +373,7 @@ def open_uib_seb(QC_threshold = 9, create_netcdf=True):
     ds = ds.drop_vars(['LWmV_Avg\n', 'batt_volt_Min\n'])
     
     # Remove bad quality data - filter with Quality Check:
+#    if QC_threshold < 9:
     ds['LE'] = ds['LE'].where(ds['LE_QC'] <= QC_threshold)
     ds['H'] = ds['H'].where(ds['H_QC'] <= QC_threshold)
     ds['FC_mass'] = ds['FC_mass'].where(ds['FC_QC'] <= QC_threshold)
@@ -515,6 +545,8 @@ def get_simu_filename(model, date='20210722-1200', file_suffix='dg'):
         'irr_d1': 'LIAIS.1.SEG{0}.{1}{2}.nc'.format(
                 day_nb, hour_nb_3f, file_suffix),
         'std_d1': 'LIAIS.1.SEG{0}.{1}{2}.nc'.format(
+                day_nb, hour_nb_3f, file_suffix),
+        'lagrip100_d1': 'LIAIS.1.SEG{0}.{1}{2}.nc'.format(
                 day_nb, hour_nb_3f, file_suffix)
         }
     
@@ -1213,20 +1245,29 @@ def check_folder_filenames():
             print(fn + ' is OK')
 
 
-def get_surface_type(site, domain_nb, ds=None, translate_patch = True, 
+def get_surface_type(site, domain_nb, model='irr',
+                     ds=None, translate_patch = True, 
                      nb_patch=12):
     """
     Returns the type and characteristics of surface for a given site
     
     """
-    
+
     if ds is None:
-        if domain_nb==2:
-            ds = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/' + \
-                             '2.13_irr_d1d2_21-24/LIAIS.2.SEG22.012dg.nc')
-        elif domain_nb==1:
-            ds = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/' + \
-                             '2.13_irr_d1d2_21-24/LIAIS.1.SEG22.012dg.nc')
+        if model == 'irr':
+            if domain_nb==2:
+                ds = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/' + \
+                                 '2.13_irr_d1d2_21-24/LIAIS.2.SEG22.012dg.nc')
+            elif domain_nb==1:
+                ds = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/' + \
+                                 '2.13_irr_d1d2_21-24/LIAIS.1.SEG22.012dg.nc')
+        if model == 'std':
+            if domain_nb==2:
+                ds = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/' + \
+                                 '1.11_std_d1d2_21-24/LIAIS.2.SEG22.012dg.nc')
+            elif domain_nb==1:
+                ds = xr.open_dataset('/cnrm/surface/lunelt/NO_SAVE/nc_out/' + \
+                                 '1.11_std_d1d2_21-24/LIAIS.1.SEG22.012.nc')
     
     # get indices of sites in ds
     index_lat, index_lon = indices_of_lat_lon(ds, 
@@ -1316,8 +1357,10 @@ def calc_u_star_sim(ds):
         xarray.DataArray
     
     """
-    fmu_md = ds['FMU_ISBA']
-    fmv_md = ds['FMV_ISBA']
+#    fmu_md = ds['FMU_ISBA']
+#    fmv_md = ds['FMV_ISBA']
+    fmu_md = ds['FMU']
+    fmv_md = ds['FMV']
 
     tau = np.sqrt(fmu_md**2 + fmv_md**2)
     u_star = np.sqrt(tau)
@@ -1370,17 +1413,17 @@ def calc_ws_wd(ut, vt):
     return ws, wd
 
 
-def calc_fao56_et_0(rn, t_2m, ws_2m, rh_2m, p_atm, gnd_flx=0, gamma=66):
+def calc_fao56_et_0(rn_MJ, t_2m, ws_2m, rh_2m, p_atm, gnd_flx=0, gamma=66):
     """
-    Compute wind speed and wind direction from ut and vt
+    Compute wind speed and wind direction from ut and vt.
     
-    rn = Net irradiance (W m−2)
-    t_2m = Air temperature at 2m (°C)
+    rn = Net irradiance (MJ.m-2.day-1). /!\ cannot be used on 1 hour, equation is not linear
+    t_2m = mean daily air temperature at 2m (°C), defined as (Tmax+Tmin)/2
     ws_2m = Wind speed at 2m height (m−1)
     rh_2m = relative humidity (%)
     p_atm = atmospheric pressure (Pa)
     
-    gnd_flx = Ground heat flux (W m−2), usually taken as zero
+    gnd_flx = Ground heat flux (MJ.m-2.day-1), usually taken as zero on a day
     gamma = Psychrometric constant (γ ≈ 66 Pa K−1)
     
     Returns:
@@ -1393,7 +1436,7 @@ def calc_fao56_et_0(rn, t_2m, ws_2m, rh_2m, p_atm, gnd_flx=0, gamma=66):
     delta = p_sat(t_2m+0.5) - p_sat(t_2m-0.5)
     
     # Convert W.m-2 to MJ.m-2.day-1
-    rn_MJ = rn * 3600*24 / 1e6
+#    rn_MJ = rn * 3600*24 / 1e6
     gnd_flx_MJ = gnd_flx * 3600*24 / 1e6
     
     # potential ET [mm.day-1] (exactly as in FAO 56)
@@ -1402,10 +1445,10 @@ def calc_fao56_et_0(rn, t_2m, ws_2m, rh_2m, p_atm, gnd_flx=0, gamma=66):
            (delta + gamma*(1 + 0.34*ws_2m))
     
     # potential ET [mm.s-1 = kg/m2/s]
-    ET_0 = ET_0 / (24*3600)
+#    ET_0 = ET_0 / (24*3600)
     
-    # equivalent Latent Heat Flux [W/m2] (2257 J/g is latent heat of vaporization)
-    LE_0 = 1000 * 2257 * ET_0
+    # equivalent mean Latent Heat Flux [W/m2] (2450 J/g is latent heat of vaporization at 20°C according to FAO guide)
+    LE_0 = 1000 * 2450 * ET_0 /(3600*24)
     
     return {'ET_0': ET_0, 'LE_0': LE_0}
     
@@ -1419,13 +1462,6 @@ def wind_direction_mean(data):
     
     
 if __name__ == '__main__':
-    rn = 500
-    t_2m = 15
-    ws_2m = 2
-    rh_2m = 60
-    p_atm = 100000
-    res = psy_ta_rh(t_2m, rh_2m, p_atm)
-    vap_pres_deficit = res['p_vap_sat'] - res['p_vap']
-    delta = p_sat(t_2m+0.5) - p_sat(t_2m-0.5)
-    et0 = calc_fao56_et_0(rn, t_2m, ws_2m, rh_2m, p_atm)
+#    open_uib_seb(QC_threshold=10)
+    res= get_surface_type('irta-corn-real', 2, model='std')
     
