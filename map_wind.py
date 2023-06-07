@@ -8,7 +8,7 @@ Creation : 07/01/2021
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-import metpy.calc as mpcalc
+import metpy.calc as mcalc
 from metpy.units import units
 import pandas as pd 
 import tools
@@ -16,90 +16,123 @@ import shapefile
 import global_variables as gv
 
 #########################################"""
-model = 'std_d2'
-ilevel = 3  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
-skip_barbs = 2 # 1/skip_barbs will be printed   #OVERWRITTEN if zoom_on != None
-barb_length = 4  #OVERWRITTEN if zoom_on != None
-# Datetime
-wanted_date = '20210722-1200'
+model = 'irr_d1'
+ilevel = 5  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
 
-domain_nb = int(model[-1])
+var = 'PGF'  #'WIND' or 'PGF'
+
+# Datetime
+wanted_date = '20210729-2300'
+
+#domain_nb = int(model[-1])
+domain_nb = 1
 
 speed_plane = 'horiz'  # 'horiz': horizontal normal wind, 'verti' for W
 
-if speed_plane == 'verti':
-    vmax_cbar = 5
-    vmin_cbar = -vmax_cbar
-    cmap_name = 'seismic'
-elif speed_plane == 'horiz':
-    vmax_cbar = 15
-    vmin_cbar = 0
-    cmap_name = 'BuPu'
+if var == 'WIND':
+    if speed_plane == 'verti':
+        vmax_cbar = 1
+        vmin_cbar = -vmax_cbar
+        cmap_name = 'seismic'
+    elif speed_plane == 'horiz':
+        vmax_cbar = 15
+        vmin_cbar = 0
+        cmap_name = 'BuPu'
+elif var == 'PGF':
+    if speed_plane == 'verti':
+        vmax_cbar = 0.1
+        vmin_cbar = -vmax_cbar
+        cmap_name = 'seismic'
+    elif speed_plane == 'horiz':
+        vmax_cbar = 0.0003
+        vmin_cbar = 0
+        cmap_name = 'BuPu'
 
-zoom_on = 'urgell'  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'urgell'  #None for no zoom, 'urgell', 'liaise'
 
 save_plot = True
-save_folder = './figures/winds/{0}/{1}/{2}/zoom_{3}/'.format(
-        model, speed_plane, ilevel, zoom_on)
-figsize = (9,7)
+save_folder = f'./figures/winds/{model}/{speed_plane}/{ilevel}/zoom_{zoom_on}/'
 
-barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
+if var == 'WIND':
+    barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
+elif var == 'PGF':
+    barb_size_option = 'pgf_weak'
 
 
 ###########################################
 
-barb_size_increments = {
-        'weak_winds': {'half':1, 'full':2, 'flag':10},
-        'standard': {'half':2.57, 'full':5.14, 'flag':25.7},
-        'm_per_s': {'half':5, 'full':10, 'flag':50},
-        }
-barb_size_description = {
-        'weak_winds': "barb increments: half=1m/s, full=2m/s, flag=10m/s",
-        'standard': "barb increments: half=5kt=2.57m/s, full=10kt=5.14m/s, flag=50kt=25.7m/s",
-        'm_per_s': "barb increments: half=5m/s, full=10m/s, flag=50m/s",
-        'm_per_s_detailled': "barb increments: dot < 2.5m/s < half barb < 7.5m/s < full < 12.5m/s, flag=50kt=25.7m/s",
-        }
+barb_size_increments = gv.barb_size_increments
+barb_size_description = gv.barb_size_description
 
-if zoom_on == 'liaise':
-    skip_barbs = 3 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [41.45, 41.8]
-    lon_range = [0.7, 1.2]
-elif zoom_on == 'urgell':
-    skip_barbs = 1 # 1/skip_barbs will be printed  def is 10
-    barb_length = 4.5  # def is 4.5
-    lat_range = [41.1, 42.1]
-    lon_range = [0.2, 1.7]
+prop = gv.zoom_domain_prop[zoom_on]
+skip_barbs = prop['skip_barbs']
+barb_length = prop['barb_length']
+lat_range = prop['lat_range']
+lon_range = prop['lon_range']
+figsize = prop['figsize']
+# OR: #locals().update(gv.zoom_domain_prop[zoom_on])
 
-filename = tools.get_simu_filename(model, wanted_date)
+filename = tools.get_simu_filename(model, wanted_date,
+                                   global_simu_folder=gv.global_simu_folder)
+#filename = tools.get_simu_filename(
+#        model, 
+#        wanted_date,
+#        file_suffix='',  #'dg' or ''
+#        out_suffix='.OUT',
+#        global_simu_folder=gv.global_temp_folder)
 
 # load file, dataset and set parameters
 ds1 = xr.open_dataset(filename,
                       decode_coords="coordinates",
                       )
 
-if domain_nb == 1:
-    fig1 = plt.figure(figsize=figsize)
-elif domain_nb == 2:
-    fig1 = plt.figure(figsize=figsize)
+# other calculations
+
+ds1['DIV'] = mcalc.divergence(ds1['UT'], ds1['VT'])
+
+ds1['DENS'] = mcalc.density(
+    ds1['PRES']*units.hectopascal,
+    ds1['TEMP']*units.celsius, 
+    ds1['RVT']*units.gram/units.gram)
+
+ds1['MSLP3D'] = tools.calc_mslp(ds1, ilevel=None)
+
+ds1['PRES_GRAD_W'], ds1['PRES_GRAD_U'], ds1['PRES_GRAD_V'] = \
+    mcalc.gradient(ds1['MSLP3D'].squeeze()[:, :, :], axes=['level', 'ni', 'nj'])
+ds1['PGF_U'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_U']
+ds1['PGF_V'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_V']
+ds1['PGF_W'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_W']
+ds1['PGF'], ds1['PGF_dir'] = tools.calc_ws_wd(ds1['PGF_U'], ds1['PGF_V'])
+
+
+fig1 = plt.figure(figsize=figsize)
 
 #%% WIND SPEED COLORMAP
 if speed_plane == 'horiz':
-    ws = mpcalc.wind_speed(ds1['UT'] * units.meter_per_second, 
-                           ds1['VT'] * units.meter_per_second)
+    if var == 'WIND':
+        ws = mcalc.wind_speed(ds1['UT'] * units.meter_per_second, 
+                              ds1['VT'] * units.meter_per_second)
+    elif var == 'PGF':
+        ws, _ = tools.calc_ws_wd(ds1['PGF_U'], ds1['PGF_V'])
 #wd = mpcalc.wind_direction(ds1['UT'] * units.meter_per_second, 
 #                           ds1['VT'] * units.meter_per_second)
 elif speed_plane == 'verti':
-    ws = ds1['WT']
+    if var == 'WIND':
+        ws = ds1['WT']
+    elif var == 'PGF':
+        ws = ds1['PGF_W']
 
 # keep only layer of interest
-ws_layer = ws[0, ilevel, :, :]
+ws_layer = ws.squeeze()[ilevel, :, :]
+#ws_layer = ds1['ZS'].squeeze()[:, :]
 
 plt.pcolormesh(ds1.longitude, ds1.latitude, ws_layer,
 #               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
                cmap=cmap_name,
                vmin=vmin_cbar,
-               vmax=vmax_cbar               
+               vmax=vmax_cbar
+#               vmin=0,
+#               vmax=1000  
               )
 cbar = plt.colorbar()
 cbar.set_label('Wind speed [m/s]')
@@ -107,8 +140,12 @@ cbar.set_label('Wind speed [m/s]')
 
 X = ds1.longitude
 Y = ds1.latitude
-U = ds1.UT[0, ilevel, :,:]
-V = ds1.VT[0, ilevel, :,:]
+if var == 'WIND':
+    U = ds1['UT'].squeeze()[ilevel, :,:]
+    V = ds1['VT'].squeeze()[ilevel, :,:]
+elif var == 'PGF':
+    U = ds1['PGF_U'].squeeze()[ilevel, :,:]
+    V = ds1['PGF_V'].squeeze()[ilevel, :,:]
 
 plt.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs], 
           U[::skip_barbs, ::skip_barbs], V[::skip_barbs, ::skip_barbs],
@@ -131,12 +168,12 @@ plt.annotate(barb_size_description[barb_size_option],
 
 if domain_nb == 2:
     pgd = xr.open_dataset(
-        '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
-        'PGD_400M_CovCor_v26_ivars.nc')
+        gv.global_simu_folder + \
+        '2.01_pgds_irr/PGD_400M_CovCor_v26_ivars.nc')
 elif domain_nb == 1:
     pgd = xr.open_dataset(
-        '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
-        'PGD_2KM_CovCor_v26_ivars.nc')
+        gv.global_simu_folder + \
+        '2.01_pgds_irr/PGD_2KM_CovCor_v26_ivars.nc')
 
 #Irrigation borders
 #from scipy.ndimage.filters import gaussian_filter
@@ -181,8 +218,14 @@ plt.plot(france_SW.lon, france_SW.lat,
 #%% POINTS SITES
 
 points = ['cendrosa', 'elsplans', 
-#          'puig formigosa', 'tossal baltasana', 
-#          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
+#          'irta-corn', 
+#          'border_irrig_noirr',
+#          'puig formigosa', 
+          'tossal_baltasana', 
+          'tossal_gros', 
+#          'tossal_torretes', 
+          'coll_lilla',
+#'moncayo', 'tres mojones', 
 #          'guara', 'caro', 'montserrat', 'joar',
           ]
 sites = {key:gv.whole[key] for key in points}
@@ -229,12 +272,13 @@ if speed_plane == 'verti':
 plt.xlabel('longitude')
 plt.ylabel('latitude')
         
-plot_title = '{4} winds at {0}m on {1} for simu {2} zoomed on {3}'.format(
+plot_title = '{4} {5} at {0}m on {1} for simu {2} zoomed on {3}'.format(
         np.round(level_agl, decimals=1), 
         pd.to_datetime(ws_layer.time.values).strftime('%Y-%m-%dT%H%M'),
         model,
         zoom_on,
-        speed_plane)
+        speed_plane,
+        var)
 plt.title(plot_title)
 
 

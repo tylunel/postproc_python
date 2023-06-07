@@ -8,6 +8,11 @@ Gathers global variables for use in scripts.
 
 #global_simu_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
 global_simu_folder = '/media/lunelt/7C2EB31F2EB2D0FE/Tanguy/'
+global_temp_folder = '/home/lunelt/Data/temp_outputs/'
+
+#global_data_liaise = '/cnrm/surface/lunelt/data_LIAISE/'
+global_data_liaise = '/home/lunelt/Data/data_LIAISE/'
+
 
 simu_folders = {
         'irr_d2': '2.17_irr_d2_21-22_bugfix/',
@@ -17,7 +22,8 @@ simu_folders = {
         'irr_d1': '2.15_irr_d1_15-30/',
         'std_d1': '1.15_std_d1_15-30/',
 #        'lagrip100_d1': '5.15_lagrip100_d1_15-30/',  #param had issue
-        'irrlagrip30_d1': '7.15_irrlagrip30_d1_15-30/'
+        'irrlagrip30_d1': '7.20_irrlagrip30_d1_1-30/',
+        'temp': '',
          }
 
 format_filename_simu = {            
@@ -37,13 +43,19 @@ sites = {'cendrosa': {'lat': 41.6925905,
                       'lon': 1.07250},
          'elsplans': {'lat': 41.590111,
                       'lon': 1.029363},
+#         'irta-corn': {
+##                       'lon': 0.805333},  # wrong position, but 100% irr zone in model irr_d1
+#                         'lat': 41.5922,  # wrong position, but 100% irr zone in model
          'irta-corn': {
-#                       'lon': 0.805333},  # wrong position, but 100% irr zone in model
-                         'lat': 41.5922,  # wrong position, but 100% irr zone in model
-                         'lon': 0.8585},  # wrong position, but 100% irr zone in model
-         'irta-corn-real': {
-                     'lat': 41.619079, # real position, but is not in 100% irr zone in model
-                     'lon': 0.875333,} # real position, but is not in 100% irr zone in model
+                     'lat': 41.619079, # real position, but is not in 100% irr zone in model irr_d1
+                     'lon': 0.875333,}, # real position, but is not in 100% irr zone in model
+         'verdu': {'lat': 41.595278,
+                   'lon': 1.127222},
+         'ivars-lake': {'lat': 41.682018,
+                      'lon': 0.946951},
+         'border_irrig_noirr': {'lat': 41.611898,
+                                'lon': 0.999708},
+                        
         }
          
 towns = {'arbeca': {'lat': 41.54236,
@@ -60,19 +72,49 @@ towns = {'arbeca': {'lat': 41.54236,
                     'lon': 0.6257},
          'zaragoza': {'lat': 41.6547,
                       'lon': -0.8784},
+         'torredembarra': {'lat': 41.145077,
+                           'lon': 1.4073809},
+         'ponts': {'lat': 41.91506,
+                   'lon': 1.1851},
+         'balaguer': {'lat': 41.788303,
+                      'lon': 0.81065},
+         'borges_blanques': {'lat': 41.520106,
+                             'lon': 0.86827},
+         'tornabous': {'lat': 41.70097,
+                       'lon': 1.054512},
+         'claravalls': {'lat': 41.70237,
+                        'lon': 1.12543},
+         'bellpuig': {'lat': 41.62501,
+                      'lon': 1.01115},
+         'els_omellons': {'lat': 41.50174,
+                          'lon': 0.95993},
+         'sant_marti': {'lat': 41.55991,
+                        'lon': 1.05504},
+         'fonolleres': {'lat': 41.65754,
+                        'lon': 1.20261},
+         'villobi': {'lat': 41.43266,
+                     'lon': 1.04594},
+         'conesa': {'lat': 41.51996,
+                'lon': 1.29126},
+         'calafell': {'lat': 41.19005,
+                      'lon': 1.57218},
+         'santa_coloma': {'lat': 41.53407,
+                          'lon': 1.38441},
+#        '__': {'lat': ,
+#                'lon': },
               }
 
-mountains = {'tossal baltasana': {'lat': 41.3275,
+mountains = {'tossal_baltasana': {'lat': 41.3275,
                                   'lon': 1.00336},
-             'puig formigosa': {'lat': 41.42179,
+             'puig_formigosa': {'lat': 41.42179,
                                 'lon': 1.44177},
-             'tossal gros': {'lat': 41.47857,
+             'tossal_gros': {'lat': 41.47857,
                              'lon': 1.12942},
-             'tossal torretes': {'lat': 42.02244,
+             'tossal_torretes': {'lat': 42.02244,
                                  'lon': 0.93800},
              'moncayo': {'lat': 41.7871,
                          'lon': -1.8396},
-             'tres mojones': {'lat': 40.75887,
+             'tres_mojones': {'lat': 40.75887,
                               'lon': -0.63924},
              'guara': {'lat': 42.28865,
                        'lon': -0.22992},
@@ -85,7 +127,11 @@ mountains = {'tossal baltasana': {'lat': 41.3275,
              'coll_lilla': {'lat': 41.34072,
                             'lon': 1.22014},
              'puig_pelat': {'lat': 41.26571,
-                            'lon': 1.05502},           
+                            'lon': 1.05502},
+            'tossal_purunyo': {'lat': 41.30137,
+                               'lon': 1.17129},
+           'puig_cabdells': {'lat': 41.40621,
+                              'lon': 1.31137},
             }
 
 whole = {**sites, **towns, **mountains}
@@ -102,6 +148,76 @@ wilt_pt = {'cendrosa': {1: 0.141, 2: 0.07, 3: 0.125} ,  # To determine via plot 
            'elsplans': {10: 0.03, 20: 0.11, 30: 0.24, 40: 0.17},  #estimated on july only (pb)
            }   
 
+barb_size_increments = {
+        'very_weak_winds': {'half':0.5, 'full':1, 'flag':5},
+        'weak_winds': {'half':1, 'full':2, 'flag':10},
+        'standard': {'half':2.57, 'full':5.14, 'flag':25.7},
+        'm_per_s': {'half':5, 'full':10, 'flag':50},
+        'pgf': {'half':0.00005, 'full':0.0001, 'flag':0.0005},  # in m/s²
+        'pgf_weak': {'half':0.000025, 'full':0.00005, 'flag':0.00025},  # in m/s²
+        }
+
+barb_size_description = {
+        'very_weak_winds': "barb increments: half=0.5m/s, full=1m/s, flag=5m/s",
+        'weak_winds': "barb increments: half=1m/s, full=2m/s, flag=10m/s",
+        'standard': "barb increments: half=5kt=2.57m/s, full=10kt=5.14m/s, flag=50kt=25.7m/s",
+        'm_per_s': "barb increments: half=5m/s, full=10m/s, flag=50m/s",
+        'm_per_s_detailled': "barb increments: dot < 2.5m/s < half barb < 7.5m/s < full < 12.5m/s, flag=50kt=25.7m/s",
+        'pgf': "barb increments: half=0.05mm/s², full=0.1mm/s², flag=0.5mm/s²",
+        'pgf_weak': "barb increments: half=0.025mm/s², full=0.05mm/s², flag=0.25mm/s²",
+        }
+
+zoom_domain_prop = {
+    'liaise': {
+        'skip_barbs': 1, # 1/skip_barbs will be printed
+        'barb_length': 5.5,
+        'lat_range': [41.45, 41.8],
+        'lon_range': [0.7, 1.2],
+        'figsize': (9,7),
+        },
+   'urgell': {
+        'skip_barbs': 2, # 1/skip_barbs will be printed
+        'barb_length': 4.5,
+        'lat_range': [41.1, 42.1],
+        'lon_range': [0.2, 1.7],
+        'figsize': (11,9),
+        },
+    'urgell-paper': {
+        'skip_barbs': 6,
+        'barb_length': 4.5,
+        'lat_range': [41.37, 41.92],
+        'lon_range': [0.6, 1.4],
+        'figsize': (9,7),
+        },
+    'd2': {
+        'skip_barbs': 3,
+        'barb_length': 4.5,
+        'lat_range': [40.8106, 42.4328],
+        'lon_range': [-0.6666, 1.9364],
+        'figsize': (11,9),
+        },
+    'marinada': {
+        'skip_barbs': 2,
+        'barb_length': 4.5,
+        'lat_range': [41.1, 42],
+        'lon_range': [0.7, 1.6],
+        'figsize': (9,9),
+        },
+    None: {
+        'skip_barbs': 8,
+        'barb_length': 4.5,
+        'lat_range': [None, None],
+        'lon_range': [None, None],
+        'figsize': (13,7),
+        },
+#    skip_barbs = 8 # 1/skip_barbs will be printed
+#    barb_length = 4.5
+#    if domain_nb == 1:
+#        figsize=(13,7)
+#    elif domain_nb == 2:
+#        figsize=(10,7)
+    }
+
 layers_depth_DIF = [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6, 
                     -0.8, -1, -1.5, -2, -3, -5, -8, -12]
 #version dict:
@@ -109,95 +225,23 @@ layers_depth_DIF = [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6,
 # 7: -0.8, 8: -1, 9: -1.5, 10: -2, 11: -3, 12: -5, 13: -8, 14: -12}
 
 layers_height_MNH_LIAISE = [
-    -2.0,  #0
-     2.0,  #1
-     6.12, #2
-     10.487200000000001,  #3
-     15.116432000000001,
-     20.02341792,
-     25.2248229952,
-     30.738312374912,
-     36.582611117406714,
-     42.77756778445112,
-     49.344221851518185,
-     56.30487516260928,
-     63.683167672365826,
-     71.50415773270778,
-     79.79440719667025,
-     88.58207162847049,
-     97.89699592617873,
-     107.77081568174947,
-     118.23706462265446,
-     129.33128850001373,
-     141.09116581001456,
-     153.55663575861547,
-     166.7700339041324,
-     180.77623593838035,
-     195.62281009468316,
-     211.36017870036414,
-     228.041789422386,
-     245.72429678772914,
-     264.4677545949929,
-     284.3358198706925,
-     305.39596906293406,
-     327.7197272067101,
-     351.3829108391127,
-     376.4658854894594,
-     403.05383861882694,
-     431.23706893595653,
-     461.1112930721139,
-     492.77797065644074,
-     526.3446488958272,
-     561.9253278295769,
-     599.6408474993514,
-     639.6192983493125,
-     681.9964562502714,
-     726.9162436252877,
-     774.5312182428052,
-     825.0030913373735,
-     878.5032768176161,
-     935.2134734266731,
-     995.3262818322735,
-     1059.04585874221,
-     1126.5886102667428,
-     1198.1839268827475,
-     1274.0749624957125,
-     1354.5194602454553,
-     1439.790627860183,
-     1530.1780655317941,
-     1625.9887494637019,
-     1727.5480744315244,
-     1835.200958897416,
-     1949.3130164312613,
-     2070.2717974171373,
-     2198.488105262166,
-     2336.706529937629,
-     2488.0557049572617,
-     2653.7830516037593,
-     2835.2544961816748,
-     3033.965727994492,
-     3251.554526829527,
-     3489.81426155389,
-     3750.7086710770677,
-     4036.3880495049475,
-     4349.206968883476,
-     4691.7436856029635,
-     5066.821390410803,
-     5477.531477175387,
-     5927.259022182607,
-     6419.710683965512,
-     6958.945253617792,
-     7549.40710738704,
-     8195.962837264366,
-     8903.941361480038,
-     9679.177845496199,
-     10528.061795493893,
-     11457.589720741371,
-     12475.422798887357,
-     13589.950019457214,
-     14810.357325981207,
-     16118.231311968688,
-     17458.231311968688,
-     18798.231311968688
+    -2.0,   2.0,    6.12,   10.48,  15.11,      # 0, 1, 2, 3, 4
+     20.02, 25.22,  30.74,  36.58,  42.78,      # 5, 6, 7, 8, 9
+     49.34, 56.30,  63.68,  71.50,  79.79,      # 10, 11, 12, 13, 14,
+     88.58, 97.89,  107.77, 118.23, 129.33,     # 15, 16, 17, 18, 19,
+     141.09,    153.55,     166.77,     180.77,     195.62,  # 20,21,22,23,24,
+     211.36,    228.04,     245.72,     264.46,     284.33,  # 25,26,27,28,29,
+     305.39,    327.72,     351.38,     376.46,     403.05,  # 30, ...,
+     431.23,    461.11,     492.77,     526.34,     561.92,  # 35, ...,
+     599.64,    639.61,     681.99,     726.91,     774.53,  # 40, ...,
+     825.00,    878.50,     935.21,     995.32,     1059.04,
+     1126.58,   1198.18,    1274.07,    1354.52,    1439.79, # 50, ...,
+     1530.18,   1625.99,    1727.55,    1835.20,    1949.31,
+     2070.27,   2198.48,    2336.70,    2488.05,    2653.78, # 60, ...,
+     2835.25,   3033.96,    3251.55,    3489.81,    3750.70,
+     4036.38,   4349.20,    4691.74,    5066.82,    5477.53, # 70, ...,
+     5927.25,   6419.71,    6958.94,    7549.40,    8195.96,
+     8903.94,   9679.17,    10528.06,   11457.58,   12475.42,# 80, ...,
+     13589.95,  14810.35,   16118.23,   17458.23,   18798.23
      ]
 

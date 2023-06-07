@@ -14,22 +14,25 @@ import pandas as pd
 import global_variables as gv
 
 ###############################################
-models = ['irr_d1', 'irr_d2']
-folder_res = 'diff_d1_d2'
-domain_nb = 2
+models = ['irr_d1', 'std_d1']
+folder_res = 'diff_irr_std'
+domain_nb = 1
 
-wanted_date = '20210722-0100'
+wanted_date = '20210729-2300'
 
-color_map = 'seismic'    # jet, seismic, BuPu, coolwarm, viridis, RdYlGn, 
+color_map = 'coolwarm'    # jet, seismic, BuPu, coolwarm, viridis, RdYlGn, 
 
-var_name = 'WT'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
-vmin=-0.5
-vmax=0.5
+var_name = 'THT'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
+vmin=-5
+vmax=-vmin
 
 # level, only useful if var 3D
-ilevel = 2  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m
+ilevel = 10  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m
 
 zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
+
+add_winds = True
+barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
 save_plot = True
 save_folder = './figures/scalar_maps/{0}/{1}/'.format(folder_res, var_name)
@@ -37,15 +40,36 @@ save_folder = './figures/scalar_maps/{0}/{1}/'.format(folder_res, var_name)
 ##############################################
 
 if zoom_on == 'liaise':
-    skip_barbs = 3 # 1/skip_barbs will be printed
+    skip_barbs = 2 # 1/skip_barbs will be printed
     barb_length = 5.5
     lat_range = [41.45, 41.8]
     lon_range = [0.7, 1.2]
+    figsize=(9,7)
 elif zoom_on == 'urgell':
-    skip_barbs = 6 # 1/skip_barbs will be printed
+    skip_barbs = 2 # 1/skip_barbs will be printed
     barb_length = 4.5
     lat_range = [41.1, 42.1]
     lon_range = [0.2, 1.7]
+    figsize=(11,9)
+elif zoom_on == 'urgell-paper':
+    skip_barbs = 6 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    lat_range = [41.37, 41.92]
+    lon_range = [0.6, 1.4]
+    figsize=(9,7)
+elif zoom_on == 'd2':
+    skip_barbs = 3 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    lat_range = [40.8106, 42.4328]
+    lon_range = [-0.6666, 1.9364]
+    figsize=(11,9)
+elif zoom_on == None:
+    skip_barbs = 8 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    if domain_nb == 1:
+        figsize=(13,7)
+    elif domain_nb == 2:
+        figsize=(10,7)
 
 #%% LOAD DATA
 
@@ -54,7 +78,8 @@ var_layer = {}
 for model in models:
 #for var_name in ['T2M_ISBA', 'TEMP']:
 #    model='irr_d2'
-    filename = tools.get_simu_filename(model, wanted_date)
+    filename = tools.get_simu_filename(model, wanted_date,
+                                       )
     
     # load dataset, default datetime okay as pgd vars are all the same along time
     ds1 = xr.open_dataset(filename)
@@ -82,13 +107,11 @@ var_diff = var_layer[models[0]] - var_layer[models[1]]
 #var_diff = var_layer['T2M_ISBA'] - var_layer['TEMP'] -273.15
 
 #%% PLOT OF VAR_NAME
-if domain_nb == 1:
-    fig1 = plt.figure(figsize=(13,7))
-elif domain_nb == 2:
-    fig1 = plt.figure(figsize=(10,7))
 
-#plt.contourf(var_diff.longitude, var_diff.latitude, var_diff,
-plt.pcolormesh(var_diff.longitude, var_diff.latitude, var_diff,
+fig1 = plt.figure(figsize=figsize)
+
+plt.contourf(var_diff.longitude, var_diff.latitude, var_diff,
+#plt.pcolormesh(var_diff.longitude, var_diff.latitude, var_diff,
 #               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
                cmap=color_map,
                vmin=vmin, vmax=vmax,
@@ -99,16 +122,46 @@ cbar = plt.colorbar(boundaries=[vmin, vmax])
 cbar.set_label(var2d.long_name)
 #cbar.set_clim(vmin, vmax)
 
+
+
+#%% WIND BARBS
+
+barb_size_increments = gv.barb_size_increments
+barb_size_description = gv.barb_size_description
+
+
+if add_winds:
+    X = ds1.longitude
+    Y = ds1.latitude
+    U = ds1.UT[0, ilevel, :,:]
+    V = ds1.VT[0, ilevel, :,:]
+    
+    plt.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs], 
+              U[::skip_barbs, ::skip_barbs], V[::skip_barbs, ::skip_barbs],
+              pivot='middle',
+              length=barb_length,     #length of barbs
+              sizes={
+    #                 'spacing':1, 
+    #                 'height':1,
+    #                 'width':1,
+                     'emptybarb':0.01},
+              barb_increments=barb_size_increments[barb_size_option]
+              )
+    plt.annotate(barb_size_description[barb_size_option],
+                 xy=(0.1, 0.05),
+                 xycoords='subfigure fraction'
+                 )
+
 #%% IRRIGATED, SEA and COUNTRIES BORDERS
 
 if domain_nb == 2:
     pgd = xr.open_dataset(
-        '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
-        'PGD_400M_CovCor_v26_ivars.nc')
+        gv.global_simu_folder + \
+        '2.01_pgds_irr/PGD_400M_CovCor_v26_ivars.nc')
 elif domain_nb == 1:
     pgd = xr.open_dataset(
-        '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
-        'PGD_2KM_CovCor_v26_ivars.nc')
+        gv.global_simu_folder + \
+        '2.01_pgds_irr/PGD_2KM_CovCor_v26_ivars.nc')
 
 #Irrigation borders
 #from scipy.ndimage.filters import gaussian_filter
@@ -176,13 +229,13 @@ for site in sites:
 
 
 #%% FIGURE OPTIONS and ZOOM
-if len(varNd.shape) == 2:
-    plot_title = '{0} - {1} diff between {2} and {3}'.format(
-        wanted_date, var_name, models[0], models[1])
-elif len(varNd.shape) == 3:
-    plot_title = '{0} - {1} diff between {2} and {3} at {4}m'.format(
-#        wanted_date, var_name, models[0], models[1], var2d.level.round())
-        wanted_date, var_name, models[0], models[1], var2d.level_w.round())
+#if len(varNd.shape) == 2:
+plot_title = '{0} - {1} diff between {2} and {3}'.format(
+    wanted_date, var_name, models[0], models[1])
+#elif len(varNd.shape) == 3:
+#    plot_title = '{0} - {1} diff between {2} and {3} at {4}m'.format(
+##        wanted_date, var_name, models[0], models[1], var2d.level.round())
+#        wanted_date, var_name, models[0], models[1], var2d.level_w.round())
 
 plt.title(plot_title)
 

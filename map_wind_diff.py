@@ -20,7 +20,7 @@ import shapefile
 
 
 #########################################"""
-simu_folders = ['irr_d2', 'std_d2']
+simu_folders = ['irr_d1', 'std_d1']
 folder_res = 'diff_std_irr/d2'
 domain_nb = int(simu_folders[0][-1])
 
@@ -28,7 +28,7 @@ ilevel = 10  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:6
 skip_barbs = 10 # 1/skip_barbs will be printed
 barb_length = 4.5
 # Datetime
-wanted_date = '20210722-1200'
+wanted_date = '20210729-2300'
 
 speed_plane = 'horiz'  # 'horiz': horizontal 'normal' wind, 'verti' for W
 
@@ -37,50 +37,53 @@ if speed_plane == 'verti':
     vmin_cbar = -vmax_cbar
     cmap_name = 'seismic'
 elif speed_plane == 'horiz':
-    vmax_cbar = 20
-    vmin_cbar = -20
+    vmax_cbar = 10
+    vmin_cbar = -10
     cmap_name = 'seismic'
 
-zoom_on = 'liaise'  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'd2'  #None for no zoom, 'liaise' or 'urgell'
 
-if zoom_on == 'liaise':
-    skip_barbs = 3 # 1/skip_barbs will be printed
-    barb_length = 5.5
-    lat_range = [41.45, 41.8]
-    lon_range = [0.7, 1.2]
-elif zoom_on == 'urgell':
-    skip_barbs = 6 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [41.1, 42.1]
-    lon_range = [0.2, 1.7]
-    
-figsize = (11,9)
 save_plot = True
 save_folder = './figures/winds/{0}/{1}/'.format(folder_res, ilevel)
 
-barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
+barb_size_option = 'very_weak_winds'  # 'weak_winds' or 'standard'
 
 
 ###########################################
+if zoom_on == 'liaise':
+    skip_barbs = 2 # 1/skip_barbs will be printed
+    barb_length = 5.5
+    lat_range = [41.45, 41.8]
+    lon_range = [0.7, 1.2]
+    figsize=(9,7)
+elif zoom_on == 'urgell':
+    skip_barbs = 2 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    lat_range = [41.1, 42.1]
+    lon_range = [0.2, 1.7]
+    figsize=(11,9)
+elif zoom_on == 'urgell-paper':
+    skip_barbs = 6 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    lat_range = [41.37, 41.92]
+    lon_range = [0.6, 1.4]
+    figsize=(9,7)
+elif zoom_on == 'd2':
+    skip_barbs = 3 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    lat_range = [40.8106, 42.4328]
+    lon_range = [-0.6666, 1.9364]
+    figsize=(11,9)
+elif zoom_on == None:
+    skip_barbs = 8 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    if domain_nb == 1:
+        figsize=(13,7)
+    elif domain_nb == 2:
+        figsize=(10,7)
 
-barb_size_increments = {
-        'very_weak_winds': {'half':0.5, 'full':1, 'flag':5},
-        'weak_winds': {'half':1.94, 'full':3.88, 'flag':19.4},
-        'standard': {'half':5, 'full':10, 'flag':50},
-        }
-barb_size_description = {
-        'very_weak_winds': "barb increments: half=_m/s=0.5kt, full=_m/s=1kt, flag=_m/s=5kt",
-        'weak_winds': "barb increments: half=1m/s=1.94kt, full=2m/s=3.88kt, flag=10m/s=19.4kt",
-        'standard': "barb increments: half=5kt=2.57m/s, full=10kt=5.14m/s, flag=50kt=25.7m/s",
-        }
-
-#simu_folders = {
-#        'irr': '2.13_irr_2021_22-27/', 
-#        'std': '1.11_ECOII_2021_ecmwf_22-27/'
-#         }
-
-
-#father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
+barb_size_increments = gv.barb_size_increments
+barb_size_description = gv.barb_size_description
 
     
 #%%
@@ -92,7 +95,8 @@ wt_layer = {}
 for model in simu_folders:
 #    datafolder = father_folder + simu_folders[model]
     
-    filename = tools.get_simu_filename(model, wanted_date)
+    filename = tools.get_simu_filename(model, wanted_date,
+                                   global_simu_folder=gv.global_simu_folder)
     
     # load file, dataset and set parameters
     ds1 = xr.open_dataset(filename,
@@ -195,12 +199,12 @@ plt.annotate(barb_size_description[barb_size_option],
 
 if domain_nb == 2:
     pgd = xr.open_dataset(
-        '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
-        'PGD_400M_CovCor_v26_ivars.nc')
+        gv.global_simu_folder + \
+        '2.01_pgds_irr/PGD_400M_CovCor_v26_ivars.nc')
 elif domain_nb == 1:
     pgd = xr.open_dataset(
-        '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
-        'PGD_2KM_CovCor_v26_ivars.nc')
+        gv.global_simu_folder + \
+        '2.01_pgds_irr/PGD_2KM_CovCor_v26_ivars.nc')
 
 #Irrigation borders
 #from scipy.ndimage.filters import gaussian_filter
@@ -245,7 +249,9 @@ plt.plot(france_SW.lon, france_SW.lat,
 #%% POINTS SITES
 points = ['cendrosa', 'elsplans', 
 #          'puig formigosa', 'tossal baltasana', 
-#          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
+          'tossal gros', 
+'tossal torretes', 
+#'moncayo', 'tres mojones', 
 #          'guara', 'caro', 'montserrat', 'joar',
           ]
 sites = {key:gv.whole[key] for key in points}

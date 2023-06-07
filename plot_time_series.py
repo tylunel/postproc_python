@@ -15,11 +15,11 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'cendrosa'
+site = 'elsplans'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'hus_2'
+varname_obs = 'SWDN_rad'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -28,7 +28,7 @@ varname_obs = 'hus_2'
 # -- For UKMO (elsplans):
 # TEMP, RHO (=hus), WQ, WT, UTOT, DIR, ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
 # RAIN, PRES, ST01 (=soil_temp), SWDN ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
-# ST01, ST04, ST10, ST17, ST35_subsoil with number being depth in cm
+# ST01, ST04, ST10, ST17, ST35_subsoil with number being depth in cm, SFLXA=soil flux
 # PR10, PR20, PR40_subsoil (=vol water content), SWI10, SWI40_subsoil
 # LE_2m(_WPL) and H_2m also available by calculation
 # -- For IRTA-corn
@@ -38,7 +38,7 @@ varname_obs = 'hus_2'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim = 'Q2M_ISBA'
+varname_sim_list = ['SWD']
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 #N.B.: layers depth for diff:
 #    [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6,
@@ -48,10 +48,10 @@ varname_sim = 'Q2M_ISBA'
 #If varname_sim is 3D:
 ilevel = 1   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
-add_irrig_time = False
-figsize = (6.5, 6) #small for presentation: (6,6), big: (15,9)
+add_irrig_time = True
+figsize = (15, 9) #small for presentation: (6,6), big: (15,9)
 save_plot = True
-save_folder = './figures/time_series/{0}/domain2/'.format(site)
+save_folder = './figures/time_series/{0}/domain1/'.format(site)
 
 models = [
 #        'irr_d2_old', 
@@ -59,12 +59,12 @@ models = [
 #        'irr_d2', 
 #        'std_d2', 
         'irr_d1', 
-        'std_d1',
+#        'std_d1',
 #        'irrlagrip30_d1',
 #        'lagrip100_d1',
          ]
 
-errors_computation = False
+errors_computation = True
 add_seb_residue = False
 ######################################################
 
@@ -146,33 +146,24 @@ else:
     pass
 #    raise ValueError("nom de variable d'observation inconnue"), 'WQ_2m', 'WQ_10m'
 
-if varname_sim in ['U_STAR',]:
-    varname_sim_preproc = 'FMU_ISBA,FMV_ISBA'
-elif varname_sim in ['BOWEN',]:
-    varname_sim_preproc = 'H_ISBA,LE_ISBA'
-else:
-    varname_sim_preproc = varname_sim
 
 if site == 'cendrosa':
-#    varname_sim_suffix = 'P9'
-#    varname_sim_suffix = '_ISBA'
-    datafolder = '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
+    datafolder = gv.global_data_liaise + '/cendrosa/30min/'
     filename_prefix = 'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'preixana':
-#    varname_sim_suffix = '_ISBA'
-    datafolder = '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
+    datafolder = gv.global_data_liaise + '/preixana/30min/'
     filename_prefix = 'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'elsplans':
     freq = '30'  # '5' min or '30'min
-    datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/{0}min/'.format(freq)
+    datafolder = gv.global_data_liaise + '/elsplans/mat_50m/{0}min/'.format(freq)
     filename_prefix = 'LIAISE_'
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
 #    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
 elif site in ['irta-corn', 'irta-corn-real']:
-    datafolder = '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
+    datafolder = gv.global_data_liaise + '/irta-corn/seb/'
     in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
 else:
     raise ValueError('Site name not known')
@@ -238,11 +229,21 @@ elif site == 'elsplans':
     ## Flux calculations
     obs['H_2m'] = obs['WT_2m']*1200  # =Cp_air * rho_air
     obs['LE_2m'] = obs['WQ_2m']*2264000  # =L_eau
-    
+    obs['NETRAD'] = obs['SWDN_rad'] + obs['LWDN_rad'] - obs['SWUP_rad'] - obs['LWUP_rad']
+    obs['SEB_RESIDUE'] = obs['NETRAD']-obs['LE_2m']-obs['H_2m']-obs['SFLXA_subsoil']
+    obs['SEB_RESIDUE'] = obs['SEB_RESIDUE'].where(
+                obs['SEB_RESIDUE']>-1000, 
+                np.nan)
+    obs['EVAP_FRAC'] = obs['LE_2m'] / (obs['LE_2m'] + obs['H_2m'])
+    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
+    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
     ## Webb Pearman Leuning correction
     obs['BOWEN_2m'] = obs['H_2m'] / obs['LE_2m']
     #obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.016)*(0+(1.2/300)*obs['WT_2m'])  #eq (25)
     obs['LE_2m_WPL'] = obs['LE_2m']*(1.010)*(1+0.051*obs['BOWEN_2m'])  #eq (47) of paper WPL
+    
+    
     for i in [10,20,30,40]:
         obs['SWI{0}_subsoil'.format(i)] = tools.calc_swi(
                 obs['PR{0}_subsoil'.format(i)]*0.01,  #conversion from % to decimal
@@ -262,10 +263,17 @@ if varname_obs != '':
                 periods=len(obs[varname_obs]), 
                 freq='{0}T'.format(freq))
         
+#        dati_arr = pd.date_range(pd.Timestamp('20210701-0000'),
+#                                 periods=len(obs[varname_obs]), 
+#                                 freq='{0}T'.format(freq))
+        obs['time']=dati_arr
+        
         # filter outliers (turn into NaN)
         obs_var_filtered = obs[varname_obs].where(
                 (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
                 np.nan)
+        if varname_obs == 'RAIN_subsoil':
+            obs_var_filtered = obs[varname_obs]
         obs_var_corr = (obs_var_filtered+offset_obs)*coeff_obs
         plt.plot(dati_arr, obs_var_corr, 
                  label='obs_'+varname_obs,
@@ -283,29 +291,29 @@ if varname_obs != '':
                           color=colordict['obs'],
                           linewidth=1)
         
-        if add_seb_residue:
+    if add_seb_residue:
+        
+        obs_uncertainty = obs['SEB_RESIDUE'].data
+        
+        if varname_obs in ['LE', 'LE_2m', 'lhf_1']:
+            obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*obs['EVAP_FRAC_FILTERED'].data
+        elif varname_obs in ['H', 'H_2m', 'shf_1']:
+            obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*(1-obs['EVAP_FRAC_FILTERED'].data)
+        else:
+            raise ValueError('add_seb_residue available only on LE and H')
             
-            obs_uncertainty = obs['SEB_RESIDUE'].data
-            
-            if varname_obs in ['LE', 'lhf_1']:
-                obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*obs['EVAP_FRAC_FILTERED'].data
-            elif varname_obs in ['H', 'shf_1']:
-                obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*(1-obs['EVAP_FRAC_FILTERED'].data)
-            else:
-                raise ValueError('add_seb_residue available only on LE and H')
-                
-            obs_residue_corr.plot(
-                label='obs_residue_corr',
-                color=colordict['obs'],
-                linestyle=':',
-                linewidth=1)
-            
-            plt.fill_between(obs_var_corr.time, 
-                              obs_var_corr.data,
-                              obs_var_corr.data + obs_uncertainty.data,
-                              alpha=0.2, 
-                              facecolor=colordict['obs'],
-                              )
+        obs_residue_corr.plot(
+            label='obs_residue_corr',
+            color=colordict['obs'],
+            linestyle=':',
+            linewidth=1)
+        
+        plt.fill_between(obs_var_corr.time, 
+                          obs_var_corr.data,
+                          obs_var_corr.data + obs_uncertainty.data,
+                          alpha=0.2, 
+                          facecolor=colordict['obs'],
+                          )
 
 
 #%% SIMU:
@@ -315,78 +323,87 @@ bias = {}
 obs_sorted = {}
 sim_sorted = {}
 
-for model in simu_folders:
-#    domain_nb = model[-1]
-    in_filenames_sim = gv.format_filename_simu[model]
-    out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(
-            in_filenames_sim[6], varname_sim_preproc)
-    
-    # CONCATENATE multiple days
-    datafolder = father_folder + simu_folders[model]
-    
-    tools.concat_simu_files_1var(datafolder, varname_sim_preproc, 
-                                 in_filenames_sim, out_filename_sim)
-    
-    ds = xr.open_dataset(datafolder + out_filename_sim)
-    
-    # Compute other diag variables
-    if varname_sim == 'U_STAR':
-        ds['U_STAR'] = tools.calc_u_star_sim(ds)
-    elif varname_sim == 'BOWEN':
-        ds['BOWEN'] = tools.calc_bowen_sim(ds)
-    
-    # keep variable of interested
-    var_md = ds[varname_sim]
-    
-    # Set time abscisse axis
-    try:
-        start = ds.time.data[0]
-    except AttributeError:    
-#        start = np.datetime64('2021-07-14T01:00')
-        start = np.datetime64('2021-07-21T01:00')
-    
-    dati_arr = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, var_md.shape[0])])
-    
-    var_md = var_md.squeeze()  # removes dimension with 1 value only
-    
-    # find indices from lat,lon values 
-    index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
-    
-    if len(var_md.shape) == 5:
-        var_1d = var_md[:, :, ilevel, index_lat, index_lon].data #1st index is time, 2nd is ?, 3rd is Z,..
-    elif len(var_md.shape) == 4:
-        var_1d = var_md[:, ilevel, index_lat, index_lon].data #1st index is time, 2nd is Z,..
-    elif len(var_md.shape) == 3:
-        var_1d = var_md[:, index_lat, index_lon].data
-    
-    # PLOT
-    plt.plot(dati_arr, var_1d, 
-#             color=colordict[model],
-             colordict[model],
-#             label='simu_{0}_{1}'.format(model, varname_sim),
-             label='simu_{0}'.format(model),
-             )
+for  varname_sim in varname_sim_list:
 
-    ax = plt.gca()
+    if varname_sim in ['U_STAR',]:
+        varname_sim_preproc = 'FMU_ISBA,FMV_ISBA'
+    elif varname_sim in ['BOWEN',]:
+        varname_sim_preproc = 'H_ISBA,LE_ISBA'
+    else:
+        varname_sim_preproc = varname_sim
     
-#    ax.set_xlim([np.min(obs.time), np.max(obs.time)])
-    ax.set_xlim([np.min(dati_arr), np.max(dati_arr)])
-    
-    if errors_computation and varname_obs != '':
-        ## Errors computation
-        obs_sorted[model] = []
-        sim_sorted[model] = []
-        for i, date in enumerate(dati_arr):
-            val = obs_var_corr.where(obs.time == date, drop=True).data
-            if len(val) != 0:
-                sim_sorted[model].append(var_1d[i])
-                obs_sorted[model].append(float(val))
+    for model in simu_folders:
+
+        in_filenames_sim = gv.format_filename_simu[model]
+        out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(
+                in_filenames_sim[6], varname_sim_preproc)
         
-        diff[model] = np.array(sim_sorted[model]) - np.array(obs_sorted[model])
-        # compute bias and rmse, and keep values with 3 significant figures
-        bias[model] = float('%.3g' % np.nanmean(diff[model]))
-#        rmse[model] = np.sqrt(np.nanmean((np.array(obs_sorted[model]) - np.array(sim_sorted[model]))**2))
-        rmse[model] = float('%.3g' % np.sqrt(np.nanmean(diff[model]**2)))
+        # CONCATENATE multiple days
+        datafolder = father_folder + simu_folders[model]
+        
+        tools.concat_simu_files_1var(datafolder, varname_sim_preproc, 
+                                     in_filenames_sim, out_filename_sim)
+        
+        ds = xr.open_dataset(datafolder + out_filename_sim)
+        
+        # Compute other diag variables
+        if varname_sim == 'U_STAR':
+            ds['U_STAR'] = tools.calc_u_star_sim(ds)
+        elif varname_sim == 'BOWEN':
+            ds['BOWEN'] = tools.calc_bowen_sim(ds)
+        
+        # keep variable of interested
+        var_md = ds[varname_sim]
+        
+        # Set time abscisse axis
+        try:
+            start = ds.time.data[0]
+        except AttributeError:    
+    #        start = np.datetime64('2021-07-14T01:00')
+            start = np.datetime64('2021-07-21T01:00')
+        
+        dati_arr = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, var_md.shape[0])])
+        
+        var_md = var_md.squeeze()  # removes dimension with 1 value only
+        
+        # find indices from lat,lon values 
+        index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
+        
+        if len(var_md.shape) == 5:
+            var_1d = var_md[:, :, ilevel, index_lat, index_lon].data #1st index is time, 2nd is ?, 3rd is Z,..
+        elif len(var_md.shape) == 4:
+            var_1d = var_md[:, ilevel, index_lat, index_lon].data #1st index is time, 2nd is Z,..
+        elif len(var_md.shape) == 3:
+            var_1d = var_md[:, index_lat, index_lon].data
+        
+        # PLOT
+        plt.plot(dati_arr, var_1d, 
+    #             color=colordict[model],
+                 colordict[model],
+    #             label='simu_{0}_{1}'.format(model, varname_sim),
+                 label='simu_{0}'.format(model),
+                 )
+    
+        ax = plt.gca()
+        
+    #    ax.set_xlim([np.min(obs.time), np.max(obs.time)])
+        ax.set_xlim([np.min(dati_arr), np.max(dati_arr)])
+        
+        if errors_computation and varname_obs != '':
+            ## Errors computation
+            obs_sorted[model] = []
+            sim_sorted[model] = []
+            for i, date in enumerate(dati_arr):
+                val = obs_var_corr.where(obs.time == date, drop=True).data
+                if len(val) != 0:
+                    sim_sorted[model].append(var_1d[i])
+                    obs_sorted[model].append(float(val))
+            
+            diff[model] = np.array(sim_sorted[model]) - np.array(obs_sorted[model])
+            # compute bias and rmse, and keep values with 3 significant figures
+            bias[model] = float('%.3g' % np.nanmean(diff[model]))
+    #        rmse[model] = np.sqrt(np.nanmean((np.array(obs_sorted[model]) - np.array(sim_sorted[model]))**2))
+            rmse[model] = float('%.3g' % np.sqrt(np.nanmean(diff[model]**2)))
     
 
 #%% Add irrigation datetime
@@ -424,7 +441,6 @@ else:
 plot_title = '{0} at {1}'.format(ylabel, site)
 ax = plt.gca()
 ax.set_ylabel(ylabel)
-ax.set_xlabel('')
 
 # add grey zones for night
 days = np.arange(1,30)
@@ -465,7 +481,7 @@ plt.title(plot_title)
 #plt.title('test')
 plt.grid()
 
-# keep only hours
+# keep only hours as X axis
 #plt.xticks(dati_arr[1:25:2], labels=np.arange(2,25,2))
 #plt.tick_params(rotation=0)
 

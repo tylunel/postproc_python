@@ -13,57 +13,75 @@ import tools
 import shapefile
 import pandas as pd
 import global_variables as gv
+import metpy.calc as mcalc
+from metpy.units import units
 
 ###############################################
-model = 'irr_d2'
+model = 'irr_d1'
 
 domain_nb = int(model[-1])
 
-wanted_date = '20210722-1500'
+wanted_date = '20210729-2300'
 
-color_map = 'RdYlGn'    # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
+color_map = 'YlOrBr'    # BuPu, coolwarm, viridis, RdYlGn, YlOrBr, jet,... (add _r to reverse)
 
-var_name = 'ALBVISP9'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
+var_name = 'ZS'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
 vmin = 0
-vmax = 0.4
+vmax = 1200
 
 # level, only useful if var 3D
-ilevel = 30  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
+ilevel = 16  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
 
-zoom_on = 'urgell-paper'  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'urgell'  #None for no zoom, 'liaise' or 'urgell'
 
 save_plot = True
-save_folder = './figures/scalar_maps/pgd/'
+#save_folder = './figures/scalar_maps/pgd/'
 #save_folder = './figures/scalar_maps/domain{0}/{1}/{2}/'.format(
 #        domain_nb, model, var_name)
+save_folder = f'./figures/scalar_maps/{model}/{var_name}/{ilevel}/'
 
 add_winds = False
-barb_size_option = 'standard'  # 'weak_winds' or 'standard'
-skip_barbs = 8 # 1/skip_barbs will be printed
-barb_length = 4.5
+add_pgf = True
+barb_size_option = 'pgf_weak'  # 'weak_winds' or 'standard'
 
 ##############################################
 
-if zoom_on == 'liaise':
-    skip_barbs = 3 # 1/skip_barbs will be printed
-    barb_length = 5.5
-    lat_range = [41.45, 41.8]
-    lon_range = [0.7, 1.2]
-elif zoom_on == 'urgell':
-    skip_barbs = 6 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [41.1, 42.1]
-    lon_range = [0.2, 1.7]
-elif zoom_on == 'urgell-paper':
-    skip_barbs = 6 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [41.37, 41.92]
-    lon_range = [0.6, 1.4]
+prop = gv.zoom_domain_prop[zoom_on]
+skip_barbs = prop['skip_barbs']
+barb_length = prop['barb_length']
+lat_range = prop['lat_range']
+lon_range = prop['lon_range']
+figsize = prop['figsize']
+# OR: #locals().update(gv.zoom_domain_prop[zoom_on])
 
-filename = tools.get_simu_filename(model, wanted_date)
+filename = tools.get_simu_filename(model, wanted_date,
+                                   global_simu_folder=gv.global_simu_folder)
 
 # load dataset, default datetime okay as pgd vars are all the same along time
 ds1 = xr.open_dataset(filename)
+#ds1 = xr.open_dataset(
+#        gv.global_simu_folder + \
+#        '2.01_pgds_irr/PGD_400M_CovCor_v26_ivars.nc')
+
+
+# DIAGs
+ds1 = tools.center_uvw(ds1)
+
+ds1['DIV'] = mcalc.divergence(ds1['UT'], ds1['VT'])
+
+ds1['DENS'] = mcalc.density(
+    ds1['PRES']*units.hectopascal,
+    ds1['TEMP']*units.celsius, 
+    ds1['RVT']*units.gram/units.gram)
+
+ds1['MSLP3D'] = tools.calc_mslp(ds1, ilevel=None)
+
+ds1['PRES_GRAD_W'], ds1['PRES_GRAD_U'], ds1['PRES_GRAD_V'] = \
+    mcalc.gradient(ds1['MSLP3D'].squeeze()[:, :, :], axes=['level', 'ni', 'nj'])
+ds1['PGF_U'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_U']
+ds1['PGF_V'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_V']
+ds1['PGF_W'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_W']
+ds1['PGF'], ds1['PGF_dir'] = tools.calc_ws_wd(ds1['PGF_U'], ds1['PGF_V'])
 
 
 #%% DATA SELECTION and ZOOM
@@ -84,40 +102,53 @@ var2d = var2d.where(~(var2d == 999))
 
 
 #%% PLOT OF VAR_NAME
-if domain_nb == 1:
-    fig1 = plt.figure(figsize=(13,7))
-elif domain_nb == 2:
-    fig1 = plt.figure(figsize=(10,7))
+fig1 = plt.figure(figsize=figsize)
 
-plt.contourf(var2d.longitude, var2d.latitude, var2d,
+#plt.contourf(var2d.longitude, var2d.latitude, var2d,
+#             levels=20,
+#               levels=np.linspace(vmin, vmax, (vmax-vmin)*2+1), # fixed colorbar
+plt.pcolormesh(var2d.longitude, var2d.latitude, var2d,
 #               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
                cmap=color_map,
-#               levels=np.linspace(vmin, vmax, (vmax-vmin)*4+1), # fixed colorbar
 #               extend = 'both',  #highlights the min and max in edges values
                vmin=vmin, vmax=vmax,
-               levels=20
                )
 
-cbar = plt.colorbar(boundaries=[vmin, vmax])
-cbar.set_label(var2d.long_name)
+#plt.imshow(var2d.longitude, var2d.latitude, var2d,
+##               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
+#               cmap=color_map,
+##               levels=np.linspace(vmin, vmax, (vmax-vmin)*4+1), # fixed colorbar
+##               extend = 'both',  #highlights the min and max in edges values
+#               vmin=vmin, vmax=vmax,
+#               levels=20
+#               )
+
+#cbar = plt.colorbar(boundaries=[vmin, vmax])
+cbar = plt.colorbar()
+
+try:
+    cbar.set_label(var2d.long_name)
+except AttributeError:
+    cbar.set_label(var_name)
 #cbar.set_clim(vmin, vmax)
 
 #%% WIND BARBS
 
-barb_size_increments = {
-        'weak_winds': {'half':1.94, 'full':3.88, 'flag':19.4},
-        'standard': {'half':5, 'full':10, 'flag':50},
-        }
-barb_size_description = {
-        'weak_winds': "barb increments: half=1m/s=1.94kt, full=2m/s=3.88kt, flag=10m/s=19.4kt",
-        'standard': "barb increments: half=5kt=2.57m/s, full=10kt=5.14m/s, flag=50kt=25.7m/s",
-        }
+barb_size_increments = gv.barb_size_increments
+barb_size_description = gv.barb_size_description
 
-if add_winds:
+if (add_winds & add_pgf):
+    raise ValueError('Only add_winds or add pgf can be true')
+
+if add_winds or add_pgf:
     X = ds1.longitude
     Y = ds1.latitude
-    U = ds1.UT[0, ilevel, :,:]
-    V = ds1.VT[0, ilevel, :,:]
+    if add_winds:
+        U = ds1['UT'].squeeze()[ilevel, :,:]
+        V = ds1['VT'].squeeze()[ilevel, :,:]
+    elif add_pgf:
+        U = ds1['PGF_U'].squeeze()[ilevel, :,:]
+        V = ds1['PGF_V'].squeeze()[ilevel, :,:]
     
     plt.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs], 
               U[::skip_barbs, ::skip_barbs], V[::skip_barbs, ::skip_barbs],
@@ -140,12 +171,12 @@ if add_winds:
 
 if domain_nb == 2:
     pgd = xr.open_dataset(
-        '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
-        'PGD_400M_CovCor_v26_ivars.nc')
+        gv.global_simu_folder + \
+        '2.01_pgds_irr/PGD_400M_CovCor_v26_ivars.nc')
 elif domain_nb == 1:
     pgd = xr.open_dataset(
-        '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
-        'PGD_2KM_CovCor_v26_ivars.nc')
+        gv.global_simu_folder + \
+        '2.01_pgds_irr/PGD_2KM_CovCor_v26_ivars.nc')
 
 #Irrigation borders
 #from scipy.ndimage.filters import gaussian_filter
@@ -157,7 +188,7 @@ plt.contour(pgd.longitude.data,
             irr_covers,
             levels=0,   #+1 -> number of contour to plot 
             linestyles='solid',
-            linewidths=1.,
+            linewidths=1.5,
             colors='g'
 #            colors=['None'],
 #            hatches='-'
@@ -171,7 +202,7 @@ plt.contour(pgd.longitude.data,
             levels=0,   #+1 -> number of contour to plot 
             linestyles='solid',
             linewidths=1.,
-            colors='k'
+            colors='w'
     #        colors=['None'],
     #        hatches='-'
             )
@@ -189,13 +220,19 @@ plt.plot(france_SW.lon, france_SW.lat,
 
 #%% POINTS SITES
 
-points = ['cendrosa',
+points = [
+        'cendrosa',
+#        'ponts',
           'elsplans', 
 #          'irta-corn',
-          'lleida', 
+#          'lleida', 
 #          'zaragoza',
-#          'puig formigosa', 'tossal baltasana', 
-#          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
+#          'puig formigosa', 
+#          'tossal_baltasana', 
+          'tossal_gros', 
+          'coll_lilla', 
+#          'tossal_torretes', 
+#       'moncayo', 'tres_mojones', 
 #          'guara', 'caro', 'montserrat', 'joar',
           ]
 
@@ -240,3 +277,14 @@ else:
 
 if save_plot:
     tools.save_figure(plot_title, save_folder)
+
+#%%
+#    
+#plt.figure()
+#p9_filt = ds1.PATCHP9.where(ds1.PATCHP9 < 2, other=0)
+#plt.pcolormesh(p9_filt.longitude.data,p9_filt.latitude.data,p9_filt, vmin=0, vmax=1)
+#
+#sea_covers = pgd.COVER001.data
+#p9_filt['sea'] = p9_filt*0 + sea_covers
+#p9_sea = p9_filt.where(p9_filt.sea == 1, np.nan)
+#plt.pcolormesh(p9_sea.longitude.data,p9_sea.latitude.data,p9_sea, vmin=0, vmax=1, cmap='binary')

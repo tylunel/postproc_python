@@ -32,8 +32,8 @@ save_folder = './figures/wind_series/'
 figsize = (11, 6) #small for presentation: (6,6), big: (15,9)
 
 models = [
-        'irr_d2', 
-        'std_d2',
+        'irr_d1', 
+        'std_d1',
 #        'irrlagrip30_d1',
 #        'irr_d2_old', 
 #        'std_d2_old',
@@ -45,10 +45,11 @@ errors_computation = True
 
 ########################################################
 
-
+global_data_liaise = gv.global_data_liaise
 simu_folders = {key:gv.simu_folders[key] for key in models}
 
-father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
+#father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
+global_simu_folder = gv.global_simu_folder
 
 date = '2021-07'
 
@@ -158,20 +159,20 @@ def plot_windrose(ws, wd, start_date=None, end_date=None, fig=None, **kwargs):
 if site == 'cendrosa':
     varname_obs_ws = 'ws_2'
     varname_obs_wd = 'wd_2'
-    datafolder = '/cnrm/surface/lunelt/data_LIAISE/cendrosa/30min/'
+    datafolder = global_data_liaise + '/cendrosa/30min/'
     filename_prefix = 'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'preixana':
     varname_obs_ws = 'ws_2'
     varname_obs_wd = 'wd_2'
-    datafolder = '/cnrm/surface/lunelt/data_LIAISE/preixana/30min/'
+    datafolder = global_data_liaise + '/preixana/30min/'
     filename_prefix = 'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'elsplans':
     varname_obs_ws = 'UTOT_10m'
     varname_obs_wd = 'DIR_10m'
     freq = '30'  # '5' min or '30'min
-    datafolder = '/cnrm/surface/lunelt/data_LIAISE/elsplans/mat_50m/{0}min/'.format(freq)
+    datafolder = global_data_liaise + '/elsplans/mat_50m/{0}min/'.format(freq)
     filename_prefix = 'LIAISE_'
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
@@ -179,7 +180,7 @@ elif site == 'elsplans':
 elif site == 'irta-corn':
     varname_obs_ws = 'WS'
     varname_obs_wd = 'WD'
-    datafolder = '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
+    datafolder = global_data_liaise + '/irta-corn/seb/'
     in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
     ilevel = 1  # because measurement were made at 3m AGL = 1m above maize
 #    raise ValueError('Site name not known')
@@ -280,7 +281,7 @@ for model in simu_folders:
     out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(
             in_filenames_sim[6], varname_sim)
 
-    datafolder = father_folder + simu_folders[model]
+    datafolder = global_simu_folder + simu_folders[model]
     
     #concatenate multiple days for 1 variable
     tools.concat_simu_files_1var(datafolder, varname_sim, 

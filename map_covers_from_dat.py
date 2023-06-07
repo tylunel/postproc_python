@@ -21,8 +21,11 @@ import numpy as np
 
 # Open ascii file (needs to be returned by modif_ECOII.f90)
 df = pd.read_csv(
-        '/cnrm/surface/lunelt/ECOCLIMAP/irrig_ECOII/' +\
-        'extrait_ECOII.dat',
+        '/home/lunelt/ECOCLIMAP/irrig_ECOII_v2/' + \
+        'code_modif_ECOII_dir/' + \
+        'cover_correction_v2_v2.6_ivars_mollerussa/' + \
+#        'extrait_ECOII_V2.6_ivars.dat',
+        'extrait_ECOII_V2.6_ivars_mollerussa_irrig_v2.dat',
 #        'code_modif_ECOII_dir/Cover_nb_correction/extrait_ECOII_V2.3_CovCorr.dat',
         sep='\s+', header=None, index_col=False)
 
@@ -38,13 +41,16 @@ x, y = np.meshgrid(x_list, y_list)
 z_list = df['cover']
 
 z = np.array_split(z_list, len(y_list))
+cover_arr = np.array(z)
 
 #fig = plt.figure(figsize=[12, 8])
 fig = plt.figure()
 ax = plt.subplot(1, 1, 1)
 
 # IMSHOW allows to see value of cover with mouse pointer
-ax.imshow(z, cmap='flag') #other cmap: gist_ncar, flag, prism
+#ax.imshow(cover_arr, cmap='flag') #other cmap: gist_ncar, flag, prism
+ax.imshow(cover_arr, cmap='flag', extent=(min(x_list), max(x_list), 
+                                          min(y_list), max(y_list)))
 # PCOLORMESH does not allow to see values of covers with pointer
 #ax.pcolormesh(x, y, z, cmap='flag') #other cmap: gist_ncar, flag, prism
 

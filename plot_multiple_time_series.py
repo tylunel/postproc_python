@@ -16,7 +16,7 @@ lmon_3, u_star_3,
 ...
 
 """
-import os
+#import os
 import matplotlib.pyplot as plt
 import xarray as xr
 import tools

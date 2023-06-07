@@ -12,83 +12,90 @@ import numpy as np
 import xarray as xr
 import MNHPy.misc_functions as misc
 import tools
-import metpy.calc as calc
+import metpy.calc as mcalc
 from metpy.units import units
 import global_variables as gv
 
 ########## Independant parameters ###############
 
 # Simulation to show: 'irr' or 'std'
-model = 'std_d1'
+model = 'irr_d1'
 #domain to consider: 1 or 2
 domain_nb = int(model[-1])
+
+varname_colormap = 'DIV'
+# values color for contourf plot
+vmin = -0.0015
+vmax = -vmin
+colormap='coolwarm'
+
+varname_contourmap = 'RVT'
+
 # Surface variable to show below the section
 surf_var = 'WG2_ISBA'
 surf_var_label = 'Q_vol_soil'
 # Set type of wind representation: 'verti_proj' or 'horiz'
 wind_visu = 'verti_proj'
 # Datetime
-wanted_date = '20210722-1200'
+wanted_date = '20210729-2300'
 # altitude ASL or height AGL: 'asl' or 'agl'
 alti_type = 'asl'
 # maximum level (height AGL) to plot
-toplevel = 2500
+toplevel = 1500
 
 # where to place the cross section
-nb_points_beyond = 15
-site_end = 'elsplans'
+nb_points_beyond = 10
 site_start = 'cendrosa'
-# THT color for contourf plot
-vmin_tht = 306
-vmax_tht = 314
+site_end = 'torredembarra'
+
 
 # Arrow/barbs esthetics:
-skip_barbs_x = 3
-skip_barbs_y = 12
-arrow_size = 1.5  #works for arrow and barbs
+skip_barbs_x = 2
+skip_barbs_y = 5    #if 1: 1barb/10m, if 5: 1barb/50m, etc
+arrow_size = 1.2  #works for arrow and barbs
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
 
 # Save the figure
-figsize = (11,6)
+figsize = (12,7)
 save_plot = True
-save_folder = './figures/cross_sections/{0}/section_{1}_{2}/{3}/'.format(
-        model, site_start, site_end, wind_visu)
+save_folder = './figures/cross_sections/{0}/section_{1}_{2}/{3}/{4}/'.format(
+        model, site_start, site_end, wind_visu, varname_colormap)
 
 
 ###########################################
 
-barb_size_increments = {
-        'weak_winds': {'half':1.94, 'full':3.88, 'flag':19.4},
-        'standard': {'half':5, 'full':10, 'flag':50},
-        }
-barb_size_description = {
-        'weak_winds': "barb increments: half=1m/s=1.94kt, full=2m/s=3.88kt, flag=10m/s=19.4kt",
-        'standard': "barb increments: half=5kt=2.57m/s, full=10kt=5.14m/s, flag=50kt=25.7m/s",
-        }
+barb_size_increments = gv.barb_size_increments
+barb_size_description = gv.barb_size_description
 
 
-end = (gv.sites[site_end]['lat'], gv.sites[site_end]['lon'])
-start = (gv.sites[site_start]['lat'], gv.sites[site_start]['lon'])
+end = (gv.whole[site_end]['lat'], gv.whole[site_end]['lon'])
+start = (gv.whole[site_start]['lat'], gv.whole[site_start]['lon'])
+
+if gv.whole[site_start]['lon'] > gv.whole[site_end]['lon']:
+    raise ValueError("site_start must be west of site_end")
 
 # Dependant parameters
-filename = tools.get_simu_filename(model, wanted_date, 
-#                                      domain=domain_nb,
-#                                      file_suffix='001dg'
-                                      )
+filename = tools.get_simu_filename(model, wanted_date)
 
 #load file
 data_perso = xr.open_dataset(filename)
+
+# Computation of other diagnostic variable
+data_perso['DENS'] = mcalc.density(
+    data_perso['PRES']*units.hectopascal,
+    data_perso['TEMP']*units.celsius, 
+    data_perso['RVT']*units.gram/units.gram)
+
+data_perso = tools.center_uvw(data_perso)
+data_perso['DIV'] = mcalc.divergence(data_perso['UT'], data_perso['VT'])
+
+
 data_reduced = data_perso[['THT', 'RVT', 'UT', 'VT', 'WT', 'ZS',
-                           'TEMP', 'PRES',
+                           'TEMP', 'PRES', 
+                           'DENS', 'DIV',
                            surf_var]]
 data = data_reduced
-
-
-#%% Put variables U, V, W in the middle of the grid:
-
-# with external function:
-data = tools.center_uvw(data)
 
 
 #%% CREATE SECTION LINE
@@ -115,8 +122,11 @@ abscisse_sites = {}
 
 #get total maximum height of relief on domain
 max_ZS = data['ZS'].max()
-level_range = np.arange(10, toplevel+max_ZS, 10)
-
+if alti_type == 'asl':
+    level_range = np.arange(10, toplevel+max_ZS, 10)
+else:
+    level_range = np.arange(10, toplevel, 10)
+    
 print('section interpolation on {0} points (~1sec/pt)'.format(len(ni_range)))
 for i, ni in enumerate(ni_range):
     nj=nj_range[i]
@@ -147,12 +157,11 @@ for i, ni in enumerate(ni_range):
 #concatenation of all profile in order to create the 2D section dataset
 section_ds = xr.concat(section, dim="i_sect")
 
-
-# Computation of other diagnostic variable
-section_ds['DENS'] = calc.density(
-    section_ds['PRES']*units.hectopascal,
-    section_ds['THT']*units.K, 
-    section_ds['RVT']*units.gram/units.gram)
+# get location of minimum for DIV:
+section_ds_ilevel = section_ds.isel(level=4)
+location_min = section_ds_ilevel.where(
+        section_ds_ilevel['DIV'] == section_ds_ilevel['DIV'].min(), 
+        drop=True)
 
 
 #%% PLOT
@@ -165,7 +174,7 @@ fig, ax = plt.subplots(2, figsize=figsize,
 max_ZS = section_ds['ZS'].max()
 
 # remove top layers of troposphere
-section_ds = section_ds.where(section_ds.level<(toplevel+max_ZS), drop=True)
+section_ds = section_ds.where(section_ds.level<(level_range.max()), drop=True)
 
 ## --- Adapt to alti_type ------
 #create grid mesh (eq. to X)
@@ -187,7 +196,7 @@ elif alti_type == 'agl':
     
 
 ### 1.1. Color map (pcolor or contourf)
-data1 = section_ds['THT']
+data1 = section_ds[varname_colormap]
 #cm = ax[0].pcolormesh(Xmesh,
 #                      alti,
 #                      data1.T, 
@@ -196,12 +205,13 @@ data1 = section_ds['THT']
 cm = ax[0].contourf(Xmesh,
                     alti,
                     data1.T, 
-                    cmap='OrRd',
+                    cmap=colormap,  # 'OrRd', 'coolwarm'
 #                    levels=np.linspace(298, 315, 18),  # to keep always same colorbar limits
-                    levels=np.linspace(vmin_tht, vmax_tht, vmax_tht-vmin_tht+1),  # to keep always same colorbar limits
+#                    levels=np.linspace(vmin, vmax, vmax-vmin+1),  # to keep always 1K per color variation
+                    levels=np.linspace(vmin, vmax, 20),
 #                    levels=20,
-#                    extend = 'both',  #highlights the min and max in different color
-                    vmin=vmin_tht, vmax=vmax_tht,  # for THT
+                    extend = 'both',  #highlights the min and max in different color
+                    vmin=vmin, vmax=vmax,  # for THT
 #                    vmin=None, vmax=None,  # for adaptative colormap
 #                    vmin=800, vmax=1000,  # for PRES
                     )
@@ -213,7 +223,7 @@ cbar.set_label('theta [K]')
 
 
 ### 1.2. Contour map
-data2 = section_ds['RVT']  # x1000 to get it in g/kg
+data2 = section_ds[varname_contourmap]  # x1000 to get it in g/kg
 cont = ax[0].contour(Xmesh,
                      alti,
                      data2.T,
@@ -274,8 +284,9 @@ ax[0].set_xticklabels(list(abscisse_sites.values()),
 #ax.set_xticklabels(abscisse_coords[::10], rotation=0, fontsize=9)
 
 # set y limits (height ASL)
-min_ZS = section_ds['ZS'].min()
-ax[0].set_ylim([min_ZS, max_ZS + toplevel])
+if alti_type == 'asl':
+    min_ZS = section_ds['ZS'].min()
+    ax[0].set_ylim([min_ZS, max_ZS + toplevel])
 ax[0].set_ylabel(ylabel)
 
 
@@ -311,10 +322,11 @@ ax[1].set_yticks([])
 ax[1].set_ylabel('soil moisture')
 
 ## Global options
-#plot_title = 'Cross section on {0}-{1}-{2}-domain{3}'.format(
-#        wanted_date, model, wind_visu, domain_nb)
-plot_title = 'Cross section of ABL between irrigated and rainfed areas on July 22 at 12:00 - {0}'.format(
-        model)
+plot_title = 'Cross section on {0}-{1}-{2}'.format(
+        wanted_date, model, wind_visu)
+#plot_title = 'Cross section of ABL between irrigated and rainfed areas on July 22 at 12:00 - {0}'.format(
+#        model)
+#plot_title = 'Cross section on July 22 at 12:00 - {0}'.format(model)
 fig.suptitle(plot_title)
 
 if save_plot:

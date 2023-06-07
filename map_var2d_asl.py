@@ -3,7 +3,7 @@
 @author: tylunel
 Creation : 07/01/2021
 
-Script for plotting colormaps of scalar variables
+Script for plotting colormaps of scalar variables at constant height ASL
 """
 
 import matplotlib.pyplot as plt
@@ -15,43 +15,64 @@ import global_variables as gv
 import os
 
 ###############################################
-model = 'std_d2'
+model = 'irr_d1'
 
-wanted_date = '20210722-1700'
+wanted_date = '20210716-1200'
 
 color_map = 'jet'    # BuPu, coolwarm, viridis, RdYlGn, jet
 
-var_name = 'TKET'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
+var_name = 'THT'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
 vmin=None  # None if unknown
 vmax=None
 
 # level or altitude, only useful if var 3D
-alti_type = 'agl'
+alti_type = 'asl'
 
 if alti_type == 'agl':
     ilevel = 3  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m
 if alti_type == 'asl':  # needs costly interpolation
-    h_alti = 3000  # in m
+    h_alti = 2000  # in m
 
 zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
 
 save_plot = True
-save_folder = './figures/scalar_maps/{0}/{1}/'.format(model, var_name)
+save_folder = f'./figures/scalar_maps/{model}/{alti_type}/{var_name}/'
 
 ##############################################
 
+domain_nb = int(model[-1])
+
 if zoom_on == 'liaise':
-    skip_barbs = 3 # 1/skip_barbs will be printed
+    skip_barbs = 2 # 1/skip_barbs will be printed
     barb_length = 5.5
     lat_range = [41.45, 41.8]
     lon_range = [0.7, 1.2]
+    figsize=(9,7)
 elif zoom_on == 'urgell':
-    skip_barbs = 6 # 1/skip_barbs will be printed
+    skip_barbs = 2 # 1/skip_barbs will be printed
     barb_length = 4.5
     lat_range = [41.1, 42.1]
     lon_range = [0.2, 1.7]
-
-domain_nb = int(model[-1])
+    figsize=(11,9)
+elif zoom_on == 'urgell-paper':
+    skip_barbs = 6 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    lat_range = [41.37, 41.92]
+    lon_range = [0.6, 1.4]
+    figsize=(9,7)
+elif zoom_on == 'd2':
+    skip_barbs = 3 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    lat_range = [40.8106, 42.4328]
+    lon_range = [-0.6666, 1.9364]
+    figsize=(11,9)
+elif zoom_on == None:
+    skip_barbs = 8 # 1/skip_barbs will be printed
+    barb_length = 4.5
+    if domain_nb == 1:
+        figsize=(13,7)
+    elif domain_nb == 2:
+        figsize=(10,7)
 
 #if domain_nb == 1:
 filename = tools.get_simu_filename(model, wanted_date)
@@ -102,10 +123,8 @@ elif len(varNd.shape) == 3:
 
 
 #%% PLOT OF VAR_NAME
-if domain_nb == 1:
-    fig1 = plt.figure(figsize=(13,7))
-elif domain_nb == 2:
-    fig1 = plt.figure(figsize=(10,7))
+
+fig1 = plt.figure(figsize=figsize)
 
 plt.contourf(var2d.longitude, var2d.latitude, var2d,
 #               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
@@ -122,12 +141,12 @@ cbar.set_label(var2d.long_name)
 
 if domain_nb == 2:
     pgd = xr.open_dataset(
-        '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
-        'PGD_400M_CovCor_v26_ivars.nc')
+        gv.global_simu_folder + \
+        '2.01_pgds_irr/PGD_400M_CovCor_v26_ivars.nc')
 elif domain_nb == 1:
     pgd = xr.open_dataset(
-        '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
-        'PGD_2KM_CovCor_v26_ivars.nc')
+        gv.global_simu_folder + \
+        '2.01_pgds_irr/PGD_2KM_CovCor_v26_ivars.nc')
 
 #Irrigation borders
 #from scipy.ndimage.filters import gaussian_filter

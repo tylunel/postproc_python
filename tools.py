@@ -3,21 +3,24 @@
 @author: Tanguy LUNEL
 Creation : 07/01/2021
 
-Code to get x and y coordinate in a netcdf file according to lat and lon.
-Useful for example for XY station coordinate to put in MNH - &NAM_STATIONn
+Module gathering various functions used in different part of the codes
 
 """
 import os
-from scipy.stats import circmean
+#from scipy.stats import circmean
+import copy
+import time
 import numpy as np
+from scipy import interpolate
 import matplotlib.pyplot as plt
 import pandas as pd
 import xarray as xr
 from metpy.units import units
-import metpy.calc as mcalc
+#import metpy.calc as mcalc
 import re
 import global_variables as gv
-from datetime import datetime as dt
+#from datetime import datetime as dt
+from shapely.geometry import Point
 #from difflib import SequenceMatcher
 
 
@@ -37,10 +40,27 @@ def indices_of_lat_lon(ds, lat, lon, verbose=True):
         tuple [index_lat, index_lon]
     
     """
-    # Gross evaluation of lat, lon (because latitude lines are curved)
-    lat_dat = ds.latitude.data
-    lon_dat = ds.longitude.data
+    # Get latitude and longitude data
+    try:
+        lat_dat = ds['latitude'].data
+        lon_dat = ds['longitude'].data
+    except KeyError:
+        try:
+            lat_dat = ds['latitude_u'].data
+            lon_dat = ds['longitude_u'].data
+        except KeyError:
+            try:
+                lat_dat = ds['latitude_v'].data
+                lon_dat = ds['longitude_v'].data
+            except KeyError:
+                try:
+                    lat_dat = ds['latitude_w'].data
+                    lon_dat = ds['longitude_w'].data
+                except KeyError:
+                    raise AttributeError("""this dataset does not have 
+                                         latitude-longitude coordinates""")
     
+    # Gross evaluation of lat, lon (because latitude lines are curved)
     distance2lat = np.abs(lat_dat - lat)
     index_lat = np.argwhere(distance2lat <= distance2lat.min())[0,0]
     
@@ -78,7 +98,45 @@ def indices_of_lat_lon(ds, lat, lon, verbose=True):
     return index_lat, index_lon
 
 
-def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=True):
+def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[]):
+    """
+    Extract a subset of domain.
+    
+    """
+    
+    if zoom_on == 'liaise':
+        lat_range = [41.45, 41.8]
+        lon_range = [0.7, 1.2]
+    elif zoom_on == 'urgell':
+        lat_range = [41.1, 42.1]
+        lon_range = [0.2, 1.7]
+    elif zoom_on == 'urgell-paper':
+        lat_range = [41.37, 41.92]
+        lon_range = [0.6, 1.4]
+    elif zoom_on == 'd2':
+        lat_range = [40.8106, 42.4328]
+        lon_range = [-0.6666, 1.9364]
+    elif zoom_on == 'marinada':
+        lat_range = [40.7, 41.8]
+        lon_range = [0.6, 1.6]
+    elif zoom_on == None:
+        if lat_range == []:
+            raise ValueError("Argument 'zoom_on' or lat_range & lon_range must be given")
+        else:
+            lat_range = lat_range
+            lon_range = lon_range
+        
+    nj_min, ni_min = indices_of_lat_lon(ds, lat_range[0], lon_range[0])
+    nj_max, ni_max = indices_of_lat_lon(ds, lat_range[1], lon_range[1])
+    
+    ds_subset = ds.isel(ni=np.arange(ni_min, ni_max), 
+                        nj=np.arange(nj_min, nj_max))
+    
+    return ds_subset.squeeze()
+
+
+def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=True,
+                   remove_outliers=False):
     """
     Open the 50m mast from UK MetOffice formatted under .txt,
     create netcdf file, and returns a xarray dataset.
@@ -164,7 +222,8 @@ def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=True):
 #            }, inplace=True)
     
     #remove outliers lying outside of 4 standard deviation
-    obs_ukmo = obs_ukmo[(obs_ukmo-obs_ukmo.mean()) <= (4*obs_ukmo.std())]
+    if remove_outliers:
+        obs_ukmo = obs_ukmo[(obs_ukmo-obs_ukmo.mean()) <= (4*obs_ukmo.std())]
     
     obs_ukmo_xr = xr.Dataset.from_dataframe(obs_ukmo
 #        [['time', 'TEMP_2m','RHUM_10mB']]
@@ -505,7 +564,12 @@ def get_simu_filename_old(model, date='20210722-1200', domain=2,
     filename = father_folder + simu_filelist[model]
     return filename
 
-def get_simu_filename(model, date='20210722-1200', file_suffix='dg'):
+def get_simu_filename(model, date='20210722-1200', 
+                      file_suffix='dg',  #'dg' or ''
+                      out_suffix='',  #'.OUT' or ''
+                      global_simu_folder=gv.global_simu_folder,
+#                      global_simu_folder='/cnrm/surface/lunelt/NO_SAVE/nc_out/'
+                      ):
     """
     
     Returns the whole string for filename and path. 
@@ -514,8 +578,8 @@ def get_simu_filename(model, date='20210722-1200', file_suffix='dg'):
     Parameters:
         model: str, 
             'irr_d2' or 'std_d1'
-        wanted_date: str, with format accepted by pd.Timestamp,
-            ex: '20210722-1200'
+        wanted_date: str with format accepted by pd.Timestamp ('20210722-1200')
+            or pd.Timestamp
     
     Returns:
         filename: str, full path and filename
@@ -523,6 +587,14 @@ def get_simu_filename(model, date='20210722-1200', file_suffix='dg'):
     pd_date = pd.Timestamp(date)
     day_nb = str(pd_date.day)        
     hour_nb = str(pd_date.hour)
+    minute_nb = pd_date.minute
+    if out_suffix == '.OUT':
+        hour_nb = pd_date.hour*2
+        if minute_nb == 30:
+            hour_nb = hour_nb + 1
+        hour_nb = str(hour_nb)
+        print('hour_nb = {0}'.format(hour_nb))
+    
     # format suffix with 2 digits:
     if len(hour_nb) == 1:
         hour_nb_2f = '0'+ hour_nb
@@ -530,9 +602,15 @@ def get_simu_filename(model, date='20210722-1200', file_suffix='dg'):
         hour_nb_2f = hour_nb
     # format suffix with 3 digits:
     hour_nb_3f = '0'+ hour_nb_2f
+    
+    # Midnight case
+    if hour_nb_2f == "00":
+        hour_nb_2f = "24"
+        hour_nb_3f = "024"
+        day_nb = str(pd_date.day - 1) 
+    
+        
 
-
-    father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
     simu_filelist = {
         'std_d2': 'LIAIS.1.S{0}{1}.001{2}.nc'.format(
                 day_nb, hour_nb_2f, file_suffix),
@@ -547,10 +625,12 @@ def get_simu_filename(model, date='20210722-1200', file_suffix='dg'):
         'std_d1': 'LIAIS.1.SEG{0}.{1}{2}.nc'.format(
                 day_nb, hour_nb_3f, file_suffix),
         'lagrip100_d1': 'LIAIS.1.SEG{0}.{1}{2}.nc'.format(
-                day_nb, hour_nb_3f, file_suffix)
+                day_nb, hour_nb_3f, file_suffix),
+        'temp': 'LIAIS.1.SEG{0}{1}.{2}{3}.nc'.format(
+                day_nb, out_suffix, hour_nb_3f, file_suffix),
         }
     
-    filename = father_folder + gv.simu_folders[model] + simu_filelist[model]
+    filename = global_simu_folder + gv.simu_folders[model] + simu_filelist[model]
     
     #check if nomenclature of filename is ok
     check_filename_datetime(filename)
@@ -783,41 +863,56 @@ def get_irrig_time(soil_moist, stdev_threshold=5):
     
     return irr_dati_filtered
 
-#def interpolation_level(data, height=[2,10]):
-    #interp à 2m et 10m par défaut
-#    data.interp(level=height)
-
-
-
-    
-    
  
 def line_coords(data, 
                 start_pt = (41.6925905, 0.9285671), # cendrosa
                 end_pt = (41.590111, 1.029363), #els plans
-                nb_indices_exterior=10):     
+                nb_indices_exterior=10,
+                verbose=True):     
     """
     data: xarray dataset
     start_pt: tuple with (lat, lon) coordinates of start point
     start_pt: tuple with (lat, lon) coordinates of end point
     nb_indices_exterior: int, number of indices to take resp. before and after
         the start and end point.
+        
+    Returns:
+        Dict with following keys:
+            'ni_range':
+            'nj_range':
+            'slope':
+            'index_distance': numbers of indices between the start and end pt
+            'ni_step':
+            'nj_step':
+            'nij_step': distance in [m] between 2 pts of the line
+            'ni_start':
+            'ni_end':
+            'nj_start':
+            'nj_end':
     """
     # get ni, nj values (distance to borders of first domain in m)
-    index_lat_start, index_lon_start = indices_of_lat_lon(data, *start_pt)
+    # for Start site
+    index_lat_start, index_lon_start = indices_of_lat_lon(data, *start_pt, 
+                                                          verbose=verbose)
     ni_start = data.ni[index_lon_start].values     # ni corresponds to longitude
     nj_start = data.nj[index_lat_start].values     # nj corresponds to latitude
-    print('ni, nj start:', ni_start, nj_start)
-    index_lat_end, index_lon_end = indices_of_lat_lon(data, *end_pt)
+    # for End site
+    index_lat_end, index_lon_end = indices_of_lat_lon(data, *end_pt,
+                                                      verbose=verbose)
     ni_end = data.ni[index_lon_end].values     # ni corresponds to longitude
     nj_end = data.nj[index_lat_end].values     # nj corresponds to latitude
-    print('ni, nj end:', ni_end, nj_end)
+    
+    if verbose:
+        print('ni, nj start:', ni_start, nj_start)
+        print('ni, nj end:', ni_end, nj_end)
     
     #get line formula:
     if ni_end != ni_start:
         slope = (nj_end - nj_start)/(ni_end - ni_start)
         y_intercept = nj_start - slope * ni_start
-        print('slope and y-intercept :', slope, y_intercept)
+        
+        if verbose:
+            print('slope and y-intercept :', slope, y_intercept)
 
         # approximate distance between start and end in term of indices
         index_distance = np.ceil(np.sqrt((index_lon_end - index_lon_start)**2 + \
@@ -849,9 +944,9 @@ def line_coords(data,
     # distance in meters between two points on section line
     nij_step = np.sqrt(ni_step**2 + nj_step**2)
     
-    return {'ni_range': ni_range, 'nj_range': nj_range, 'slope': slope,
-            'index_distance': index_distance, 'ni_step': ni_step,
-            'nj_step': nj_step, 'nij_step': nij_step,
+    return {'ni_range': ni_range, 'nj_range': nj_range, 
+            'slope': slope, 'index_distance': index_distance, 
+            'ni_step': ni_step, 'nj_step': nj_step, 'nij_step': nij_step,
             'ni_start': ni_start, 'ni_end': ni_end,
             'nj_start': nj_start, 'nj_end': nj_end}
 
@@ -893,7 +988,7 @@ def center_uvw(data):
     
     return data_new
 
-def interp_iso_asl(alti_asl, ds, varname):
+def interp_iso_asl(alti_asl, ds, varname, verbose=True):
     """
     Interpolate values at same altitude ASL
     
@@ -902,8 +997,6 @@ def interp_iso_asl(alti_asl, ds, varname):
     
     """
     
-#    fn = get_simu_filename_d1('irr_d1', date='20210722-1200')
-#    ds = xr.open_dataset(fn)
     ds = ds[[varname, 'ZS']].squeeze()
     
     # make with same asl value everywhere
@@ -914,19 +1007,72 @@ def interp_iso_asl(alti_asl, ds, varname):
     res_layer = level_grid*0
     
     # get column of correspondance between level and height AGL
-    level = ds[varname][:, :, :].level.data 
+#    level = ds[varname][:, :, :].level.data 
+    level = ds.level.data
     
     # interpolation
     for j in range(len(ds.nj)):
-        print('{0}/{1}'.format(j, len(ds.nj)))
+        if verbose:
+            print('{0}/{1}'.format(j, len(ds.nj)))
         for i in range(len(ds.ni)):
             if level_grid[j,i] < 0:
                 res_layer[j,i] = np.nan
             else:
     #            res_layer[i,j] = ds['PRES'].interp(
     #                ni=ds.ni[i], nj=ds.nj[j], level=level_grid[i,j])
-                res_layer[j,i] = np.interp(level_grid[j,i], 
-                                           level, ds['PRES'][:, j, i])
+#                res_layer[j,i] = np.interp(level_grid[j,i], 
+#                                           level, 
+#                                           ds[varname][:, j, i])
+                f = interpolate.interp1d(level, 
+                                         ds[varname][:, j, i],
+                                         fill_value='extrapolate')
+                res_layer[j,i] = f(level_grid[j,i])
+
+    # new shorter loop: TODO
+#    for tuple_coord in np.ndindex(ds[varname].isel(level=0).shape):
+#        res_layer[tuple_coord] = np.interp(level_grid[tuple_coord], 
+#                                           level, 
+#                                           ds[varname][:, j, i])
+    
+    return res_layer
+
+
+def interp_iso_agl(alti_agl, ds_asl, varname, verbose=True):
+    """
+    Interpolate values at same altitude ASL
+    
+    Returns:
+        np.array
+    
+    """
+    
+    ds_asl = ds_asl[[varname, 'ZS']].squeeze()
+    
+    # make with same asl value everywhere
+    agl_grid = np.array([[alti_agl]*len(ds_asl.ni)]*len(ds_asl.nj))
+    # compute the corresponding height AGL to keep iso alti ASL on each pt
+    asl_grid = agl_grid + ds_asl['ZS'].data
+    # initialize the result layer with same shape same than asl_grid
+    res_layer = (agl_grid*0).astype('float')
+    
+    # get column of correspondance between level and height AGL
+#    level_asl = ds_asl.level.data
+    
+    # interpolation
+    for j in range(len(ds_asl.nj)):
+        if verbose:
+            print('{0}/{1}'.format(j, len(ds_asl.nj)))
+        for i in range(len(ds_asl.ni)):
+            var_column = ds_asl[varname][:, j, i].dropna(dim='level')
+            level_column = var_column.level
+#            if np.isnan(ds_asl[varname][:, j, i]).all():
+            if len(var_column) < 3:
+                res_layer[j,i] = np.nan
+            else:
+                f = interpolate.interp1d(level_column, 
+                                         var_column,
+                                         fill_value='extrapolate')
+                res_layer[j,i] = f(asl_grid[j,i])
     
     return res_layer
 
@@ -950,30 +1096,7 @@ def save_figure(plot_title, save_folder='./figures/', verbose=True):
     plt.savefig(save_folder + '/' + str(filename))
     if verbose:
         print('figure {0} saved in {1}'.format(plot_title, save_folder))
-
-
-def subset(latmin=41.35, lonmin=0.40, latmax=41.9, lonmax=1.4):
-    """
-    SUBSETING DOMAIN - Work in progress
-    
-    (to zoom just use ylim or set_ylim)
-    """
-    #ind_lat, ind_lon = indices_of_lat_lon(var2d, 
-    #                                      latmin,
-    #                                      lonmin)
-    #ni_min = var2d.ni[ind_lon]
-    #nj_min = var2d.nj[ind_lat]
-    #var2d = var2d.where(var2d.ni > ni_min, drop=True)
-    #var2d = var2d.where(var2d.nj > nj_min, drop=True)
-    #
-    #ind_lat, ind_lon = indices_of_lat_lon(var2d, 
-    #                                      latmax,
-    #                                      lonmax)
-    #ni_max = var2d.ni[ind_lon]
-    #nj_max = var2d.nj[ind_lat]
-    #var2d = var2d.where(var2d.ni < ni_max, drop=True)
-    #var2d = var2d.where(var2d.nj < nj_max, drop=True)
-    return None
+        
 
 ## FROM pythermalcomfort, few modifs
     
@@ -1303,7 +1426,7 @@ def get_surface_type(site, domain_nb, model='irr',
             res[key] = val
         weight.append(val)
         
-    # keys aggregated
+    # keys already aggregated
     for key in ['LAI_ISBA', 'Z0_ISBA', 'Z0H_ISBA', 
 #                'EMIS', 
                 'CD_ISBA',  # coeff trainee
@@ -1312,13 +1435,13 @@ def get_surface_type(site, domain_nb, model='irr',
                 ]:
         sq_ds = ds[key] #.squeeze()
         res[key] = float(sq_ds[index_lat, index_lon].data)
-    # keys by patch, to aggregate
     
-    for key in ['CV',
-                'ALBNIR',
-                'ALBUV',
-                'ALBVIS',
-                'DROOT_DIF',]:
+    
+    # keys given by patch, aggregated hereafter
+    for key in ['CV',  # vegetation thermal inertia
+                'ALBNIR', 'ALBUV', 'ALBVIS',  # albedo
+                'DROOT_DIF',  # root (fraction?)
+                ]:
         temp = []
         for p_nb in np.arange(1, 13):  # patch number
             keyP = '{0}P{1}'.format(key, p_nb)
@@ -1328,16 +1451,27 @@ def get_surface_type(site, domain_nb, model='irr',
         aggr_key = '{0}_ISBA'.format(key)
         
         res[aggr_key] = np.sum(np.array(weight) * np.array(temp))
+        
+    # keys by patch
+    for key in ['TALB_P', 'LAIP', 'WWILT', 'WFC',
+                ]:
+        for p_nb in np.arange(1, 13):  # patch number
+            keyP = f'{key}{p_nb}'
+            val = float(ds[keyP][index_lat, index_lon].data) #.squeeze()
+            if val == 999:
+                res[keyP] = 0
+            else:
+                res[keyP] = float(val)
     
     # Get soil type from pgd
     if domain_nb == 2:
         pgd = xr.open_dataset(
-            '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
-            'PGD_400M_CovCor_v26_ivars.nc')
+            gv.global_simu_folder + \
+            '2.01_pgds_irr/PGD_400M_CovCor_v26_ivars.nc')
     elif domain_nb == 1:
         pgd = xr.open_dataset(
-            '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
-            'PGD_2KM_CovCor_v26_ivars.nc')
+            gv.global_simu_folder + \
+            '2.01_pgds_irr/PGD_2KM_CovCor_v26_ivars.nc')
     
     for key in ['CLAY', 'SAND', ]:
         val = float(pgd[key][index_lat, index_lon].data)
@@ -1345,7 +1479,56 @@ def get_surface_type(site, domain_nb, model='irr',
         
     return res
 
-def calc_u_star_sim(ds):
+def get_points_in_polygon(data_in, polygon):
+    """
+    Return a list of all the points data points that are in a given polygon
+    
+    parameters:
+        data_in: array-like, xarray.dataset or xarray.dataarray
+        
+        polygon: 2D Polygon shape from shapely.geometry
+        
+    returns:
+        list of points contained in the polygon
+    
+    """
+    try:  #or: if 'ni_u' inlist(ds1.coords)
+        ds = center_uvw(data_in)
+    except (ValueError, KeyError):
+        ds = data_in
+        
+    inside_points = []
+    
+    # get one of the dataarray in the dataset, and retrieve its shape
+    if type(ds) == xr.core.dataset.Dataset:
+#        random_dataarray = ds[list(ds.keys())[0]]
+        random_dataarray = ds['latitude']  # latitude expected to be present in all (could be latitude_u also)
+    elif type(ds) == xr.core.dataarray.DataArray:
+        random_dataarray = ds
+    else:
+        raise TypeError('ds is not xr.dataset or xr.dataarray')
+    
+    # get shape of data
+    try:
+        shape_ds = random_dataarray[0, :, :].shape
+    except IndexError:
+        shape_ds = random_dataarray[:, :].shape
+    
+    # filter points that are inside the polygon
+    for coords in np.ndindex(shape_ds):
+        # get elements one by one
+        elt = ds.isel(nj=coords[0], ni=coords[1])
+#        elt = ds.isel(level=ilevel, nj=coords[0], ni=coords[1])
+
+        # create location point
+        location_elt = Point(elt.longitude, elt.latitude)
+        if polygon.contains(location_elt):
+            inside_points.append(elt)
+            
+    return inside_points
+
+
+def calc_u_star_sim(fmu_md, fmv_md):
     """
     Compute friction velocity u* from zonal and meridian wind stress FMU_ISBA
     and FMV_ISBA.
@@ -1357,10 +1540,6 @@ def calc_u_star_sim(ds):
         xarray.DataArray
     
     """
-#    fmu_md = ds['FMU_ISBA']
-#    fmv_md = ds['FMV_ISBA']
-    fmu_md = ds['FMU']
-    fmv_md = ds['FMV']
 
     tau = np.sqrt(fmu_md**2 + fmv_md**2)
     u_star = np.sqrt(tau)
@@ -1381,6 +1560,25 @@ def calc_bowen_sim(ds):
     bowen = ds['H_ISBA']/ds['LE_ISBA']
     
     return bowen
+
+def calc_longwave_up_sim(tsrad, emis):
+    """
+    Compute far infrared long wave radiation up from 
+    radiative surface temperature and emissivity.
+    
+    Parameters:
+        tsrad: xarray.Dataset for radiative surface temp in [K]
+        emis: xarray.Dataset for emissivity in [.] (no unit)
+    
+    Returns:
+        xarray.DataArray
+    
+    """
+    const = 5.670374e-8  # stephan boltzamann constante
+    lwup = const * emis * tsrad**4
+    
+    return lwup
+    
 
 def calc_swi(sm, wilt_pt=None, field_capa=None):
     """
@@ -1405,12 +1603,19 @@ def calc_swi(sm, wilt_pt=None, field_capa=None):
 def calc_ws_wd(ut, vt):
     """
     Compute wind speed and wind direction from ut and vt
+    If ut and vt are xarray.dataarray, be careful with the coordinates,
+    it may be needed to center it with center_uvw().
+
     """
     
     ws = np.sqrt(ut**2 + vt**2)
     wd_temp = np.arctan2(-ut, -vt)*180/np.pi
     wd = xr.where(wd_temp<0, wd_temp+360, wd_temp)
     return ws, wd
+
+
+def calc_thetav(theta, spec_humidity):
+    return theta + 0.61*spec_humidity*theta
 
 
 def calc_fao56_et_0(rn_MJ, t_2m, ws_2m, rh_2m, p_atm, gnd_flx=0, gamma=66):
@@ -1459,9 +1664,638 @@ def wind_direction_mean(data):
     
     use function 'circmean', 'circstd' from scipy.stats    
     """
+    return False
+
+
+def log_wind_profile(ws, ws_height, new_height, z_0, d=0):
+    """
+    Calculates the wind speed at a new height using a logarithmic wind profile.
+
+    The logarithmic height equation is used. There is the possibility of
+    including the height of the surrounding obstacles in the calculation.
+
+    Parameters
+    ----------
+    ws : pandas.Series or array
+        Wind speed time series.
+    ws_height : float
+        Height for which the parameter `ws` applies.
+    new_height : float
+        Hub height of wind turbine.
+    z_0 : pandas.Series or array or float
+        Roughness length in m
+    d: float
+        Displacement height. Default: 0.
+
+    Returns
+    -------
+    pandas.Series or array
+        Wind speed at new height.
+
+    Notes
+    -----
+    `ws_height`, `z_0`, `new_height` and `d` must be of the same unit.
     
+    see: https://en.wikipedia.org/wiki/Log_wind_profile
+    
+    This function comes from windpowerlib library.
+
+    """
+    if d > ws_height:
+        raise ValueError(
+            'Displacement height of {0}m is superior to ws_height.'.format(d))
+        
+    ws_new = ws * np.log((new_height - d)/z_0) / np.log((ws_height - d)/z_0)
+    
+    return ws_new
+
+
+def CLS_WIND(ws, z_uv, Cd, CdN, Ri, new_height):
+    """
+    /!\To revise, not working
+    
+    ChatGPT traduction of cls_wind.f90
+    
+    ws:     wind speed
+    z_uv:   atmospheric level height (wind)
+    Cd:     drag coefficient for momentum
+    CdN:    neutral drag coefficient
+    Ri:     Richardson number
+    new_height: height of diagnostic (m)
+    !
+    !*      0.2    declarations of local variables
+    !
+    ZBN,ZBD,ZRU
+    REAL, DIMENSION(SIZE(z_uv)) :: ZLOGU,ZCORU,ZIV
+    REAL(KIND=JPRB) :: ZHOOK_HANDLE
+
+    """
+    XKARMAN = 0.4 # constant value
+    
+    # preparatory calculations
+    ZBN = XKARMAN / np.sqrt(CdN)
+    ZBD = XKARMAN / np.sqrt(Cd)
+    
+    if new_height <= z_uv:
+        ZRU = np.min(new_height / z_uv, 1.0)
+    else:
+        ZRU = np.min(z_uv / new_height, 1.0)
+    
+    ZLOGU = np.log(1.0 + ZRU * (np.exp(ZBN) - 1.0))
+    
+    # stability effect
+    if (Ri >= 0):
+        ZCORU = ZRU * (ZBN - ZBD)
+    else:
+        ZCORU = np.log(1.0 + ZRU * (np.exp(np.maximum(0.0, ZBN - ZBD)) - 1.0))
+    
+    # interpolation of dynamical variables
+    IV = np.max(0.0, np.min(1.0, (ZLOGU - ZCORU) / ZBD))
+    
+    if new_height <= z_uv:
+        ws10M = ws * IV
+    else:
+        ws10M = ws / np.maximum(1.0, IV)
+    
+    return ws10M
+
+
+def cls_t(TA, HT, Z0, CD, CH, RI, TS, H):
+    """
+    conversion of cls_t.f90 of Surfex into python
+    
+    Interpolation of T value at height N following laws of the CLS 
+    (couche limite de surface).
+    
+    Parameters:
+        TA    ! atmospheric temperature
+        HT    ! atmospheric level height (temp)
+        CD    ! drag coefficient for momentum
+        CH    ! drag coefficient for heat
+        RI    ! Richardson number
+        TS    ! surface temperature
+        Z0    ! roughness length
+        H     ! height of diagnostic
+    returns:
+        TNM   ! temperature at n meters
+        
+    intermediate variables:
+        Z0H   ! roughness length for heat (for now Z0H = Z0/10)
+    """
+    
+    Z0H = Z0/10
+    
+    # 1. Preparatory calculations
+    BNH = np.log(HT/Z0H)
+    BH = 0.41 * np.sqrt(CD) / CH
+    RS = min(H / HT, 1.0)
+    LOGS = np.log(1.0 + RS * (np.exp(BNH) - 1.0))
+    print('LOGS =', LOGS)
+        
+    # 2. Stability effects
+    Ri_pos = RI[:] >= 0  # in MNH, Ri = - thermal_prod/dynamic_prod
+    Ri_neg = ~Ri_pos
+    CORS = RI*0  # init of CORS dataset
+    # when consumption of TKE by temperature
+    CORS.values[Ri_pos] = \
+        RS * (BNH.values[Ri_pos] - BH.values[Ri_pos])
+    # when production of TKE (temp or dynamic)
+    CORS.values[Ri_neg] = np.log(
+        1.0 \
+        + RS * (np.exp(np.maximum(0.0, BNH.values[Ri_neg]- BH.values[Ri_neg]))\
+                - 1.0))
+    print('CORS =', CORS)
+    
+    # 3. Interpolation of thermodynamical variables
+    IV = np.maximum(0.0, np.minimum(1.0, (LOGS - CORS) / BH))
+    
+    TNM = TS + IV * (TA - TS)
+    
+    return TNM
+
+
+def cls_tq(TA, QA, HT, Z0, CD, CH, RI, TS, QS, H, PNM):
+    """
+    conversion of cls_tq.f90 of Surfex into python, 
+    for the part concerning Q.
+    
+    Interpolation of Q value at height N following laws of the CLS 
+    (couche limite de surface).
+    
+    Parameters:
+        TA    ! atmospheric temperature
+        QA    ! atmospheric humidity (kg/kg)
+        HT    ! atmospheric level height (temp)
+        CD    ! drag coefficient for momentum
+        CH    ! drag coefficient for heat
+        RI    ! Richardson number
+        Z0    ! roughness length
+        H     ! height of diagnostic
+        PNM   ! pressure at N meters AGL
+        QS    ! surface specific humidity
+        TNM   ! temperature at n meters
+    
+    returns:
+        QNM   ! specific humidity at n meters
+        
+    intermediate variables:
+        Z0H   ! roughness length for heat (for now Z0H = Z0/10)
+    """
+    
+    
+    
+    # 1. Preparatory calculations
+    print('1st step: preparatory calculations')
+    Z0H = Z0/10
+    BNH = np.log(HT/Z0H)
+    BH = 0.41 * np.sqrt(CD) / CH
+    RS = min(H / HT, 1.0)
+    LOGS = np.log(1.0 + RS * (np.exp(BNH) - 1.0))
+    
+    
+    # 2. Stability effects
+    print('2nd step: Stability effects calculations')
+    Ri_pos = RI[:] >= 0  # in MNH, Ri = - thermal_prod/dynamic_prod
+    Ri_neg = ~Ri_pos
+    CORS = RI*0  # init of CORS dataset
+    # when consumption of TKE by temperature
+    CORS.values[Ri_pos] = \
+        RS * (BNH.values[Ri_pos] - BH.values[Ri_pos])
+    # when production of TKE (temp or dynamic)
+    CORS.values[Ri_neg] = np.log(
+        1.0 \
+        + RS * (np.exp(np.maximum(0.0, BNH.values[Ri_neg]- BH.values[Ri_neg]))\
+                - 1.0))
+    
+    # 3. Interpolation of thermodynamical variables
+    print('3rd step: interpolation of thermodynamical vars')
+    IV = np.maximum(0.0, np.minimum(1.0, (LOGS - CORS) / BH))
+    
+    # 4. Interpolation of temperature
+    TNM = TS + IV*(TA-TS)
+    
+    # 5. Interpolation of relative humidity
+    QNM = QS + IV*(QA-QS)
+    
+    # correction for saturation
+    print('4rd step: correction for humidity saturation')
+    QsatNM = sat_mixing_ratio(PNM, (TNM - 273.15))
+    QNM   = np.minimum(QsatNM, QNM) #must be below saturation
+    
+    return TNM, QNM
+
+
+
+
+
+def calc_mslp(ds, ilevel=1, z0=0):
+    """
+    Extrapolate the a level pressure for given level of model 
+    and at wanted height. With ilevel=1 and z0=0, it corresponds to the 
+    mean sea level pressure.
+    N.B.: Comes from MNH routine 'write_lfifm1_for_diag.f90' in which 
+    the MSLP diagnostic is done.
+    
+    parameters:
+        ds with variables 'THT', 'RVT', 'PABST', 'ZS'
+    
+    ilevel: int, screen level, the level at which we want to extrapolate the
+        data to the sea level. If None, computation is done for all levels
+        
+    z0: float, altitude aslin m at which we want to extrapolate. Default is 0m
+        for sea level.
+    """
+    lapse_rate = -6.5e-3    # standard atmo lapse rate in K/m
+    R0 = 8.314462           # gas constant for dry air J⋅K−1⋅mol−1
+    M = 0.028969            # Molar mass of dry air kg.mol-1
+    Rd = R0/M       # gas constant for dry air J⋅K−1⋅kg-1
+    Cpd = 1005              # heat capacity of dry air at constant pressure J⋅K−1⋅kg-1
+    P0 = 100000     # standard reference surface pressure, usually taken as 1000 hPa
+#    g = 9.80665     # m.s-2
+    g = 9.80665 * (6371000**2)/((6371000+ds.level+ds['ZS'])**2)
+    
+    # from MNH routine "write_lfifm1_for_diag.f90"
+#    # Exner function at the first mass point
+#    exner(:,:) = (PABST(:,:,ilevel) / P0)**(Rd/Cpd)
+#    #!  virtual temperature at the first mass point
+#    #!  virtual temperature at P0 for the first mass point
+#    thetav_p0(:,:) = exner(:,:) * thetav(:,:,ilevel)
+#    #!  virtual temperature at ground level (height = 0m agl, not 1st level)
+#    alti_agl = XZZ(:,:,ilevel) - ZS(:,:)     # XZZ is the altitude asl of each mass point
+#    thetav_gl(:,:) = thetav_p0(:,:) - lapse_rate*alti_agl
+#    #!  virtual temperature at sea level
+#    thetav_sl(:,:) = thetav_gl(:,:) - lapse_rate*ZS(:,:)
+#    #!  average underground virtual temperature
+#    thetav_underground(:,:) = 0.5*(thetav_gl(:,:) + thetav_sl(:,:))
+#    #!  surface pressure
+#    pres_screenlevel(:,:) = PABST(:,:,ilevel)
+#    #!  sea level pressure (hPa)
+##    mslp(:,:) = 1e-2*pres_screenlevel(:,:)*np.exp(g*ZS(:,:)/(Rd*thetav_underground(:,:)))  # in hPa
+    
+    #perso version:
+    # selection of level if ilevel different from None
+    ds = ds.squeeze()
+    if ilevel != None:
+        ds = ds.isel(level=ilevel)
+        
+    thetav = calc_thetav(ds['THT'], ds['RVT'])
+#    thetav = ds['THT']
+    
+    pres_screenlevel = ds['PABST']
+    exner = (pres_screenlevel / P0)**(Rd/Cpd)
+    thetav_p0 = exner * thetav
+    
+    # version in MNH:
+    # virtual temperature at ground level (height = 0m agl, not 1st level)
+    tempv_gl = thetav_p0
+    # virtual temperature at sea level
+    tempv_sl = tempv_gl - lapse_rate * ds['ZS']
+    # average underground virtual temperature
+    tempv_underground = 0.5*(tempv_gl + tempv_sl)
+    T0 = tempv_underground
+    
+    # version perso (from my understanding, but do not seems to be reliable in mountains...)
+#    T0 = thetav_p0
+    
+    height_asl_screenlevel = ds.level + ds['ZS'] - z0
+    
+    mslp = 1e-2 * pres_screenlevel*np.exp(g*height_asl_screenlevel/(Rd*T0))
+    
+    return mslp
+
+
+def windvec_verti_proj(u, v, level, angle):
+    """Compute the projected horizontal wind vector on an axis with a given angle w.r.t. the x/ni axes (West-East)
+
+    Parameters
+    ----------
+    u : array 3D
+        U-wind component
+
+    v : array 3D
+        V-wind component
+
+    level : array 1D
+        level dimension array
+
+    angle : float
+        angle (radian) of the new axe w.r.t the x/ni axes (West-East). angle = 0 for (z,x) sections, angle=pi/2 for (z,y) sections
+
+    Returns
+    -------
+
+    projected_wind : array 3D
+        a 3D wind component projected on the axe to be used with Panel_Plot.pvector as Lvar1
+    """
+    projected_wind = copy.deepcopy(u)
+    for k in range(len(level)):
+#        projected_wind[k, :, :] = u[k, :, :] * math.cos(angle) + v[k, :, :] * math.sin(angle)
+        projected_wind[k, :, :] = u[k, :, :] * np.cos(angle) + v[k, :, :] * np.sin(angle)
+
+    return projected_wind
+
+
+def agl_to_asl_coords(ds_agl, alti_asl_arr=np.arange(25,1000,25)):
+    """
+    Change coordinates of dataset from terrain-following (i.e. levels 
+    are above ground level - AGL), to flat (i.e. levels are above sea 
+    level - ASL).
+    
+    ds: xarray.Dataset containing 3D variables, ZS and coordinate level.
+    
+    N.B.:
+        Computation time: 
+            3s per alti if domain is 20x20 (zoom_on 'liaise')
+            ...s per alti if domain is 47x52 (zoom_on 'urgell')
+            ...s per alti if domain is 90x108 (zoom_on 'd2')
+            ...s per alti if domain is 164x290 (zoom_on 'd1' or None)
+        
+    """
+    var_list = list(ds_agl.keys())
+    var3d_list = var_list
+    var3d_list.remove('ZS')
+    
+    # SOME PRELIMINARY CHECK
+    if len(alti_asl_arr) < 2:
+        raise ValueError('alti_asl_arr must be greater than 1, use inter_iso_asl for 1 layer only')
+    
+    var_temp_construc = var_list[0]
+    if 'pint.quantity' in str(type(ds_agl[var_temp_construc].data)):  # issue if type pint.Quantity
+        var_temp_construc = var_list[1]
+    
+    # keep only layers of interest: (to gain computation time)
+    #TODO
+#    alti_agl_max = float(alti_asl_arr.max() - ds_agl_in.ZS.min())
+    #ds_agl_in.where(ds_agl_in.level < alti_agl_max, drop=True)
+    
+    # CREATE NEW DATASET based on AGL dataset
+    ds_agl = ds_agl.squeeze()
+    ds_asl = ds_agl[[var_temp_construc, 'ZS']].isel(level=np.arange(len(alti_asl_arr)))
+    
+    for var in var3d_list:
+        ds_asl[f'{var}_ASL'] = ds_asl[var_temp_construc]*0
+    
+    # change levels from AGL to ASL
+    ds_asl['level'] = alti_asl_arr
+    # remove vars that are not ASL
+    ds_asl = ds_asl.drop_vars([var_temp_construc])  # Now added in var_list
+    
+    
+    # INTERPOLATION
+    t0 = time.time()
+
+    for ilevel, alti in enumerate(alti_asl_arr):
+        print(f'Computation for {alti}m')
+        for var in var3d_list:
+            layer_interp = interp_iso_asl(alti, ds_agl, var, verbose=False)
+            ds_asl[f'{var}_ASL'][ilevel,:,:] = layer_interp
+            
+    print('interpolation time:', time.time()-t0)
+    
+    return ds_asl
+
+
+def asl_to_agl_coords(ds_asl, alti_agl_arr=np.arange(0,200,25)):
+    """
+    Change coordinates of dataset from flat (i.e. levels are above sea 
+    level - ASL) to terrain-following (i.e. levels 
+    are above ground level - AGL).
+    
+    ds: xarray.Dataset containing 3D variables, ZS and coordinate level.
+    
+    N.B.:
+        Computation time: 
+            0.003s per alti if domain is 20x20 (zoom_on 'liaise')
+            1.5s per alti if domain is 47x52 (zoom_on 'urgell')
+            10s per alti if domain is 90x108 (zoom_on 'd2')
+            100s per alti if domain is 164x290 (zoom_on 'd1' or None)
+        
+    """
+    var_list_ASL = list(ds_asl.keys())
+    var3d_list_ASL = var_list_ASL
+    var3d_list_ASL.remove('ZS')
+    
+    # SOME PRELIMINARY CHECK
+    if len(alti_agl_arr) < 2:
+        raise ValueError('alti_agl_arr must be greater than 1, use inter_iso_agl for 1 layer only')
+
+    
+    # keep only layers of interest: (to gain computation time)
+    #TODO
+
+    ds_asl = ds_asl.squeeze()
+
+#    # OLD WAY
+#    # CREATE NEW DATASET based on AGL dataset
+#    var_temp_construc = var_list_ASL[0]
+#    if var_temp_construc == 'ZS':  # issue if type pint.Quantity
+#        var_temp_construc = var_list_ASL[1]
+#    ds_agl = ds_asl[[var_temp_construc, 'ZS']]
+#
+#    for var_ASL in var_list_ASL:
+#        var_agl = var_ASL[:-4]  # remove '_asL' from varnames 'THT_ASL' -> 'THT'
+#        ds_agl[var_agl] = ds_agl[var_temp_construc]*0
+#    
+#    # change levels from AGL to ASL
+#    ds_agl['level'] = alti_agl_arr
+#    # remove vars that are not ASL
+#    ds_agl = ds_agl.drop_vars([var_temp_construc])
+    
+    # NEW WAY
+    # CREATE NEW DATASET based on AGL dataset
+    var3d_list_AGL = [key.replace('_ASL', '') for key in var3d_list_ASL]  # remove '_ASL' from varnames 'THT_ASL' -> 'THT'
+    dataarray3d_prop = (('level', 'nj', 'ni'), np.zeros((len(alti_agl_arr), 
+                                                      len(ds_asl.nj), 
+                                                      len(ds_asl.ni))
+                                                        ))
+    ds_agl = xr.Dataset()
+    for var3d in var3d_list_AGL:
+        var_dict = {var3d: dataarray3d_prop}
+        ds_agl = ds_agl.merge(xr.Dataset(data_vars=var_dict).copy(deep=True))
+        
+    ds_agl = ds_agl.merge(ds_asl['ZS'])
+    ds_agl['level'] = alti_agl_arr
+    
+#    if ds_agl['THT'].data is ds_agl['PABST'].data:
+#        raise ValueError('same ID')
+    
+    # INTERPOLATION
+    t0 = time.time()
+    
+#    var3d_list = var_list_AGL
+#    var3d_list.remove('ZS')
+    
+    for ilevel, alti in enumerate(alti_agl_arr):
+        print(f'Computation for {alti}m AGL')
+        for var_agl in var3d_list_AGL:
+            layer_interp = interp_iso_agl(alti, ds_asl, f'{var_agl}_ASL', 
+                                          verbose=False)
+            ds_agl[var_agl][ilevel,:,:] = layer_interp
+
+    print('interpolation time:', time.time()-t0)
+    
+    return ds_agl
+
+
+def calc_soil_prop(PCLAY=0.35, PSAND=0.15, 
+                   CPEDO_FUNCTION='CO84', CSCOND='PL98', CISBA='DIF',
+                   vol_water_content=np.nan):
+    """
+    Function from SURFEX routine, giving soil properties according to
+    fraction of sand and clay, and depending on the pedotransfer function.
+    in SFX: see soil.F90
+    author: Marti Belen, Lunel Tanguy
+    
+    parameters:
+        PCLAY: float between 0 and 1, clay fraction
+        PSAND: float between 0 and 1, sand fraction
+        HPEDOTF: pedotransfer function name
+        PCLAY: fraction of clay
+        PSAND: fraction of sand
+    
+    returns: dict with following keys:
+        - general property:
+        W_sat: water at saturation = porosity [m3/m3]
+        - hydraulic properties:
+        W_wilt: Volumetric water content of Wilting point [m3/m3]
+        W_fc: Volumetric water content of Field Capacity [m3/m3]
+        b: soil water b-parameter (from CH78 and CO84 papers)
+        psi_sat: Matric potential at saturation
+        K_sat: hydraulic conductivity at saturation
+        - thermal properties:
+        CG_wilt: volumetric soil heat capacity at wilting point [J/m3/K]
+        CG_fc: volumetric soil heat capacity [J/m3/K]
+        thermal_cond_sat: thermal conductivity at saturation [W/m/K]
+        thermal_cond_fc: thermal conductivity at field capacity [W/m/K]
+        thermal_cond_wilt: thermal conductivity at wilting point [W/m/K]
+            if vol_water_content != NaN:
+        CG: volumetric soil heat capacity [J/m3/K]
+        thermal_cond: thermal conductivity [W/m/K]
+        
+    """
+
+    res_dict = {}
+    
+    if CPEDO_FUNCTION == 'CH78':
+        # W_sat:
+        res_dict['W_sat'] = 0.001 * (-108.*PSAND+494.305)
+        # W_wilt: Volumetric water content of Wilting point
+        res_dict['W_wilt'] = 37.1342E-3*(PCLAY*100.)**0.5
+        # W_fc: Volumetric water content of Field Capacity
+        if CISBA == 'DIF':
+            res_dict['W_fc'] = 0.2298915119 - 0.4062575773*PSAND + 0.0874218705*PCLAY \
+                     + 0.2942558675*PSAND**(1./3.)+0.0413771051*PCLAY**(1./3.)
+        else:
+            res_dict['W_fc'] = 89.0467E-3*(PCLAY*100.)**0.3496
+        # b:
+        res_dict['b'] = 13.7*PCLAY + 3.501       
+        # psisat, or matpotsat = water matrix potential at saturation
+        res_dict['psi_sat'] = -0.01*(10.**(1.85 - 0.88*PSAND))
+        # ksat, hydcondsat = hydraulic conductivity at saturation ?
+        res_dict['K_sat'] = 1.0e-6*(10.0**(0.161874E+01                   \
+                            - 0.581989E+01*PCLAY    - 0.907123E-01*PSAND    \
+                            + 0.529268E+01*PCLAY**2 + 0.120332E+01*PSAND**2))
+    elif CPEDO_FUNCTION == 'CO84':
+        # W_sat
+        res_dict['W_sat'] = 0.505-0.142*PSAND-0.037*PCLAY 
+        # W_wilt: Volumetric water content of Wilting point
+        res_dict['W_wilt'] = 0.15333-0.147*PSAND+0.33*PCLAY-0.102*(PCLAY**2)
+        # W_fc: Volumetric water content of Field Capacity
+        if CISBA == 'DIF':
+            res_dict['W_fc'] = 0.2016592588 - 0.5785747196*PSAND + 0.1113006987*PCLAY    \
+                         + 0.4305771483*PSAND**(1./3.)-0.0080618093*PCLAY**(1./3.)
+        else:
+            res_dict['W_fc'] = 0.1537-0.1233*PSAND+0.2685*PCLAY**(1./3.)
+        # b:
+        res_dict['b'] = 3.10+15.7*PCLAY-0.3*PSAND
+        # psisat, or matpotsat = matrix potential at saturation
+        res_dict['psi_sat'] = -0.01*(10.0**(1.54-0.95*PSAND+0.63*(1.-PSAND-PCLAY)))
+        # ksat, hydcondsat = hydraulic conductivity at saturation ?
+        res_dict['K_sat'] = 0.0254*(10.0**(-0.6+1.26*PSAND-0.64*PCLAY))/3600
+    
+    #
+    if CSCOND == 'NP89':
+        raise ValueError("""CSCOND='NP89' not avalaible yet, 
+                         check soil.F90 surfex routine""")
+        # Ground heat capacity at saturation
+        #res_dict['Cg_sat'] = (-1.5571*PSAND - 1.441*PCLAY + 4.70217 )*1e-6
+        # ...
+    elif CSCOND  == 'PL98':
+        mass_soil_heat_capa = 733  #[J/kg/K] soil specific heat, SPHSOIL in SFX
+        soil_compact_weight = 2700  #[kg/m3]  DRYWGHT in SFX
+        vol_soil_heat_capa_compact = mass_soil_heat_capa * soil_compact_weight  #=1979100 J/m3/K
+        vol_water_heat_capa = 4180000  # [J/m3/K]
+        # calculate Volumetric soil heat capacity
+        res_dict['CG_wilt'] = (
+                (1 - res_dict['W_sat'])*vol_soil_heat_capa_compact \
+                + res_dict['W_wilt'] * vol_water_heat_capa)
+        res_dict['CG_fc'] = (
+                (1 - res_dict['W_sat'])*vol_soil_heat_capa_compact \
+                + res_dict['W_fc'] * vol_water_heat_capa)
+        res_dict['CG'] = (
+                (1 - res_dict['W_sat'])*vol_soil_heat_capa_compact \
+                + vol_water_content * vol_water_heat_capa)
+
+        # calculate soil thermal conductivity
+        PQUARTZ = 0.038 + 0.95*PSAND
+        CONDQRTZ = 7.7    # W/(m K) Quartz thermal conductivity
+        CONDWTR = 0.57   # W/(m K)  Water thermal conductivity
+        if PQUARTZ > 0.2:
+            CONDOTH = 2.0    # W/(m K)  Other thermal conductivity
+        else:
+            CONDOTH = 3.0
+        # soil solids conductivity
+        CONDSLD = (CONDQRTZ**PQUARTZ) * (CONDOTH**(1.0-PQUARTZ))
+        # soil dry conductivity
+        GAMMAD = (1.0-res_dict['W_sat'])*soil_compact_weight  # soil dry density
+        CONDDRY = (0.135*GAMMAD + 64.7)/(soil_compact_weight - 0.947*GAMMAD) 
+        # Saturated thermal conductivity:
+        res_dict['thermal_cond_sat'] = (CONDSLD**(1.0-res_dict['W_sat']))* (CONDWTR) 
+        # effective thermal conductivity
+        SATDEG = np.max([0.1, vol_water_content/res_dict['W_sat']])  # saturation degree
+        KERSTEN  = np.log10(SATDEG) + 1.0
+        res_dict['thermal_cond'] = KERSTEN*(res_dict['thermal_cond_sat']-CONDDRY) + CONDDRY
+        # thermal conductivity at Field capacity
+        SATDEG = np.max([0.1, res_dict['W_wilt']/res_dict['W_sat']])
+        KERSTEN  = np.log10(SATDEG) + 1.0
+        res_dict['thermal_cond_wilt'] = KERSTEN*(res_dict['thermal_cond_sat']-CONDDRY) + CONDDRY
+        # thermal conductivity at Field capacity
+        SATDEG = np.max([0.1, res_dict['W_fc']/res_dict['W_sat']])
+        KERSTEN  = np.log10(SATDEG) + 1.0
+        res_dict['thermal_cond_fc'] = KERSTEN*(res_dict['thermal_cond_sat']-CONDDRY) + CONDDRY
+        
+    return res_dict
+
     
 if __name__ == '__main__':
-#    open_uib_seb(QC_threshold=10)
-    res= get_surface_type('irta-corn-real', 2, model='std')
-    
+    pass
+# TESTs for AGL to ASL coordinate
+#    filename = get_simu_filename('irr_d1', '20210716-1600',)
+#    ds = xr.open_dataset(filename,
+#                         decode_coords="coordinates",
+#                         )
+##    ds_in = ds[['THT', 'TEMP', 'RVT', 'PABST', 'ZS']].isel(nj=59, ni=[175,176,177], level=1).squeeze()
+#    ds['DENS'] = mcalc.density(
+#            ds['PABST']*units.pascal,
+#            ds['TEMP']*units.celsius, 
+#            ds['RVT']*units.gram/units.gram)
+#    
+#    ds_subset = subset_ds(ds[['PABST', 'THT', 'DENS', 'ZS']],
+#                          zoom_on='liaise').squeeze()
+###    ds_subset = ds[['PABST', 'THT', 'DENS', 'ZS']].squeeze()
+##
+#    ds_asl = agl_to_asl_coords(ds_subset, alti_asl_arr=np.arange(100, 900, 10))
+#
+##    test = interp_iso_agl(50, ds_asl, 'THT_ASL', verbose=True)
+#    
+##    ds_agl = asl_to_agl_coords(ds_asl, alti_agl_arr=np.arange(10,200,20))
+#    ds_agl = asl_to_agl_coords(ds_asl, alti_agl_arr=np.array(ds_subset.level[:20]))
+#    
+#
+##    orig = ds_subset.THT[10,:,:]
+##    diff = orig - test
+#    diff_THT = ds_agl['THT'] - ds_subset['THT']
+#    print('diff max: ', diff_THT.max())
+##    
+##    diff_THT[1,:,:].plot()
+

@@ -15,11 +15,12 @@ import matplotlib.pyplot as plt
 from metpy.units import units
 import metpy.calc as mpcalc
 import xarray as xr
+import global_variables as gv
 
 
 ########## Independant parameters ###############
-wanted_date = '20210722-1200'
-site = 'cendrosa'
+wanted_date = '20210729-2300'
+site = 'elsplans'
 
 # variable name from MNH files: 'THT', 'RVT'
 var_simu = 'THT'
@@ -28,8 +29,8 @@ var_obs = 'potentialTemperature'
 coeff_corr = 1  #to switch from obs to simu2
 
 simu_list = [
-            'std_d2', 
-            'irr_d2'
+            'std_d1', 
+            'irr_d1'
             ]
 
 # Vertical path to show in simu:
@@ -37,7 +38,7 @@ simu_list = [
 straight_profile = False
 # Path in simu is average of neighbouring grid points
 mean_profile = True
-column_width = 10
+column_width = 3
 # Path in simu follows real RS path  #issue: fix discontinuities
 follow_rs_position = False
 
@@ -47,19 +48,13 @@ toplevel = 2500
 
 save_plot = True
 save_folder = 'figures/verti_profiles/{0}/{1}/'.format(site, var_simu)
-figsize=(4, 6)
+figsize=(5, 7)
 
 ##################################################
 
-if site == 'cendrosa':
-    lat = 41.6925905
-    lon = 0.9285671
-elif site == 'elsplans':
-    lat = 41.590111
-    lon = 1.029363
-elif site == 'elsplans_alt':
-    lat = 41.5967
-    lon = 1.0033
+if site in ['cendrosa', 'elsplans']:
+    lat = gv.sites[site]['lat']
+    lon = gv.sites[site]['lon']
 else:
     raise ValueError('Site without radiosounding')
 
@@ -82,7 +77,7 @@ if site == 'elsplans_alt':
             '/cnrm/surface/lunelt/data_LIAISE/'+ 'elsplans' +'/radiosoundings/'
 else:
     datafolder = \
-            '/cnrm/surface/lunelt/data_LIAISE/'+ site +'/radiosoundings/'
+            gv.global_data_liaise + site + '/radiosoundings/'
 
 filename = tools.get_obs_filename_from_date(
         datafolder, 
@@ -174,7 +169,7 @@ for model in simu_list:     # model will be 'irr' or 'std'
         var1d_column = var3d_column.mean(dim=['nj', 'ni'])
         var1d_column_std = var3d_column.std(dim=['nj', 'ni'])
         plt.plot(var1d_column.data, var1d_column.level, 
-                 label='mean_&_std_{0}'.format(model), 
+                 label='mean_&_stdev_{0}'.format(model), 
                  c=colordict[model],
                  )
         plt.fill_betweenx(var1d_column.level, 
@@ -228,37 +223,37 @@ else:
     figname = 'verti profile {0}-{1}-{2}'.format(
         var_simu, site, wanted_date)
 
-plot_title = "Potential temperature profile\nabove La Cendrosa\non July 22 at 12:00"
+#plot_title = "Potential temperature profile\nabove La Cendrosa\non July 22 at 12:00"
 plt.title(plot_title)
 plt.ylabel('height AGL (m)')
 plt.xlabel(var3d_low.standard_name + '_[' + var3d_low.units + ']')
 plt.legend()
 plt.tight_layout()
 
-plt.show()
+#plt.show()
 
 #%% GET ABL HEIGHT
-obs_tht = mpcalc.potential_temperature(p_obs, T_obs)
-obs_u, obs_v = mpcalc.wind_components(obs.windSpeed, obs.windDirection)
+#obs_tht = mpcalc.potential_temperature(p_obs, T_obs)
+#obs_u, obs_v = mpcalc.wind_components(obs.windSpeed, obs.windDirection)
+##
+##bulk_Ri = mpcalc.bulk_richardson_number(
+##    obs.altitude*units.meter, 
+##    obs_tht, 
+##    obs_u.values*units.meter_per_second, 
+##    obs_v.values*units.meter_per_second)
 #
 #bulk_Ri = mpcalc.bulk_richardson_number(
-#    obs.altitude*units.meter, 
+#    obs.altitude.values, 
 #    obs_tht, 
-#    obs_u.values*units.meter_per_second, 
-#    obs_v.values*units.meter_per_second)
-
-bulk_Ri = mpcalc.bulk_richardson_number(
-    obs.altitude.values, 
-    obs_tht, 
-    obs_u.values, 
-    obs_v.values)
-
-bulk_Ri = bulk_Ri.m
-
-print('--- hbl in obs: ---')
-hbl_bulk_Ri = mpcalc.boundary_layer_height_from_bulk_richardson_number(
-        obs.altitude.values, bulk_Ri)
-print("hbl_bulk_Ri = " + str(hbl_bulk_Ri))
+#    obs_u.values, 
+#    obs_v.values)
+#
+#bulk_Ri = bulk_Ri.m
+#
+#print('--- hbl in obs: ---')
+#hbl_bulk_Ri = mpcalc.boundary_layer_height_from_bulk_richardson_number(
+#        obs.altitude.values, bulk_Ri)
+#print("hbl_bulk_Ri = " + str(hbl_bulk_Ri))
 
 #hbl_tht = mpcalc.boundary_layer_height_from_potential_temperature(
 #        obs.altitude*units.meter, obs_tht)
