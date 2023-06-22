@@ -15,7 +15,7 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'preixana'
+site = 'ivars-lake'
 
 models = ['irrlagrip30_d1']  # or std_d1
 model = models[0]
@@ -26,9 +26,9 @@ hour_interval = [0, 3]
 list_variables = [
         # AT GRID POINT
 #        'SWU_P9', 
-        'Q2M_ISBA', 'T2M_ISBA', 
-        'WINDSPEED.OUT', 
-        'SWD', 'LWD',
+#        'Q2M_ISBA', 'T2M_ISBA', 
+#        'WINDSPEED.OUT', 
+#        'SWD', 'LWD',
 #        'dQdZ_ISBA', 'dTdZ_ISBA',
         
         # PER PATCH
@@ -36,8 +36,9 @@ list_variables = [
 #        'SWU_P9', 'LWU_P9', 'RN_P9', 'H_P9', 'LE_P9', 'GFLUX_P9', 'U_STAR_P9', 'TG1P9', 'TG2P9',
 #        'SWU_P1', 'LWU_P1', 'RN_P1', 'H_P1', 'LE_P1', 'GFLUX_P1', 'U_STAR_P1', 'TG1P1', 'TG2P1',
 #        'SWU_P4', 'LWU_P4', 'RN_P4', 'H_P4', 'LE_P4', 'GFLUX_P4', 'U_STAR_P4', 'TG1P4', 'TG2P4'        
-
-#       'SWU_WAT', 'LWU_WAT', 'RN_WAT', 'H_WAT', 'LE_WAT', 'GFLUX_WAT', 'U_STAR_WAT',
+#       'SWU_WAT', 
+       'LWU_WAT', 'RN_WAT', 
+#       'H_WAT', 'LE_WAT', 'GFLUX_WAT', 'U_STAR_WAT',
         
 #        'Z0VEGP9', 'Z0VEGP10', 'Z0VEGP4', 'Z0_ISBA', 'Z0_WAT',
 #        'TG1P1', 'TG2P1', 'TG3P1', 'TG4P1', 'TG5P1', 'TG6P1', 'TG7P1',
@@ -170,38 +171,29 @@ for varname_sim in list_variables:
     
     # LOAD the files
 #    varname_sim_list = ['H_ISBA',] + varname_sim_list  # add 'H_ISBA' because it has latitude and longitude values
-    for i, varname_item in enumerate(varname_sim_list):
-        # get format of file to concatenate
-        in_filenames_sim = gv.format_filename_simu[model]
-        # set name of concatenated output file
-        out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(
-                in_filenames_sim[6], varname_item)
-        # concatenate multiple days
-        datafolder = father_folder + simu_folders[model]
-        tools.concat_simu_files_1var(datafolder, varname_item, 
-                                     in_filenames_sim, out_filename_sim)
-        if i == 0:      # if first data, create new dataset
-            ds = xr.open_dataset(datafolder + out_filename_sim)
-        else:           # append data to existing dataset
-            ds_temp = xr.open_dataset(datafolder + out_filename_sim)
-            ds = ds.merge(ds_temp)
+#    for i, varname_item in enumerate(varname_sim_list):
+#        # get format of file to concatenate
+#        in_filenames_sim = gv.format_filename_simu[model]
+#        # set name of concatenated output file
+#        out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(
+#                in_filenames_sim[6], varname_item)
+#        # concatenate multiple days
+#        datafolder = father_folder + simu_folders[model]
+#        tools.concat_simu_files_1var(datafolder, varname_item, 
+#                                     in_filenames_sim, out_filename_sim)
+#        if i == 0:      # if first data, create new dataset
+#            ds = xr.open_dataset(datafolder + out_filename_sim)
+#        else:           # append data to existing dataset
+#            ds_temp = xr.open_dataset(datafolder + out_filename_sim)
+#            ds = ds.merge(ds_temp)
+    
+    ds = tools.load_dataset(varname_sim_list, model)
     
     # find indices from lat,lon values 
     try:
         index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
     except AttributeError:  #if the data does not have lat-lon data, merge with another that have it
-        varname_item = 'H_ISBA'
-        # get format of file to concatenate
-        in_filenames_sim = gv.format_filename_simu[model]
-        # set name of concatenated output file
-        out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(
-                in_filenames_sim[6], varname_item)
-        # concatenate multiple days
-        datafolder = father_folder + simu_folders[model]
-        tools.concat_simu_files_1var(datafolder, varname_item, 
-                                     in_filenames_sim, out_filename_sim)
-        ds_temp = xr.open_dataset(datafolder + out_filename_sim)
-        ds = ds_temp.merge(ds)
+        ds = tools.load_dataset(['H_ISBA',] + varname_sim_list, model)
         # and now, try again:
         index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
         

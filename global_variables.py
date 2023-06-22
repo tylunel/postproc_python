@@ -38,24 +38,33 @@ format_filename_simu = {
         }
 
 sites = {'cendrosa': {'lat': 41.6925905,
-                      'lon': 0.9285671},
+                      'lon': 0.9285671,
+                      'alt': 240},
          'preixana': {'lat': 41.59373,
-                      'lon': 1.07250},
+                      'lon': 1.07250,
+                      'alt': 354},
          'elsplans': {'lat': 41.590111,
-                      'lon': 1.029363},
+                      'lon': 1.029363,
+                      'alt': 334},
 #         'irta-corn': {
 ##                       'lon': 0.805333},  # wrong position, but 100% irr zone in model irr_d1
 #                         'lat': 41.5922,  # wrong position, but 100% irr zone in model
          'irta-corn': {
                      'lat': 41.619079, # real position, but is not in 100% irr zone in model irr_d1
-                     'lon': 0.875333,}, # real position, but is not in 100% irr zone in model
+                     'lon': 0.875333,
+                     'alt': 245}, # real position, but is not in 100% irr zone in model
+         'irta': {  # =irta-corn
+                     'lat': 41.619079, 
+                     'lon': 0.875333,
+                     'alt': 245},
          'verdu': {'lat': 41.595278,
-                   'lon': 1.127222},
+                   'lon': 1.127222,
+                   'alt': 412},
          'ivars-lake': {'lat': 41.682018,
-                      'lon': 0.946951},
+                      'lon': 0.946951,
+                      'alt': 230},
          'border_irrig_noirr': {'lat': 41.611898,
                                 'lon': 0.999708},
-                        
         }
          
 towns = {'arbeca': {'lat': 41.54236,
@@ -97,9 +106,14 @@ towns = {'arbeca': {'lat': 41.54236,
          'conesa': {'lat': 41.51996,
                 'lon': 1.29126},
          'calafell': {'lat': 41.19005,
-                      'lon': 1.57218},
+#                      'lon': 1.57218},  # real value, but issue with budget
+                      'lon': 1.52552},  # modified value
          'santa_coloma': {'lat': 41.53407,
                           'lon': 1.38441},
+        'pi_sol': {'lat': 41.302951,
+                   'lon': 1.52552},
+        'el_morell': {'lat': 41.191488,
+                      'lon': 1.208416},
 #        '__': {'lat': ,
 #                'lon': },
               }
@@ -136,6 +150,21 @@ mountains = {'tossal_baltasana': {'lat': 41.3275,
 
 whole = {**sites, **towns, **mountains}
 
+areas_corners = {
+    'irrig': ['lleida', 'balaguer', 
+              'claravalls', 'borges_blanques'],
+    'dry': ['claravalls', 'borges_blanques', 
+            'els_omellons', 'sant_marti', 'fonolleres'],
+    'slope_west': ['els_omellons', 'sant_marti', 'fonolleres',
+                   'santa_coloma', 'tossal_gros', 'villobi'],
+    'barbera': ['santa_coloma', 'tossal_gros', 'villobi',
+                   'tossal_purunyo', 'puig_cabdells', 'puig_formigosa'],
+    'slope_east': ['tossal_purunyo', 'puig_cabdells', 'puig_formigosa',
+                   'pi_sol', 'el_morell',],                
+    'coast': ['pi_sol', 'el_morell',
+              'tarragona', 'calafell', ],
+              }
+
 field_capa = {'cendrosa': {1: 0.28, 2: 0.18, 3: 0.23},  # To determine via plot on August
               'preixana': {1: 0.25, 2: 0.30, 3: 0.187}, # To determine via plot on May
               'irta-corn': {1: 0.39, 2:  0.39, 3: 0.33, 4: 0.34, 5: 0.38},  #estimated at 20cm
@@ -153,7 +182,7 @@ barb_size_increments = {
         'weak_winds': {'half':1, 'full':2, 'flag':10},
         'standard': {'half':2.57, 'full':5.14, 'flag':25.7},
         'm_per_s': {'half':5, 'full':10, 'flag':50},
-        'pgf': {'half':0.00005, 'full':0.0001, 'flag':0.0005},  # in m/s²
+        'pgf': {'half':0.0005, 'full':0.001, 'flag':0.005},  # in m/s²
         'pgf_weak': {'half':0.000025, 'full':0.00005, 'flag':0.00025},  # in m/s²
         }
 
@@ -163,7 +192,7 @@ barb_size_description = {
         'standard': "barb increments: half=5kt=2.57m/s, full=10kt=5.14m/s, flag=50kt=25.7m/s",
         'm_per_s': "barb increments: half=5m/s, full=10m/s, flag=50m/s",
         'm_per_s_detailled': "barb increments: dot < 2.5m/s < half barb < 7.5m/s < full < 12.5m/s, flag=50kt=25.7m/s",
-        'pgf': "barb increments: half=0.05mm/s², full=0.1mm/s², flag=0.5mm/s²",
+        'pgf': "barb increments: half=0.5mm/s², full=1mm/s², flag=5mm/s²",
         'pgf_weak': "barb increments: half=0.025mm/s², full=0.05mm/s², flag=0.25mm/s²",
         }
 
@@ -199,8 +228,8 @@ zoom_domain_prop = {
     'marinada': {
         'skip_barbs': 2,
         'barb_length': 4.5,
-        'lat_range': [41.1, 42],
-        'lon_range': [0.7, 1.6],
+        'lat_range': [41.0, 42],
+        'lon_range': [0.6, 1.6],
         'figsize': (9,9),
         },
     None: {

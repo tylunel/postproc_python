@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import xarray as xr
 import tools
 import global_variables as gv
+from metpy import calc as mcalc
 
 ############# Independant Parameters (TO FILL IN):
     
@@ -19,7 +20,7 @@ site = 'elsplans'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'H_2m'
+varname_obs = 'TEMP_2m'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -38,7 +39,12 @@ varname_obs = 'H_2m'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim_list = ['H_P1']
+ukmo_model = ['ukmo_irr', 'ukmo_std']
+varname_sim_ukmo = 'air_potential_temperature'
+# surface_temperature, air_temperature, air_potential_temperature, specific_humidity_0,
+# surface_downwelling_shortwave_flux_in_air
+
+varname_sim_list = ['T2M_ISBA']
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 # U_STAR, BOWEN
 
@@ -46,7 +52,7 @@ varname_sim_list = ['H_P1']
 ilevel = 1   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
 add_irrig_time = True
-figsize = (12, 7) #small for presentation: (6,6), big: (15,9)
+figsize = (15, 9) #small for presentation: (6,6), big: (15,9)
 save_plot = True
 save_folder = './figures/time_series/{0}/domain1/'.format(site)
 
@@ -55,17 +61,14 @@ models = [
 #        'std_d2_old',
 #        'irr_d2', 
 #        'std_d2', 
+        'irr_d1', 
         'std_d1',
-        'irr_d1',
-        'irrlagrip30_d1',
+#        'irrlagrip30_d1',
 #        'lagrip100_d1',
          ]
 
-remove_alfalfa_growth = False
-errors_computation = True
-
+errors_computation = False
 add_seb_residue = False
-compare_to_residue_corr = False
 ######################################################
 
 simu_folders = {key:gv.simu_folders[key] for key in models}
@@ -79,15 +82,19 @@ colordict = {'irr_d2': 'g',
              'std_d1': 'r', 
              'irrlagrip30_d1': 'y',
              'irr_d2_old': 'g', 
-             'std_d2_old': 'r', 
+             'std_d2_old': 'r',
+             'ukmo_irr': 'g',
+             'ukmo_std':'r',
              'obs': 'k'}
-styledict = {'irr_d2': '-', 
+linestyledict = {'irr_d2': '-', 
              'std_d2': '-',
              'irr_d1': '--', 
              'std_d1': '--', 
              'irrlagrip30_d1': '--',
              'irr_d2_old': ':', 
              'std_d2_old': ':', 
+             'ukmo_irr': '-.',
+             'ukmo_std': '-.',
              'obs': '-'}
     
 
@@ -169,7 +176,7 @@ elif site == 'elsplans':
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
 #    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
-elif site in ['irta-corn', 'irta-corn-real',]:
+elif site in ['irta-corn', 'irta-corn-real']:
     datafolder = gv.global_data_liaise + '/irta-corn/seb/'
     in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
 else:
@@ -198,7 +205,7 @@ tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs,
 
 obs = xr.open_dataset(datafolder + out_filename_obs)
 
-# DIAG - process other variables:
+# process other variables:
 if site in ['preixana', 'cendrosa']:
     # net radiation
     obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
@@ -206,10 +213,9 @@ if site in ['preixana', 'cendrosa']:
     obs['bowen'] = obs['shf_1'] / obs['lhf_1']
     obs['SEB_RESIDUE'] = obs['rn']-obs['lhf_1']-obs['shf_1']-obs['soil_heat_flux']
     obs['EVAP_FRAC'] = obs['lhf_1'] / (obs['lhf_1'] + obs['shf_1'])
-    obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
-#    obs['EVAP_FRAC'].data = obs['EVAP_FRAC'].data.clip(min=0, max=1)
-#    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
-#    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
+    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
     for i in [1,2,3]:
         obs['swi_{0}'.format(i)] = tools.calc_swi(
                 obs['soil_moisture_{0}'.format(i)],
@@ -230,10 +236,9 @@ elif site in ['irta-corn', 'irta-corn-real']:
     obs['U_STAR'] = np.sqrt(obs['TAU']/obs['air_density'])
     obs['SEB_RESIDUE'] = obs['NETRAD']-obs['LE']-obs['H']-obs['G_plate_1_1_1']
     obs['EVAP_FRAC'] = obs['LE'] / (obs['LE'] + obs['H'])
-    obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
-#    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
-#    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
-#    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
+    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
+    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
 elif site == 'elsplans':
     ## Flux calculations
     obs['H_2m'] = obs['WT_2m']*1200  # =Cp_air * rho_air
@@ -244,12 +249,13 @@ elif site == 'elsplans':
                 obs['SEB_RESIDUE']>-1000, 
                 np.nan)
     obs['EVAP_FRAC'] = obs['LE_2m'] / (obs['LE_2m'] + obs['H_2m'])
-    obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
+    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
+    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
     ## Webb Pearman Leuning correction
     obs['BOWEN_2m'] = obs['H_2m'] / obs['LE_2m']
     #obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.016)*(0+(1.2/300)*obs['WT_2m'])  #eq (25)
     obs['LE_2m_WPL'] = obs['LE_2m']*(1.010)*(1+0.051*obs['BOWEN_2m'])  #eq (47) of paper WPL
-    
     for i in [10,20,30,40]:
         obs['SWI{0}_subsoil'.format(i)] = tools.calc_swi(
                 obs['PR{0}_subsoil'.format(i)]*0.01,  #conversion from % to decimal
@@ -271,9 +277,6 @@ if varname_obs != '':
         
         obs['time']=dati_arr_obs
         
-        if varname_obs == 'RHO_2m':
-            obs = obs.where(obs.time>pd.Timestamp('20210715T1200'), drop=True)
-        
         # filter outliers (turn into NaN)
         obs_var_filtered = obs[varname_obs].where(
                 (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
@@ -281,37 +284,27 @@ if varname_obs != '':
         if varname_obs == 'RAIN_subsoil':
             obs_var_filtered = obs[varname_obs]
         obs_var_corr = (obs_var_filtered+offset_obs)*coeff_obs
-        plt.plot(obs_var_corr.time, obs_var_corr, 
+        plt.plot(dati_arr_obs, obs_var_corr, 
                  label='obs_'+varname_obs,
                  color=colordict['obs'])
     else:
-        if remove_alfalfa_growth:
-            if varname_obs in ['lhf_1', 'shf_1'] and site == 'cendrosa':  # because of growth of alfalfa
-                obs = obs.where(obs.time>pd.Timestamp('20210721T0100'), drop=True)
-        
-        if site == 'irta-corn':
-            obs = obs.where(~obs.time.isnull(), drop=True)
-        
         # filter outliers (turn into NaN)
         obs_var_filtered = obs[varname_obs].where(
                 (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
                 np.nan)
         # apply correction for comparison with models
         obs_var_corr = ((obs[varname_obs]+offset_obs)*coeff_obs)
-    
         # plot
-        plt.plot(obs_var_corr.time, obs_var_corr, 
-                 label='obs_'+varname_obs,
-                 color=colordict['obs'])
-#        obs_var_corr.plot(label='obs_'+varname_obs,
-#                          color=colordict['obs'],
-#                          linewidth=1)
+        obs_var_corr.plot(label='obs',
+#                          label='obs_'+varname_obs,
+                          color=colordict['obs'],
+                          linewidth=1)
         
     if add_seb_residue:
         
         obs_uncertainty = obs['SEB_RESIDUE'].data
         
-        if varname_obs in ['LE', 'LE_2m', 'LE_2m_WPL', 'lhf_1']:
+        if varname_obs in ['LE', 'LE_2m', 'lhf_1']:
             obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*obs['EVAP_FRAC_FILTERED'].data
         elif varname_obs in ['H', 'H_2m', 'shf_1']:
             obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*(1-obs['EVAP_FRAC_FILTERED'].data)
@@ -330,6 +323,32 @@ if varname_obs != '':
                           alpha=0.2, 
                           facecolor=colordict['obs'],
                           )
+
+#%% SIMUs UKMO
+
+for model in ukmo_model:
+    if model == 'ukmo_irr':
+        suffix = '_irrig'
+    elif model == 'ukmo_std':
+        suffix = ''
+        
+    simu_ukmo = xr.open_dataset(f'/home/lunelt/Data/data_LIAISE/UKMO_irrig/{site}_RAL3p1{suffix}.nc')
+    
+    data = simu_ukmo[varname_sim_ukmo]
+    time_dim_name = [coord for coord in list(data.coords) if 'time' in coord][0]
+    
+    if varname_sim_ukmo == 'air_potential_temperature':
+        pres = tools.height_to_pressure_std(gv.sites[site]['alt'])
+        temp = tools.temperature_from_potential_temperature(pres, data)
+        data = temp
+    
+    plt.plot(data[time_dim_name],
+             data,
+    #         label='ukmo_simu',
+             label='ukmo_'+varname_sim_ukmo,
+             color=colordict[model],
+             linestyle=linestyledict[model],
+             linewidth=1)
 
 
 #%% SIMU:
@@ -365,23 +384,18 @@ for  varname_sim in varname_sim_list:
         elif varname_sim == 'BOWEN':
             ds['BOWEN'] = tools.calc_bowen_sim(ds)
         
+        # keep variable of interest
+        var_md = ds[varname_sim]
+        
         # Set time abscisse axis
         try:
             start = ds.time.data[0]
         except AttributeError:
             start = np.datetime64('2021-07-21T01:00')
         
-        dati_arr_sim = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, ds[varname_sim].shape[0])])
-
-        ds['record'] = dati_arr_sim
-        ds = ds.drop_vars(['time'])
-        ds = ds.rename({'record': 'time'})
+        dati_arr_sim = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, var_md.shape[0])])
         
-        if model == 'irrlagrip30_d1':
-            ds = ds.where(ds.time > pd.Timestamp('20210714T0100'), drop=True)
-        
-        # keep variable of interest
-        var_md = ds[varname_sim]
+        var_md = var_md.squeeze()  # removes dimension with 1 value only
         
         # find indices from lat,lon values 
         index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
@@ -394,24 +408,22 @@ for  varname_sim in varname_sim_list:
             var_1d = var_md[:, index_lat, index_lon].data
         
         # PLOT
-        plt.plot(ds.time, var_1d, 
+        plt.plot(dati_arr_sim, var_1d, 
                  color=colordict[model],
-#                 colordict[model],
+                 linestyle=linestyledict[model],
                  label=f'simu_{model}_{varname_sim}',
 #                 label=f'simu_{model}',
                  )
-       
+    
+
         if errors_computation and varname_obs != '':
             ## Errors computation
             obs_sorted[model] = []
             sim_sorted[model] = []
             
-            if compare_to_residue_corr:
-                obs_var_corr = obs_residue_corr
-            
             # interp obs on datetime array of simu
-            dati_arr_sim_unix = np.float64(ds.time)/1e9
-            dati_arr_obs_unix = np.float64(np.array(obs.time))/1e9
+            dati_arr_sim_unix = np.float64(dati_arr_sim)/1e9
+            dati_arr_obs_unix = np.float64(np.array(dati_arr_obs))/1e9
             obs_data_interp = np.interp(
                     dati_arr_sim_unix, dati_arr_obs_unix, obs_var_corr.values,
                     left=np.nan, right=np.nan)

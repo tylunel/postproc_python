@@ -15,11 +15,11 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'elsplans'
+site = 'cendrosa'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'H_2m'
+varname_obs = 'ta_2'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -38,34 +38,31 @@ varname_obs = 'H_2m'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim_list = ['H_P1']
+varname_sim_list = ['T2M_ISBA']
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 # U_STAR, BOWEN
 
 #If varname_sim is 3D:
 ilevel = 1   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
-add_irrig_time = True
-figsize = (12, 7) #small for presentation: (6,6), big: (15,9)
+figsize = (7, 7) #small for presentation: (6,6), big: (15,9)
 save_plot = True
-save_folder = './figures/time_series/{0}/domain1/'.format(site)
+save_folder = './figures/time_series_averaged/{0}/domain1/'.format(site)
 
 models = [
 #        'irr_d2_old', 
 #        'std_d2_old',
 #        'irr_d2', 
 #        'std_d2', 
+        'irr_d1', 
         'std_d1',
-        'irr_d1',
-        'irrlagrip30_d1',
+#        'irrlagrip30_d1',
 #        'lagrip100_d1',
          ]
 
-remove_alfalfa_growth = False
+stdtype = None  # 'fillbetween' or 'errorbars' or None
 errors_computation = True
-
 add_seb_residue = False
-compare_to_residue_corr = False
 ######################################################
 
 simu_folders = {key:gv.simu_folders[key] for key in models}
@@ -169,7 +166,7 @@ elif site == 'elsplans':
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
 #    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
-elif site in ['irta-corn', 'irta-corn-real',]:
+elif site in ['irta-corn', 'irta-corn-real']:
     datafolder = gv.global_data_liaise + '/irta-corn/seb/'
     in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
 else:
@@ -198,7 +195,7 @@ tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs,
 
 obs = xr.open_dataset(datafolder + out_filename_obs)
 
-# DIAG - process other variables:
+# process other variables:
 if site in ['preixana', 'cendrosa']:
     # net radiation
     obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
@@ -206,10 +203,9 @@ if site in ['preixana', 'cendrosa']:
     obs['bowen'] = obs['shf_1'] / obs['lhf_1']
     obs['SEB_RESIDUE'] = obs['rn']-obs['lhf_1']-obs['shf_1']-obs['soil_heat_flux']
     obs['EVAP_FRAC'] = obs['lhf_1'] / (obs['lhf_1'] + obs['shf_1'])
-    obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
-#    obs['EVAP_FRAC'].data = obs['EVAP_FRAC'].data.clip(min=0, max=1)
-#    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
-#    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
+    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
     for i in [1,2,3]:
         obs['swi_{0}'.format(i)] = tools.calc_swi(
                 obs['soil_moisture_{0}'.format(i)],
@@ -230,10 +226,9 @@ elif site in ['irta-corn', 'irta-corn-real']:
     obs['U_STAR'] = np.sqrt(obs['TAU']/obs['air_density'])
     obs['SEB_RESIDUE'] = obs['NETRAD']-obs['LE']-obs['H']-obs['G_plate_1_1_1']
     obs['EVAP_FRAC'] = obs['LE'] / (obs['LE'] + obs['H'])
-    obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
-#    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
-#    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
-#    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
+    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
+    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
 elif site == 'elsplans':
     ## Flux calculations
     obs['H_2m'] = obs['WT_2m']*1200  # =Cp_air * rho_air
@@ -244,11 +239,14 @@ elif site == 'elsplans':
                 obs['SEB_RESIDUE']>-1000, 
                 np.nan)
     obs['EVAP_FRAC'] = obs['LE_2m'] / (obs['LE_2m'] + obs['H_2m'])
-    obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
+    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
+    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
     ## Webb Pearman Leuning correction
     obs['BOWEN_2m'] = obs['H_2m'] / obs['LE_2m']
     #obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.016)*(0+(1.2/300)*obs['WT_2m'])  #eq (25)
     obs['LE_2m_WPL'] = obs['LE_2m']*(1.010)*(1+0.051*obs['BOWEN_2m'])  #eq (47) of paper WPL
+    
     
     for i in [10,20,30,40]:
         obs['SWI{0}_subsoil'.format(i)] = tools.calc_swi(
@@ -263,16 +261,16 @@ if varname_obs != '':
     if site == 'elsplans':
         ## create datetime array
     #    dati_arr = pd.date_range(start=obs.time.min().values, 
-        dati_arr_obs = pd.date_range(
+        dati_arr = pd.date_range(
 #                pd.Timestamp('20210701-0000'),
                 pd.Timestamp(obs[varname_obs]['time'][0].values),
                 periods=len(obs[varname_obs]), 
                 freq='{0}T'.format(freq))
         
-        obs['time']=dati_arr_obs
-        
-        if varname_obs == 'RHO_2m':
-            obs = obs.where(obs.time>pd.Timestamp('20210715T1200'), drop=True)
+#        dati_arr = pd.date_range(pd.Timestamp('20210701-0000'),
+#                                 periods=len(obs[varname_obs]), 
+#                                 freq='{0}T'.format(freq))
+        obs['time']=dati_arr
         
         # filter outliers (turn into NaN)
         obs_var_filtered = obs[varname_obs].where(
@@ -281,35 +279,69 @@ if varname_obs != '':
         if varname_obs == 'RAIN_subsoil':
             obs_var_filtered = obs[varname_obs]
         obs_var_corr = (obs_var_filtered+offset_obs)*coeff_obs
-        plt.plot(obs_var_corr.time, obs_var_corr, 
-                 label='obs_'+varname_obs,
-                 color=colordict['obs'])
+#        plt.plot(dati_arr, obs_var_corr, 
+#                 label='obs_'+varname_obs,
+#                 color=colordict['obs'])
     else:
-        if remove_alfalfa_growth:
-            if varname_obs in ['lhf_1', 'shf_1'] and site == 'cendrosa':  # because of growth of alfalfa
-                obs = obs.where(obs.time>pd.Timestamp('20210721T0100'), drop=True)
-        
-        if site == 'irta-corn':
-            obs = obs.where(~obs.time.isnull(), drop=True)
-        
         # filter outliers (turn into NaN)
         obs_var_filtered = obs[varname_obs].where(
                 (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
                 np.nan)
         # apply correction for comparison with models
         obs_var_corr = ((obs[varname_obs]+offset_obs)*coeff_obs)
-    
         # plot
-        plt.plot(obs_var_corr.time, obs_var_corr, 
-                 label='obs_'+varname_obs,
-                 color=colordict['obs'])
-#        obs_var_corr.plot(label='obs_'+varname_obs,
+#        obs_var_corr.plot(label='obs',
+##                          label='obs_'+varname_obs,
 #                          color=colordict['obs'],
 #                          linewidth=1)
         
+    
+    # compute mean day profile 
+    df = obs_var_corr.to_dataframe()
+    df['hour_minute'] = df.index.time
+    df['day'] = df.index.day
+    if site =='cendrosa' and varname_obs in ['lhf_1', 'shf_1']:
+        df_filt = df[df['day']>20]
+    else:
+        df_filt = df[df['day']>14]
+    
+    mean_dict = {}
+    std_dict = {}
+    for hm in df_filt['hour_minute']:
+        mean_dict[hm] = df_filt[df_filt['hour_minute'] == hm][varname_obs].mean()
+        std_dict[hm] = df_filt[df_filt['hour_minute'] == hm][varname_obs].std()
+    
+    pds_mean = pd.Series(mean_dict)
+    pds_std = pd.Series(std_dict)
+    pds_mean.name = 'mean'
+    pds_std.name = 'std'
+    
+    df_mean_profile = pd.merge(pds_mean, pds_std, 
+                               left_index=True, right_index=True)
+    df_mean_profile.sort_index(inplace=True)
+    df_mean_profile['minutes'] = [time.minute for time in df_mean_profile.index]
+    df_mean_profile['hour'] = [time.hour for time in df_mean_profile.index] + \
+        df_mean_profile['minutes']/60
+    
+    plt.plot(df_mean_profile['hour'], df_mean_profile['mean'],
+             color=colordict['obs'],
+             label='obs_'+varname_obs)
+    if stdtype == 'fillbetween':
+        plt.fill_between(df_mean_profile['hour'], 
+                          df_mean_profile['mean']-df_mean_profile['std'],
+                          df_mean_profile['mean']+df_mean_profile['std'],
+                          alpha=0.2, 
+                          facecolor=colordict['obs'],
+                          )
+    if stdtype == 'errorbar':
+        plt.errorbar(df_mean_profile['hour'], df_mean_profile['mean'], 
+                     yerr=df_mean_profile['std'], 
+                     elinewidth=0.5, capsize=2)
+        
+    # add residue on graph
     if add_seb_residue:
         
-        obs_uncertainty = obs['SEB_RESIDUE'].data
+        obs_uncertainty = obs['SEB_RESIDUE']
         
         if varname_obs in ['LE', 'LE_2m', 'LE_2m_WPL', 'lhf_1']:
             obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*obs['EVAP_FRAC_FILTERED'].data
@@ -317,21 +349,55 @@ if varname_obs != '':
             obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*(1-obs['EVAP_FRAC_FILTERED'].data)
         else:
             raise ValueError('add_seb_residue available only on LE and H')
-            
-        obs_residue_corr.plot(
-            label='obs_residue_corr',
-            color=colordict['obs'],
-            linestyle=':',
-            linewidth=1)
         
-        plt.fill_between(obs_var_corr.time, 
-                          obs_var_corr.data,
-                          obs_var_corr.data + obs_uncertainty.data,
+        df_res = obs_uncertainty.to_dataframe()
+        df_res['hour_minute'] = df_res.index.time
+        df_res['day'] = df_res.index.day
+        if site =='cendrosa' and varname_obs in ['lhf_1', 'shf_1']:
+            df_filt = df_res[df_res['day']>20]
+        else:
+            df_filt = df_res[df_res['day']>14]
+        
+        df_res_corr = obs_residue_corr.to_dataframe(name='residue_corr')
+        df_res_corr['hour_minute'] = df_res_corr.index.time
+        df_res_corr['day'] = df_res_corr.index.day
+        if site =='cendrosa' and varname_obs in ['lhf_1', 'shf_1']:
+            df_filt_corr = df_res_corr[df_res_corr['day']>20]
+        else:        
+            df_filt_corr = df_res_corr[df_res_corr['day']>14]
+        
+        mean_dict = {}
+        std_dict = {}
+        for hm in df_filt['hour_minute']:
+            mean_dict[hm] = df_filt_corr[df_filt_corr['hour_minute'] == hm]['residue_corr'].mean()
+            std_dict[hm] = df_filt[df_filt['hour_minute'] == hm]['SEB_RESIDUE'].mean()
+        
+        pds_mean = pd.Series(mean_dict)
+        pds_std = pd.Series(std_dict)
+        pds_mean.name = 'residue_corr'
+        pds_std.name = 'residue'
+        
+        df_mean_res_profile = pd.merge(pds_mean, pds_std, 
+                                   left_index=True, right_index=True)
+        df_mean_res_profile.sort_index(inplace=True)
+        
+        df_mean_res_profile['minutes'] = [time.minute for time in df_mean_res_profile.index]
+        df_mean_res_profile['hour'] = [time.hour for time in df_mean_res_profile.index] + \
+            df_mean_res_profile['minutes']/60
+        
+        plt.plot(df_mean_res_profile['hour'], df_mean_res_profile['residue_corr'],
+                 color=colordict['obs'],
+                 label=f'obs_{varname_obs}_residue_corr',
+                 linestyle=':',
+                 linewidth=1)
+        plt.fill_between(df_mean_res_profile['hour'], 
+                          df_mean_profile['mean'],
+                          df_mean_profile['mean']+df_mean_res_profile['residue'],
                           alpha=0.2, 
                           facecolor=colordict['obs'],
                           )
-
-
+        
+    
 #%% SIMU:
 diff = {}
 rmse = {}
@@ -365,23 +431,18 @@ for  varname_sim in varname_sim_list:
         elif varname_sim == 'BOWEN':
             ds['BOWEN'] = tools.calc_bowen_sim(ds)
         
+        # keep variable of interest
+        var_md = ds[varname_sim]
+        
         # Set time abscisse axis
         try:
             start = ds.time.data[0]
         except AttributeError:
             start = np.datetime64('2021-07-21T01:00')
         
-        dati_arr_sim = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, ds[varname_sim].shape[0])])
-
-        ds['record'] = dati_arr_sim
-        ds = ds.drop_vars(['time'])
-        ds = ds.rename({'record': 'time'})
+        dati_arr = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, var_md.shape[0])])
         
-        if model == 'irrlagrip30_d1':
-            ds = ds.where(ds.time > pd.Timestamp('20210714T0100'), drop=True)
-        
-        # keep variable of interest
-        var_md = ds[varname_sim]
+        var_md = var_md.squeeze()  # removes dimension with 1 value only
         
         # find indices from lat,lon values 
         index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
@@ -394,51 +455,72 @@ for  varname_sim in varname_sim_list:
             var_1d = var_md[:, index_lat, index_lon].data
         
         # PLOT
-        plt.plot(ds.time, var_1d, 
-                 color=colordict[model],
+#        plt.plot(dati_arr, var_1d, 
+#    #             color=colordict[model],
 #                 colordict[model],
-                 label=f'simu_{model}_{varname_sim}',
-#                 label=f'simu_{model}',
-                 )
-       
+#                 label=f'simu_{model}_{varname_sim}',
+##                 label=f'simu_{model}',
+#                 )
+        df_simu = pd.DataFrame(var_1d, index=dati_arr, columns=[varname_sim])
+        df_simu['hour_minute'] = df_simu.index.time
+        df_simu['day'] = df_simu.index.day
+        df_filt = df_simu[df_simu['day']>14]
+        
+        mean_dict_simu = {}
+        std_dict_simu = {}
+        for hm in df_filt['hour_minute']:
+            mean_dict_simu[hm] = df_filt[df_filt['hour_minute'] == hm][varname_sim].mean()
+            std_dict_simu[hm] = df_filt[df_filt['hour_minute'] == hm][varname_sim].std()
+            
+        pds_mean = pd.Series(mean_dict_simu)
+        pds_std = pd.Series(std_dict_simu)
+        pds_mean.name = 'mean'
+        pds_std.name = 'std'
+        
+        df_mean_profile = pd.merge(pds_mean, pds_std, 
+                                   left_index=True, right_index=True)
+        
+        df_mean_profile['minutes'] = [time.minute for time in df_mean_profile.index]
+        df_mean_profile['hour'] = [time.hour for time in df_mean_profile.index] + \
+            df_mean_profile['minutes']/60
+        
+        plt.plot(df_mean_profile['hour'], df_mean_profile['mean'],
+                 color=colordict[model],
+                 label=f'simu_{model}')
+        if stdtype == 'fillbetween':
+            plt.fill_between(df_mean_profile['hour'], 
+                              df_mean_profile['mean']-df_mean_profile['std'],
+                              df_mean_profile['mean']+df_mean_profile['std'],
+                              alpha=0.2, 
+                              facecolor=colordict[model],
+                              )
+        if stdtype == 'errorbar':
+            plt.errorbar(df_mean_profile['hour'], df_mean_profile['mean'], 
+                         yerr=df_mean_profile['std'], 
+                         elinewidth=0.5, capsize=2)
+            
+        
+        ax = plt.gca()
+        
+    #    ax.set_xlim([np.min(obs.time), np.max(obs.time)])
+#        ax.set_xlim([np.min(dati_arr), np.max(dati_arr)])
+        
         if errors_computation and varname_obs != '':
             ## Errors computation
             obs_sorted[model] = []
             sim_sorted[model] = []
+            for i, date in enumerate(dati_arr):
+                val = obs_var_corr.where(obs.time == date, drop=True).data
+                if len(val) != 0:
+                    sim_sorted[model].append(var_1d[i])
+                    obs_sorted[model].append(float(val))
             
-            if compare_to_residue_corr:
-                obs_var_corr = obs_residue_corr
-            
-            # interp obs on datetime array of simu
-            dati_arr_sim_unix = np.float64(ds.time)/1e9
-            dati_arr_obs_unix = np.float64(np.array(obs.time))/1e9
-            obs_data_interp = np.interp(
-                    dati_arr_sim_unix, dati_arr_obs_unix, obs_var_corr.values,
-                    left=np.nan, right=np.nan)
-            
-            diff[model] = var_1d - obs_data_interp
-
+            diff[model] = np.array(sim_sorted[model]) - np.array(obs_sorted[model])
             # compute bias and rmse, and keep values with 3 significant figures
             bias[model] = float('%.3g' % np.nanmean(diff[model]))
     #        rmse[model] = np.sqrt(np.nanmean((np.array(obs_sorted[model]) - np.array(sim_sorted[model]))**2))
             rmse[model] = float('%.3g' % np.sqrt(np.nanmean(diff[model]**2)))
     
-
-#%% Add irrigation datetime
-if add_irrig_time:
-    if site == 'irta-corn':
-        sm_var = obs['VWC_40cm_Avg']
-    if site == 'cendrosa':
-        sm_var = obs['soil_moisture_3']
-    if site == 'preixana':
-        sm_var = None
-    if site == 'elsplans':
-        sm_var = None
-    dati_list = tools.get_irrig_time(sm_var)
-    plt.vlines(dati_list, 
-               ymin=obs_var_corr.min().data, 
-               ymax=obs_var_corr.max().data, 
-               label='irrigation')
 
 #%% Plot esthetics
 
@@ -459,18 +541,18 @@ else:
 plot_title = '{0} at {1}'.format(ylabel, site)
 ax = plt.gca()
 ax.set_ylabel(ylabel)
-
-ax.set_xlim([np.min(dati_arr_sim), np.max(dati_arr_sim)])
+ax.set_xlabel('hour UTC')
+plt.xticks([0,4, 8,12,16,20,24])
 
 # add grey zones for night
-days = np.arange(1,30)
-for day in days:
-    # zfill(2) allows to have figures with two digits
-    sunrise = pd.Timestamp('202107{0}-1930'.format(str(day).zfill(2)))
-    sunset = pd.Timestamp('202107{0}-0500'.format(str(day+1).zfill(2)))
-    ax.axvspan(sunset, sunrise, ymin=0, ymax=1, 
-               color = '0.9'  #'1'=white, '0'=black, '0.8'=light gray
-               )
+#days = np.arange(1,30)
+#for day in days:
+#    # zfill(2) allows to have figures with two digits
+#    sunrise = pd.Timestamp('202107{0}-1930'.format(str(day).zfill(2)))
+#    sunset = pd.Timestamp('202107{0}-0500'.format(str(day+1).zfill(2)))
+#    ax.axvspan(sunset, sunrise, ymin=0, ymax=1, 
+#               color = '0.9'  #'1'=white, '0'=black, '0.8'=light gray
+#               )
 
 # add secondary axis on the right, relative to the left one - (for LE)
 if secondary_axis == 'le':

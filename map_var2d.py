@@ -21,18 +21,18 @@ model = 'irr_d1'
 
 domain_nb = int(model[-1])
 
-wanted_date = '20210729-2300'
+wanted_date = '20210717-2100'
 
-color_map = 'YlOrBr'    # BuPu, coolwarm, viridis, RdYlGn, YlOrBr, jet,... (add _r to reverse)
+color_map = 'coolwarm'    # BuPu, coolwarm, viridis, RdYlGn, YlOrBr, jet,... (add _r to reverse)
 
-var_name = 'ZS'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
+var_name = 'H_LOWJET'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
 vmin = 0
-vmax = 1200
+vmax = 1000
 
 # level, only useful if var 3D
-ilevel = 16  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
+ilevel = 10  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
 
-zoom_on = 'urgell'  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'marinada'  #None for no zoom, 'liaise' or 'urgell'
 
 save_plot = True
 #save_folder = './figures/scalar_maps/pgd/'
@@ -40,9 +40,9 @@ save_plot = True
 #        domain_nb, model, var_name)
 save_folder = f'./figures/scalar_maps/{model}/{var_name}/{ilevel}/'
 
-add_winds = False
-add_pgf = True
-barb_size_option = 'pgf_weak'  # 'weak_winds' or 'standard'
+add_winds = True
+add_pgf = False
+barb_size_option = 'standard'  # 'weak_winds' or 'standard'
 
 ##############################################
 
@@ -65,28 +65,30 @@ ds1 = xr.open_dataset(filename)
 
 
 # DIAGs
+ds1 = tools.subset_ds(ds1, zoom_on='marinada')
+
 ds1 = tools.center_uvw(ds1)
 
-ds1['DIV'] = mcalc.divergence(ds1['UT'], ds1['VT'])
+ds1['WS'], ds1['WD'] = tools.calc_ws_wd(ds1['UT'], ds1['VT'])
 
-ds1['DENS'] = mcalc.density(
-    ds1['PRES']*units.hectopascal,
-    ds1['TEMP']*units.celsius, 
-    ds1['RVT']*units.gram/units.gram)
+#ds_diag = tools.diag_lowleveljet_height_5percent(ds1[['WS', 'ZS']])
 
-ds1['MSLP3D'] = tools.calc_mslp(ds1, ilevel=None)
+#%%
+subset_ds = ds1[['WS', 'ZS', 'TKET', 'HBLTOP']]
 
-ds1['PRES_GRAD_W'], ds1['PRES_GRAD_U'], ds1['PRES_GRAD_V'] = \
-    mcalc.gradient(ds1['MSLP3D'].squeeze()[:, :, :], axes=['level', 'ni', 'nj'])
-ds1['PGF_U'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_U']
-ds1['PGF_V'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_V']
-ds1['PGF_W'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_W']
-ds1['PGF'], ds1['PGF_dir'] = tools.calc_ws_wd(ds1['PGF_U'], ds1['PGF_V'])
+#ds1['DIV'] = mcalc.divergence(ds1['UT'], ds1['VT'])
+#
+#ds1['DENS'] = mcalc.density(
+#    ds1['PRES']*units.hectopascal,
+#    ds1['TEMP']*units.celsius, 
+#    ds1['RVT']*units.gram/units.gram)
+#
+#ds1['MSLP3D'] = tools.calc_mslp(ds1, ilevel=None)
 
 
 #%% DATA SELECTION and ZOOM
 
-varNd = ds1[var_name]
+varNd = ds_diag[var_name]
 #remove single dimensions
 varNd = varNd.squeeze()
 
@@ -230,7 +232,8 @@ points = [
 #          'puig formigosa', 
 #          'tossal_baltasana', 
           'tossal_gros', 
-          'coll_lilla', 
+          'coll_lilla',
+          'torredembarra',
 #          'tossal_torretes', 
 #       'moncayo', 'tres_mojones', 
 #          'guara', 'caro', 'montserrat', 'joar',

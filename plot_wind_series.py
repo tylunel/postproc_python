@@ -32,9 +32,9 @@ save_folder = './figures/wind_series/'
 figsize = (11, 6) #small for presentation: (6,6), big: (15,9)
 
 models = [
-        'irr_d1', 
+        'irr_d1',
+        'irrlagrip30_d1',
         'std_d1',
-#        'irrlagrip30_d1',
 #        'irr_d2_old', 
 #        'std_d2_old',
 #        'irr_d2', 
@@ -53,12 +53,7 @@ global_simu_folder = gv.global_simu_folder
 
 date = '2021-07'
 
-#colordict = {'irr_d2': 'g', 'irr_d1': 'g', 
-#             'std_d2': 'r', 'std_d1': 'r', 
-#             'obs': 'k'}
-#styledict = {'irr_d2': '-', 'irr_d1': ':', 
-#             'std_d2': '-', 'std_d1': ':', 
-#             'obs': 'k'}
+
 colordict = {'irr_d2': 'g', 
              'std_d2': 'r',
              'irr_d1': 'g', 
@@ -220,7 +215,7 @@ ws_obs = obs[varname_obs_ws]
 wd_obs = obs[varname_obs_wd]
 
 if site == 'elsplans':
-    dati_arr = pd.date_range(
+    dati_arr_obs = pd.date_range(
             start=obs.time.min().values, 
 #            start=pd.Timestamp('20210702-0000'),
             periods=len(obs[varname_obs_ws]), 
@@ -234,37 +229,17 @@ if site == 'elsplans':
              np.nan)
 else:
     ws_obs_filtered = ws_obs  # no filtering
-    dati_arr = ws_obs.time
+    dati_arr_obs = ws_obs.time
     
-ax[0].plot(dati_arr, ws_obs_filtered, 
+ax[0].plot(dati_arr_obs, ws_obs_filtered, 
          label='obs_' + varname_obs_ws,
          color=colordict['obs'],
          linewidth=1)
-ax[1].plot(dati_arr, wd_obs, 
+ax[1].plot(dati_arr_obs, wd_obs, 
          label='obs_' + varname_obs_wd,
          color=colordict['obs'],
          linewidth=1)
 
-#start_date = pd.Timestamp('20210721-0000')
-#end_date = pd.Timestamp('20210723-0000')
-#ax[0].set_xlim(start_date, end_date)
-#ax[1].set_xlim(start_date, end_date)
-
-#plot_wind_speed(ws_obs,
-#                start_date=start_date, end_date=end_date, fig=ax[0],
-##                label='obs_'+ ws_obs.long_name[-6:],
-#                label='obs_'+ varname_obs_ws,
-#                color=colordict['obs'])
-#plot_wind_dir(wd_obs,
-#              start_date=start_date, end_date=end_date, fig=ax[1],
-##              label='obs_'+ wd_obs.long_name[-6:],
-#                label='obs_'+ varname_obs_wd,
-#              color=colordict['obs'])
-
-
-#plot_windrose(ws_obs, wd_obs, 
-#              start_date=start_date, end_date=end_date
-#              )
 
 #%% SIMU:
 
@@ -274,44 +249,47 @@ bias = {}
 obs_sorted = {}
 sim_sorted = {}
 
-varname_sim = 'UT,VT'
+varname_sim_list = ['UT.OUT', 'VT.OUT']
 
 for model in simu_folders:
-    in_filenames_sim = gv.format_filename_simu[model]
-    out_filename_sim = 'LIAIS.{0}.{1}.nc'.format(
-            in_filenames_sim[6], varname_sim)
-
-    datafolder = global_simu_folder + simu_folders[model]
+    if model == 'irrlagrip30_d1':
+        varname_sim_list = ['UT.OUT', 'VT.OUT']
+    else:
+        varname_sim_list = ['UT', 'VT']
     
-    #concatenate multiple days for 1 variable
-    tools.concat_simu_files_1var(datafolder, varname_sim, 
-                                 in_filenames_sim, out_filename_sim)
-    
-    ds1 = xr.open_dataset(datafolder + out_filename_sim)
+    ds1 = tools.load_dataset(varname_sim_list, model, 
+                             concat_if_not_existing=False)
     
     # find indices from lat,lon values 
     index_lat, index_lon = tools.indices_of_lat_lon(ds1, lat, lon)
 
-    ut_md = ds1['UT']
-    vt_md = ds1['VT']
+    ut_md = ds1['UT'].squeeze()
+    vt_md = ds1['VT'].squeeze()
     
-    # Set time abscisse axis
+    # FIX/SET time abscisse axis
     try:
         start = ds1.time.data[0]
-    except AttributeError:    
-#        start = np.datetime64('2021-07-14T01:00')
+    except IndexError:
+        start = ds1.time.data
+    except AttributeError:
+        print('WARNING! datetime array is hard coded')
         start = np.datetime64('2021-07-21T01:00')
-    dati_arr = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, ut_md.shape[0])])
+        
+    if 'OUT' in varname_sim_list[0]:
+        dati_arr_sim = np.array([start + np.timedelta64(i*30, 'm') for i in np.arange(0, ds1['record'].shape[0])])
+    else:
+        dati_arr_sim = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, ut_md.shape[0])])
 
     # PLOT d1
     if len(ut_md.shape) == 5:
         ut_1d = ut_md[:, :, ilevel, index_lat, index_lon].data #1st index is time, 2nd is ?, 3rd is Z,..
         vt_1d = vt_md[:, :, ilevel, index_lat, index_lon].data
     elif len(ut_md.shape) == 4:
-        ut_1d = ut_md[:, ilevel ,index_lat, index_lon].data #1st index is time, 2nd is ?, 3rd is Z,..
+        ut_1d = ut_md[:, ilevel ,index_lat, index_lon].data #1st index is time, 2nd is Z,..
         vt_1d = vt_md[:, ilevel ,index_lat, index_lon].data
     elif len(ut_md.shape) == 3:
-        var_1d = ut_md.data[:, index_lat, index_lon]
+        ut_1d = ut_md[:, index_lat, index_lon].data 
+        vt_1d = vt_md[:, index_lat, index_lon].data
     
     #computation of windspeed and  winddirection following ut and vt
     ws = mpcalc.wind_speed(ut_1d * units.meter_per_second, 
@@ -319,12 +297,12 @@ for model in simu_folders:
     wd = mpcalc.wind_direction(ut_1d * units.meter_per_second,
                                vt_1d * units.meter_per_second)
     
-    plot_wind_speed(ws, dates=dati_arr, fig=ax[0], 
+    plot_wind_speed(ws, dates=dati_arr_sim, fig=ax[0], 
                     color=colordict[model],
                     linestyle=styledict[model],
                     label=model +'_l'+str(ilevel), 
                     )
-    plot_wind_dir(wd, dates=dati_arr, fig=ax[1], 
+    plot_wind_dir(wd, dates=dati_arr_sim, fig=ax[1], 
                   color=colordict[model],
                   linestyle=styledict[model],
                   label=model +'_l'+str(ilevel), 
@@ -332,39 +310,45 @@ for model in simu_folders:
     
     if errors_computation:
         ## Errors computation
-        obs_sorted[model] = []
-        sim_sorted[model] = []
-        for i, date in enumerate(dati_arr):
-            val = ws_obs_filtered.where(ws_obs.time == date, drop=True).data
-            if len(val) != 0:
-                sim_sorted[model].append(ws[i])
-                obs_sorted[model].append(float(val))
-        
-        diff[model] = np.array(sim_sorted[model]) - np.array(obs_sorted[model])
-        # compute bias and rmse, and keep values with 3 significant figures
-        bias[model] = float('%.3g' % np.nanmean(diff[model]))
-#        rmse[model] = np.sqrt(np.nanmean((np.array(obs_sorted[model]) - np.array(sim_sorted[model]))**2))
-        rmse[model] = float('%.3g' % np.sqrt(np.nanmean(diff[model]**2)))
+        obs_sorted[model] = {}
+        sim_sorted[model] = {}
+        diff[model] = {}
+        bias[model] = {}
+        rmse[model] = {}
+        for wind_charac in ['speed', 'direction']:
+            obs_sorted[model][wind_charac] = []
+            sim_sorted[model][wind_charac] = []
+            
+            # interpolation
+            if wind_charac == 'speed':
+#                val = ws_obs_filtered.where(ws_obs.time == date, drop=True).data
+                obs_data = ws_obs_filtered
+                sim_data = np.array([elt.magnitude for elt in ws])  # remove pint.quantities units
+            elif wind_charac == 'direction':
+                obs_data = wd_obs
+                sim_data = np.array([elt.magnitude for elt in wd])  # remove pint.quantities units
+                
+            dati_arr_sim_unix = np.float64(dati_arr_sim)/1e9
+            dati_arr_obs_unix = np.float64(np.array(dati_arr_obs))/1e9
+            obs_data_interp = np.interp(
+                    dati_arr_sim_unix, dati_arr_obs_unix, obs_data.values,
+                    left=np.nan, right=np.nan)
+            
+            diff[model][wind_charac] = sim_data - obs_data_interp
+#            if wind_charac == 'direction':
+#                diff[model][wind_charac] = np.mod(diff[model][wind_charac], 180)  # modulo funciotn
+            # compute bias and rmse, and keep values with 3 significant figures
+            bias[model][wind_charac] = float('%.3g' % np.nanmean(diff[model][wind_charac]))
+    #        rmse[model] = np.sqrt(np.nanmean((np.array(obs_sorted[model]) - np.array(sim_sorted[model]))**2))
+            rmse[model][wind_charac] = float('%.3g' % np.sqrt(np.nanmean(diff[model][wind_charac]**2)))
 
-    #fig = plt.figure()
-#    ax = plt.gca()
-    #    ax.set_ylabel(ylabel)
-    #ax.set_ylim([0, 0.4])
-    
-    #    ax.set_xlim([np.min(obs.time), np.max(obs.time)])
-#    ax.set_xlim([np.min(dati_arr), np.max(dati_arr)])
-    
-#    plt.plot(dati_arr, var_1d, 
-#             label='simu_{0}'.format(model))
 
 plot_title = 'wind at {0}'.format(site)
 
 fig.suptitle(plot_title)
-ax[0].set_xlim([np.min(dati_arr), np.max(dati_arr)])
-ax[1].set_xlim([np.min(dati_arr), np.max(dati_arr)])
+ax[0].set_xlim([np.min(dati_arr_sim), np.max(dati_arr_sim)])
+ax[1].set_xlim([np.min(dati_arr_sim), np.max(dati_arr_sim)])
 
-ax[0].legend(loc='best')
-ax[1].legend(loc='best')
 ax[0].grid(visible=True, axis='both')
 ax[1].grid(visible=True, axis='both')
 
@@ -383,17 +367,25 @@ for day in days:
 
 # add errors on graph
 if errors_computation:
-    ax[0].text(.01, .95, 'RMSE: {0}'.format(rmse), 
-             ha='left', va='top', 
-#             transform=ax.transAxes
+    # for speed
+    ax[0].text(.01, .90, 'RMSE: {0}'.format({key: rmse[key]['speed'] for key in rmse}), 
+             ha='left', va='top', transform=ax[0].transAxes
              )
-    ax[0].text(.01, .99, 'Bias: {0}'.format(bias), 
-             ha='left', va='top', 
-#             transform=ax.transAxes
+    ax[0].text(.01, .99, 'Bias: {0}'.format({key: bias[key]['speed'] for key in bias}), 
+             ha='left', va='top', transform=ax[0].transAxes
              )
-    plt.legend(loc='upper right')
+    ax[0].legend(loc='upper right')
+    # for direction
+    ax[1].text(.01, .90, 'RMSE: {0}'.format({key: rmse[key]['direction'] for key in rmse}), 
+             ha='left', va='top', transform=ax[1].transAxes
+             )
+    ax[1].text(.01, .99, 'Bias: {0}'.format({key: bias[key]['direction'] for key in bias}), 
+             ha='left', va='top', transform=ax[1].transAxes
+             )
+    ax[1].legend(loc='upper right')
 else:
-    plt.legend(loc='best')
+    ax[0].legend(loc='best')
+    ax[1].legend(loc='best')
 
 #%% Save figure
 

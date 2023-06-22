@@ -16,13 +16,14 @@ import tools
 from metpy.units import units
 import metpy.calc as mpcalc
 import xarray as xr
+import global_variables as gv
 
 
 ########## Independant parameters ###############
 #wanted_date = '20210722-2300'
-wanted_date = '20210722-1200'
+wanted_date = '20210716-1800'
 
-site = 'cendrosa'
+site = 'elsplans'
 
 # Variables considered:
 # variable names from MNH files: 'UT' and 'VT'
@@ -32,7 +33,7 @@ site = 'cendrosa'
 straight_profile = False
 # Path in simu is average of neighbouring grid points
 mean_profile = True
-column_width = 15
+column_width = 4
 # Path in simu follows real RS path  #issue: fix discontinuities
 follow_rs_position = False
 
@@ -42,8 +43,8 @@ interpolated_barbs = True
 barb_length = 5
 
 simu_list = [
-        'irr_d2', 
-        'std_d2',
+        'irr_d1', 
+#        'std_d1',
 #        'irr_d2_old', 
 #        'std_d2_old',
 #        'irr_d1', 
@@ -85,8 +86,7 @@ barb_pos = 0
 
 #%% OBS PARAMETERS
 
-datafolder = \
-            '/cnrm/surface/lunelt/data_LIAISE/'+ site +'/radiosoundings/'
+datafolder = gv.global_data_liaise + site + '/radiosoundings/'
 
 filename = tools.get_obs_filename_from_date(
         datafolder, 
@@ -375,7 +375,6 @@ else:
     figname = 'wind profile {0}-{1}'.format(
         site, wanted_date)
 
-plot_title = 'Wind profile above La Cendrosa\non July 22 at 12:00'
 fig.suptitle(plot_title)
 
 #%% Save plot

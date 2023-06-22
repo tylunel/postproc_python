@@ -24,61 +24,34 @@ model = 'irr_d1'
 
 domain_nb = int(model[-1])
 
-wanted_date = '20210715-1900'
+wanted_date = '20210729-2300'
 
 color_map = 'YlOrBr'    # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
 
 var_name = 'ZS'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
 vmin = 0
-vmax = 1200
+vmax = 1500
 
 # level, only useful if var 3D
 ilevel = 10  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
 
-zoom_on = 'urgell'  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'marinada'  #None for no zoom, 'liaise' or 'urgell'
 
 save_plot = True
 #save_folder = './figures/scalar_maps/pgd/'
-save_folder = './figures/zonal_maps/{1}/{2}/'.format(
-        domain_nb, model, var_name)
+save_folder = f'./figures/zonal_maps/{model}/{var_name}/'
 
 add_winds = True
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
 ##############################################
 
-if zoom_on == 'liaise':
-    skip_barbs = 2 # 1/skip_barbs will be printed
-    barb_length = 5.5
-    lat_range = [41.45, 41.8]
-    lon_range = [0.7, 1.2]
-    figsize=(9,7)
-elif zoom_on == 'urgell':
-    skip_barbs = 2 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [41.1, 42.1]
-    lon_range = [0.2, 1.7]
-    figsize=(11,9)
-elif zoom_on == 'urgell-paper':
-    skip_barbs = 6 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [41.37, 41.92]
-    lon_range = [0.6, 1.4]
-    figsize=(9,7)
-elif zoom_on == 'd2':
-    skip_barbs = 3 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [40.8106, 42.4328]
-    lon_range = [-0.6666, 1.9364]
-    figsize=(11,9)
-elif zoom_on == None:
-    skip_barbs = 8 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    if domain_nb == 1:
-        figsize=(13,7)
-    elif domain_nb == 2:
-        figsize=(10,7)
-
+prop = gv.zoom_domain_prop[zoom_on]
+skip_barbs = prop['skip_barbs']
+barb_length = prop['barb_length']
+lat_range = prop['lat_range']
+lon_range = prop['lon_range']
+figsize = prop['figsize']
 
 
 filename1 = tools.get_simu_filename(model, wanted_date,
@@ -88,7 +61,7 @@ prev_date = (pd.Timestamp(wanted_date)- pd.Timedelta(1, 'h')).strftime('%Y%m%d-%
 filename0 = tools.get_simu_filename(model, prev_date)
 
 # load dataset, default datetime okay as pgd vars are all the same along time
-ds0 = xr.open_dataset(filename0)
+#ds0 = xr.open_dataset(filename0)
 ds1 = xr.open_dataset(filename1)
 #ds1 = xr.open_dataset(
 #        gv.global_simu_folder + \
@@ -97,42 +70,17 @@ ds1 = xr.open_dataset(filename1)
 
 #%% DIAG CALCULATION
 ds1 = tools.center_uvw(ds1)
-ds0 = tools.center_uvw(ds0)
+#ds0 = tools.center_uvw(ds0)
 
-#ds1['DIV'] = mcalc.divergence(ds1['UT'], ds1['VT'])
-#ds1['PRES_GRAD_W'], ds1['PRES_GRAD_U'], ds1['PRES_GRAD_V'] = \
-#    mcalc.gradient(ds1['PRES'].squeeze()[:, :, :])
-#ds1['DENS'] = mcalc.density(
-#    ds1['PRES']*units.hectopascal,
-#    ds1['TEMP']*units.celsius, 
-#    ds1['RVT']*units.gram/units.gram)
-#
-#ds1['PGF_U'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_U']
-#ds1['PGF_V'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_V']
-#ds1['PGF_W'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_W']
-#
-#ds1['PGF'], ds1['PGF_dir'] = tools.calc_ws_wd(ds1['PGF_U'], ds1['PGF_V'])
 ds1['WS'], ds1['WD'] = tools.calc_ws_wd(ds1['UT'], ds1['VT'])
+#ds0['WS'], ds0['WD'] = tools.calc_ws_wd(ds0['UT'], ds0['VT'])
 
-ds0['WS'], ds0['WD'] = tools.calc_ws_wd(ds0['UT'], ds0['VT'])
-
-#%% CONDITIONS OF MARINADA
-var_list=['RVT', 'WS', 'WD', 'ZS']
-ds1_red = ds1[var_list].isel(level=ilevel)
-ds0_red = ds0[var_list].isel(level=ilevel)
-
-cond1 = (90 < ds1_red['WD'])
-cond2 = (ds1_red['WD'] < 200)
-winddir_cond = np.logical_and(cond1, cond2)
-humidity_cond = (ds1_red['RVT'] > ds0_red['RVT']*1.05)
-
-marinada = np.logical_and(winddir_cond, humidity_cond)
-
-ds_filt = ds1.where(marinada)
 
 #%% DATA SELECTION and ZOOM
 
-varNd = ds_filt[var_name]
+#varNd = ds_filt[var_name]
+varNd = ds1['ZS']
+
 #remove single dimensions
 varNd = varNd.squeeze()
 
@@ -236,32 +184,27 @@ plt.contour(pgd.longitude.data,
     #        hatches='-'
             )
 
-# --- France borders
-sf = shapefile.Reader("TM-WORLD-BORDERS/TM_WORLD_BORDERS-0.3.sph")
-shapes=sf.shapes()
-france = shapes[64].points
-france_df = pd.DataFrame(france, columns=['lon', 'lat'])
-france_S = france_df[france_df.lat < 43.35]
-france_SW = france_S[france_S.lon < 2.95]
-plt.plot(france_SW.lon, france_SW.lat,
-         color='k',
-         linewidth=1)
 
+#%% CONDITIONS OF MARINADA
+var_list=['RVT', 'WS', 'WD', 'ZS']
+#ds1_red = ds1[var_list].isel(level=ilevel)
+ds1_red = ds1[var_list]
+#ds0_red = ds0[var_list].isel(level=ilevel)
+
+cond1 = (90 < ds1_red['WD'])
+cond2 = (ds1_red['WD'] < 200)
+winddir_cond = np.logical_and(cond1, cond2)
+#humidity_cond = (ds1_red['RVT'] > ds0_red['RVT']*1.05)
+
+#marinada = np.logical_and(winddir_cond, humidity_cond)
+marinada = winddir_cond
+
+#ds_filt = ds1_red.where(marinada)
+ds_filt = ds1_red
 
 #%% AREAS
 
-areas_corners = {
-    'irrig': ['lleida', 'balaguer', 
-              'claravalls', 'borges_blanques'],
-    'dry': ['claravalls', 'borges_blanques', 
-            'els_omellons', 'sant_marti', 'fonolleres'],
-    'slope_west': ['els_omellons', 'sant_marti', 'fonolleres',
-                   'santa_coloma', 'tossal_gros', 'villobi'],
-    'slope_east': ['santa_coloma', 'tossal_gros', 'villobi',
-                   'tossal_purunyo', 'puig_cabdells', 'puig_formigosa'],
-    'coast': ['tossal_purunyo', 'puig_cabdells', 'puig_formigosa',
-              'calafell', 'tarragona',],
-              }
+areas_corners = gv.areas_corners
 
 polygon_dict = {}
 
@@ -277,46 +220,53 @@ for area in areas_corners:
     polygon_dict[area] = polygon
     
     
-    data_in = ds_filt[['WS', 'WD']].isel(level=ilevel)
-    # Classify points within the polygon
-    t0 = time.time()
-    classified_points = tools.get_points_in_polygon(data_in, polygon)
-    print('time get_pts_.. : ', time.time()-t0)
-    # concatenate data
-    extracted_ds = xr.concat(classified_points, 'ind')
-    # keep layer of interest
-#    extracted_da = extracted_ds['WS'][:, ilevel]
-    extracted_layer = extracted_ds
+#    data_in = ds_filt[['WS', 'WD']].isel(level=ilevel)
+#    # Classify points within the polygon    
+#    t0 = time.time()
+#    lon_list = polygon.exterior.xy[0]
+#    lat_list = polygon.exterior.xy[1]
+#    data_in_red = tools.subset_ds(data_in, 
+#                    lat_range=[np.min(lat_list), np.max(lat_list)], 
+#                    lon_range=[np.min(lon_list), np.max(lon_list)])
+#    classified_points = tools.get_points_in_polygon(data_in_red, polygon)
+#    print('time get_pts_.. : ', time.time()-t0)
+#    
+#    # concatenate data
+#    extracted_ds = xr.concat(classified_points, 'ind')
+#    # keep layer of interest
+##    extracted_da = extracted_ds['WS'][:, ilevel]
+#    extracted_layer = extracted_ds
+#    
+#    # filter:
+##    filtered_da = extracted_da.where(extracted_da > 2)
+#    filtered_ds = extracted_layer.where(90 < extracted_layer['WD']).where(extracted_layer['WD'] < 200)
+#    layer_for_fig = filtered_ds['WS']
+#
+#    # plot    
+#    # extrated area plot
+#    plt.scatter(layer_for_fig.longitude, layer_for_fig.latitude, layer_for_fig.values,
+#                color='b',
+##                c=layer_for_fig.values, 
+##                cmap='BuPu', s=10,
+#                )
     
-    # filter:
-#    filtered_da = extracted_da.where(extracted_da > 2)
-    filtered_ds = extracted_layer.where(90 < extracted_layer['WD']).where(extracted_layer['WD'] < 200)
-    layer_for_fig = filtered_ds['WS']
-
-    # plot    
-    # extrated area plot
-    plt.scatter(layer_for_fig.longitude, layer_for_fig.latitude, layer_for_fig.values,
-                color='b',
-#                c=layer_for_fig.values, 
-#                cmap='BuPu', s=10,
-                )
     plt.plot(*polygon.exterior.xy)
 
 #%% POINTS SITES
 
 points = [
         'cendrosa',
-        'ponts',
-#          'elsplans', 
+#        'ponts',
+          'elsplans', 
 #          'irta-corn',
-          'lleida', 
-          'zaragoza',
+          'coll_lilla',
+#          'lleida', 
+#          'zaragoza',
 #          'puig formigosa', 
-          'tossal_baltasana', 
+#          'tossal_baltasana', 
           'tossal_gros', 
-          'tossal_torretes', 
-#       'moncayo', 'tres_mojones', 
-#          'guara', 'caro', 'montserrat', 'joar',
+#          'tossal_torretes',
+          'torredembarra',
           ]
 
 sites = {key:gv.whole[key] for key in points}
@@ -332,6 +282,94 @@ for site in sites:
              site.capitalize(), 
              fontsize=14)
 
+
+#%% TEST
+#site = 'cendrosa'
+#lat, lon, _ = gv.whole[site].values()
+#indlat, indlon = tools.indices_of_lat_lon(ds1, lat, lon)
+#column = ds1[['WS', 'WD', 'TKET', 'RVT']].isel(nj=indlat, ni=indlon)
+#
+#ds_subset = tools.subset_ds(ds1[['WS', 'WD', 'TKET', 'RVT', 'ZS']], 
+#                            zoom_on='marinada')
+#
+##ds_new = tools.diag_lowleveljet_height_5percent(ds_subset)
+#
+#ds_subset['H_LOWJET_TKE'] = ds_subset['ZS']*0
+#
+#t0 = time.time()
+##length = len(ds_subset.ni)
+##for i, ni in enumerate(ds_subset.ni):
+##    print(f'i = {i}/{length}')
+##    for j, nj in enumerate(ds_subset.nj):
+#j=40
+#i=30
+#        
+#column = ds_subset.isel(nj=j, ni=i)
+#column['dTKETdz'] = xr.DataArray(coords={'level':ds_subset.level}, data=np.gradient(column['TKET']))
+#column['d2TKETd2z'] = xr.DataArray(coords={'level':ds_subset.level}, data=np.gradient(column['dTKETdz']))
+#
+## 1er diag de H_MARI sur ws
+#top_layer_agl = 1000
+#column = column.where(column.level<top_layer_agl, drop=True)
+
+#jet_level_indices = []
+#jet_top_indices = []
+#research_jet_top = False
+#for ilevel, level_agl in enumerate(column.level):
+#    # first look at the jet height
+#    if not research_jet_top:
+#        if ilevel<3:
+#            pass
+#        else:
+#            sign_temp = column['dWSdz'][ilevel] * column['dWSdz'][ilevel-1]
+#            if sign_temp < 0:  # sign change
+#                if column['d2WSd2z'][ilevel] < 0:  # is a maximum
+#                    jet_level_indices.append(ilevel)
+#                    jet_speed = column.isel(level=ilevel)['WS']
+#                    jet_speed_95 = jet_speed*0.95
+#                    research_jet_top = True
+#    # second step where we look at the height at which 5% threshold is found
+#    elif research_jet_top:
+#        if column.isel(level=ilevel)['WS'] < jet_speed_95:
+#            jet_top_indices.append(ilevel)
+#            research_jet_top = False
+#
+#try:
+#    H_LOWJET = float(column.isel(level=jet_top_indices[0]).level)
+#except IndexError:
+#    H_LOWJET = np.nan
+            
+#        ds_subset['H_LOWJET'][j, i] = H_LOWJET
+        
+#print(time.time()-t0)
+
+#look for JETS: with fitted functions
+#from scipy.interpolate import UnivariateSpline
+#from scipy.optimize import fsolve
+## first derivative must be 0
+#dWSdz_fitted = UnivariateSpline(column.level, column['dWSdz'], 
+#                            s=0,  # important in order to have a fit really close to data
+#                            k=4)
+#fd2WSd2z_fitted = UnivariateSpline(column.level, column['d2WSd2z'], 
+#                            s=0,  # important in order to have a fit really close to data
+#                            k=4)
+#height_jets = fsolve(dWSdz_fitted, np.arange(10, 500, 100))
+## second derivative must be negative
+##for i, height in enumerate(height_jets):
+#[height for height in height_jets if fd2WSd2z_fitted(height) < 0]
+
+#fig, ax = plt.subplots(1, 3)
+#ax[0].plot(column['TKET'], column.level)
+#ax[1].plot(column['dTKETdz'], column.level)
+##ax[1].plot(dWSdz_fitted(column.level), column.level)
+#ax[2].plot(column['d2TKETd2z'], column.level)
+##ax[2].scatter(heights_jets['d2WSd2z'], heights_jets.level)
+#for axe in ax:
+#    axe.set_ylim([0,top_layer_agl])
+#    axe.grid()
+
+# 1er diag de H_MARI sur ws
+#low_column = column.where(column.level<800, drop=True)
 
 #%% FIGURE OPTIONS and ZOOM
 if len(varNd.shape) == 2:

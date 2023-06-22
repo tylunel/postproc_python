@@ -19,13 +19,13 @@ import global_variables as gv
 
 
 ########## Independant parameters ###############
-wanted_date = '20210729-2300'
+wanted_date = '20210716-2100'
 site = 'elsplans'
 
 # variable name from MNH files: 'THT', 'RVT'
-var_simu = 'THT'
+var_simu = 'RVT'
 # variable name from obs files: 'potentialTemperature', 'mixingRatio',
-var_obs = 'potentialTemperature'
+var_obs = 'mixingRatio'
 coeff_corr = 1  #to switch from obs to simu2
 
 simu_list = [
@@ -47,7 +47,7 @@ follow_rs_position = False
 toplevel = 2500
 
 save_plot = True
-save_folder = 'figures/verti_profiles/{0}/{1}/'.format(site, var_simu)
+save_folder = f'figures/verti_profiles/{site}/{var_simu}/'
 figsize=(5, 7)
 
 ##################################################

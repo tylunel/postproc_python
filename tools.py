@@ -98,27 +98,17 @@ def indices_of_lat_lon(ds, lat, lon, verbose=True):
     return index_lat, index_lon
 
 
-def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[]):
+def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[],
+              nb_indices_exterior=0):
     """
     Extract a subset of domain.
     
     """
     
-    if zoom_on == 'liaise':
-        lat_range = [41.45, 41.8]
-        lon_range = [0.7, 1.2]
-    elif zoom_on == 'urgell':
-        lat_range = [41.1, 42.1]
-        lon_range = [0.2, 1.7]
-    elif zoom_on == 'urgell-paper':
-        lat_range = [41.37, 41.92]
-        lon_range = [0.6, 1.4]
-    elif zoom_on == 'd2':
-        lat_range = [40.8106, 42.4328]
-        lon_range = [-0.6666, 1.9364]
-    elif zoom_on == 'marinada':
-        lat_range = [40.7, 41.8]
-        lon_range = [0.6, 1.6]
+    if zoom_on != None:
+        prop = gv.zoom_domain_prop[zoom_on]
+        lat_range = prop['lat_range']
+        lon_range = prop['lon_range']
     elif zoom_on == None:
         if lat_range == []:
             raise ValueError("Argument 'zoom_on' or lat_range & lon_range must be given")
@@ -126,13 +116,120 @@ def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[]):
             lat_range = lat_range
             lon_range = lon_range
         
-    nj_min, ni_min = indices_of_lat_lon(ds, lat_range[0], lon_range[0])
-    nj_max, ni_max = indices_of_lat_lon(ds, lat_range[1], lon_range[1])
+    nj_min, ni_min = indices_of_lat_lon(ds, np.min(lat_range), np.min(lon_range))
+    nj_max, ni_max = indices_of_lat_lon(ds, np.max(lat_range), np.max(lon_range))
     
+    nj_min -= nb_indices_exterior
+    ni_min -= nb_indices_exterior
+    nj_max += nb_indices_exterior
+    ni_max += nb_indices_exterior
+    
+#    # if need to be more flexible to coordinates: TODO
+#    latitude_X = [key for key in list(ds.coords) if 'ni' in key][0]
+#    lastletters = latitude_X[-2::]
+#    if lastletters == '_u':
+#            ds_subset = ds.isel(ni_u=np.arange(ni_min, ni_max), 
+#                                nj_u=np.arange(nj_min, nj_max))
+#    elif lastletters == 'de':
+        
     ds_subset = ds.isel(ni=np.arange(ni_min, ni_max), 
                         nj=np.arange(nj_min, nj_max))
     
     return ds_subset.squeeze()
+
+
+def open_budget_file(filename, budget_type):
+    """
+    Add longitude, latitude, ni, nj coordinates to a dataset which does not
+    have it.
+    
+    /!\ the longitude, latitude, ni, nj coordinates may not be the same than
+    those of outer domain (may correspond to latitude_u, ni_u, 
+    of outer domain etc for ex.)
+    """
+    
+    meta = xr.open_dataset(filename)  # metadata of the entire simulation domain, not only the budget one
+    ds = xr.open_dataset(filename, group="Budgets/{0}".format(budget_type))
+    
+    if budget_type == 'UU':
+        cart_nj_X = 'cart_nj_u'
+        cart_ni_X = 'cart_ni_u'
+        cart_level_X = 'cart_level'
+        nj_X = 'nj_u'
+        ni_X = 'ni_u'
+        latitude_X = 'latitude_u'
+        longitude_X = 'longitude_u'
+    elif budget_type == 'VV':
+        cart_nj_X = 'cart_nj_v'
+        cart_ni_X = 'cart_ni_v'
+        cart_level_X = 'cart_level'
+        nj_X = 'nj_v'
+        ni_X = 'ni_v'
+        latitude_X = 'latitude_v'
+        longitude_X = 'longitude_v'
+    elif budget_type == 'WW':
+        cart_nj_X = 'cart_nj_w'
+        cart_ni_X = 'cart_ni_w'
+        cart_level_X = 'cart_level'
+        nj_X = 'nj_w'
+        ni_X = 'ni_w'
+        latitude_X = 'latitude_w'
+        longitude_X = 'longitude_w'
+    elif budget_type in ['TH', 'RV', 'TK']:
+        cart_nj_X = 'cart_nj'
+        cart_ni_X = 'cart_ni'
+        cart_level_X = 'cart_level'
+        nj_X = 'nj'
+        ni_X = 'ni'
+        latitude_X = 'latitude'
+        longitude_X = 'longitude'
+    
+    lon_arr = np.zeros([len(meta[cart_nj_X]), len(meta[cart_ni_X])])
+    lat_arr = np.zeros([len(meta[cart_nj_X]), len(meta[cart_ni_X])])
+    nj_arr = np.zeros([len(meta[cart_nj_X]),])
+    ni_arr = np.zeros([len(meta[cart_ni_X]),])
+    
+    for i, ni_val in enumerate(meta[cart_ni_X].values):
+        for j, nj_val in enumerate(meta[cart_nj_X].values):
+            if budget_type == 'UU':
+                pt = meta.sel(ni_u=ni_val, nj_u=nj_val)
+            elif budget_type == 'VV':
+                pt = meta.sel(ni_v=ni_val, nj_v=nj_val)
+            elif budget_type == 'WW':
+                pt = meta.sel(ni_w=ni_val, nj_w=nj_val)
+            elif budget_type in ['TH', 'RV', 'TK']:
+                pt = meta.sel(ni=ni_val, nj=nj_val)
+            lat_arr[j, i] = float(pt[latitude_X])
+            lon_arr[j, i] = float(pt[longitude_X])
+            nj_arr[j] = nj_val
+            ni_arr[i] = ni_val
+    
+    ds[longitude_X] = xr.DataArray(lon_arr, 
+        coords={cart_nj_X: ds[cart_nj_X].values,
+                cart_ni_X: ds[cart_ni_X].values,})
+    ds[latitude_X] = xr.DataArray(lat_arr, 
+        coords={cart_nj_X: ds[cart_nj_X].values, 
+                cart_ni_X: ds[cart_ni_X].values})
+    ds[ni_X] = xr.DataArray(ni_arr, 
+        coords={cart_ni_X: ds[cart_ni_X].values})
+    ds[nj_X] = xr.DataArray(nj_arr, 
+        coords={cart_nj_X: ds[cart_nj_X].values})
+    
+    ds[cart_level_X] = xr.DataArray(meta[cart_level_X], 
+        coords={cart_level_X: meta[cart_level_X]})
+    
+    ds = ds.set_coords([latitude_X, longitude_X, nj_X, ni_X])
+    ds = ds.swap_dims({cart_nj_X: nj_X, cart_ni_X: ni_X,})
+    ds = ds.drop([cart_nj_X, cart_ni_X])
+    
+    # rename for simplicity in processing in other functions, but may be risky...
+    ds = ds.rename({cart_level_X: 'level'})
+    if budget_type in ['VV', 'UU', 'WW']:
+        ds = ds.rename({nj_X: 'nj', ni_X: 'ni', 
+                        longitude_X: 'longitude', latitude_X: 'latitude'})
+
+    
+    return ds
 
 
 def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=True,
@@ -610,7 +707,6 @@ def get_simu_filename(model, date='20210722-1200',
         day_nb = str(pd_date.day - 1) 
     
         
-
     simu_filelist = {
         'std_d2': 'LIAIS.1.S{0}{1}.001{2}.nc'.format(
                 day_nb, hour_nb_2f, file_suffix),
@@ -825,9 +921,6 @@ def concat_simu_files_1var(datafolder, varname_sim, in_filenames, out_filename):
     #command 'cdo -select,name={1} {2} {3}' may work as well, but not always...
 
 
-
-
-
 def get_irrig_time(soil_moist, stdev_threshold=5):
     """
     soil_moist: xarray Dataarray,
@@ -949,6 +1042,22 @@ def line_coords(data,
             'ni_step': ni_step, 'nj_step': nj_step, 'nij_step': nij_step,
             'ni_start': ni_start, 'ni_end': ni_end,
             'nj_start': nj_start, 'nj_end': nj_end}
+
+
+def distance_from_lat_lon(lat_lon_1, lat_lon_2):
+    """
+    compute distance in km between 2 pts given their coordinates in degrees
+    """
+    lat1_rad = np.radians(lat_lon_1[0])
+    lon1_rad = np.radians(lat_lon_1[1])
+    lat2_rad = np.radians(lat_lon_2[0])
+    lon2_rad = np.radians(lat_lon_2[1])
+    radius_earth = 6371.01  #km
+    
+    dist = radius_earth * np.arccos(
+            np.sin(lat1_rad)*np.sin(lat2_rad) + np.cos(lat1_rad)*np.cos(lat2_rad)*np.cos(lon1_rad - lon2_rad))
+    
+    return dist
 
 
 def center_uvw(data):
@@ -1618,6 +1727,124 @@ def calc_thetav(theta, spec_humidity):
     return theta + 0.61*spec_humidity*theta
 
 
+def height_to_pressure_std(height):
+    r"""Convert height data to pressures using the U.S. standard atmosphere [NOAA1976]_.
+
+    The implementation inverts the formula outlined in [Hobbs1977]_ pg.60-61.
+
+    Parameters
+    ----------
+    height : Atmospheric height [m]
+
+    Returns
+    -------
+    Corresponding pressure value(s) [Pa]
+
+    Notes
+    -----
+    from metpy, but units check removed
+    .. math:: p = p_0 e^{\frac{g}{R \Gamma} \text{ln}(1-\frac{Z \Gamma}{T_0})}
+
+    """
+    t0 = 288  #kelvin
+    p0 = 101325  #Pa
+    gamma = 0.0065  #'K/m'
+    g = 9.81  #m/s-2
+    R = 8.314462618  #'J / mol / K' - molar gas constant
+    Md = 28.96546e-3  # 'kg / mol' - dry_air_molecular_weight
+    Rd = R / Md  # dry_air_gas_constant
+    
+    return p0 * (1 - (gamma / t0) * height) ** (g / (Rd * gamma))
+
+
+def exner_function(pressure, reference_pressure = 100000):
+    r"""Calculate the Exner function.
+
+    .. math:: \Pi = \left( \frac{p}{p_0} \right)^\kappa
+
+    This can be used to calculate potential temperature from temperature (and visa-versa),
+    since:
+
+    .. math:: \Pi = \frac{T}{\theta}
+
+    Parameters
+    ----------
+    pressure : `pint.Quantity`
+        Total atmospheric pressure
+
+    reference_pressure : `pint.Quantity`, optional
+        The reference pressure against which to calculate the Exner function, defaults to
+        metpy.constants.P0
+
+    Returns
+    -------
+    `pint.Quantity`
+        Value of the Exner function at the given pressure
+
+    See Also
+    --------
+    potential_temperature
+    temperature_from_potential_temperature
+
+    """
+#    reference_pressure = 100000  # Pa
+    R = 8.314462618  #'J / mol / K' - molar gas constant
+    Md = 28.96546e-3  # 'kg / mol' - dry_air_molecular_weight
+    Rd = R / Md  # dry_air_gas_constant
+    dry_air_spec_heat_ratio = 1.4  #'dimensionless'
+    Cp_d = dry_air_spec_heat_ratio * Rd / (dry_air_spec_heat_ratio - 1)
+    kappa = (Rd / Cp_d)  #'dimensionless'
+    
+    return (pressure / reference_pressure)**kappa
+
+
+def temperature_from_potential_temperature(pressure, potential_temperature,
+                                           reference_pressure=100000):
+    r"""Calculate the temperature from a given potential temperature.
+
+    Uses the inverse of the Poisson equation to calculate the temperature from a
+    given potential temperature at a specific pressure level.
+
+    Parameters
+    ----------
+    pressure : `pint.Quantity`
+        Total atmospheric pressure
+
+    potential_temperature : `pint.Quantity`
+        Potential temperature
+
+    Returns
+    -------
+    `pint.Quantity`
+        Temperature corresponding to the potential temperature and pressure
+
+    See Also
+    --------
+    dry_lapse
+    potential_temperature
+
+    Notes
+    -----
+    Formula:
+
+    .. math:: T = \Theta (P / P_0)^\kappa
+
+    Examples
+    --------
+    >>> from metpy.units import units
+    >>> from metpy.calc import temperature_from_potential_temperature
+    >>> # potential temperature
+    >>> theta = np.array([ 286.12859679, 288.22362587]) * units.kelvin
+    >>> p = 850 * units.mbar
+    >>> T = temperature_from_potential_temperature(p, theta)
+
+    .. versionchanged:: 1.0
+       Renamed ``theta`` parameter to ``potential_temperature``
+
+    """
+    return potential_temperature * exner_function(pressure, reference_pressure)
+
+
 def calc_fao56_et_0(rn_MJ, t_2m, ws_2m, rh_2m, p_atm, gnd_flx=0, gamma=66):
     """
     Compute wind speed and wind direction from ut and vt.
@@ -2266,9 +2493,98 @@ def calc_soil_prop(PCLAY=0.35, PSAND=0.15,
         
     return res_dict
 
+
+def load_dataset(varname_sim_list, model, concat_if_not_existing=True):
+    """
     
+    varname_sim_list: ex:['T2M_ISBA', 'H_P9']
+    model: 'std_d1', 'irr_d1', 'irrlagrip30_d1'
+    concat_if_not_existing: Try to concatenate or not if the concatenated file
+        does not exist yet
+    """
+    global_simu_folder = gv.global_simu_folder
+    
+    for i, varname_item in enumerate(varname_sim_list):
+        # get format of file to concatenate
+        in_filenames_sim = gv.format_filename_simu[model]
+        gridnest_nb = in_filenames_sim[6]  # integer: 1 or 2 in my case
+        # set name of concatenated output file
+        out_filename_sim = f'LIAIS.{gridnest_nb}.{varname_item}.nc'
+        # path of file
+        datafolder = global_simu_folder + gv.simu_folders[model]
+        # concatenate multiple days if not already existing
+        if concat_if_not_existing:
+            concat_simu_files_1var(datafolder, varname_item, 
+                                   in_filenames_sim, out_filename_sim)
+            
+        if i == 0:      # if first data, create new dataset
+            ds = xr.open_dataset(datafolder + out_filename_sim)
+        else:           # append data to existing dataset
+            ds_temp = xr.open_dataset(datafolder + out_filename_sim)
+            ds = ds.merge(ds_temp)
+    
+    return ds
+
+def diag_lowleveljet_height(ds, top_layer_agl=1000, wind_var='WS',
+                             new_height_var='H_LOWJET', 
+                             upper_bound=0.95):
+    """
+    Evaluate the upper height of the low level jet in the low layer of ds. 
+    It is considered to be the height above at which the maximum speed of the jet
+    is reduced by 5%.
+    
+    ds must contain ZS variable (ds['ZS'])
+
+    """
+    ds[new_height_var] = ds['ZS']*0
+    
+    length = len(ds.ni)
+    for i, ni in enumerate(ds.ni):
+        print(f'i = {i}/{length}')
+        for j, nj in enumerate(ds.nj):
+            column = ds.isel(nj=j, ni=i)
+            column['dWSdz'] = xr.DataArray(coords={'level':ds.level}, data=np.gradient(column[wind_var]))
+            column['d2WSd2z'] = xr.DataArray(coords={'level':ds.level}, data=np.gradient(column['dWSdz']))
+            
+            column = column.where(column.level<top_layer_agl, drop=True)
+            
+            jet_level_indices = []  # indices of jet speed max
+            jet_top_indices = []    # indices of jet speed max - 5%
+            research_jet_top = False
+            for ilevel, level_agl in enumerate(column.level):
+                # first look at the jet height
+                if not research_jet_top:
+                    if ilevel<3:
+                        pass
+                    else:
+                        sign_temp = column['dWSdz'][ilevel] * column['dWSdz'][ilevel-1]
+                        if sign_temp < 0:  # sign change
+                            if column['d2WSd2z'][ilevel] < 0:  # is a maximum
+                                jet_level_indices.append(ilevel)
+                                jet_speed = column.isel(level=ilevel)[wind_var]
+                                jet_speed_upperlim = jet_speed*upper_bound
+                                research_jet_top = True
+                # second step where we look at the height at which 5% threshold is found
+                elif research_jet_top:
+                    if column.isel(level=ilevel)[wind_var] < jet_speed_upperlim:
+                        jet_top_indices.append(ilevel)
+                        research_jet_top = False
+            
+            try:
+                H_LOWJET = float(column.isel(level=jet_top_indices[0]).level)
+            except IndexError:
+                H_LOWJET = np.nan
+                
+            ds[new_height_var][j, i] = H_LOWJET
+        
+    return ds
+
+
 if __name__ == '__main__':
-    pass
+    ds= load_dataset(['T2M_ISBA', 'Q2M_ISBA'], 'irrlagrip30_d1')
+    
+    
+    
 # TESTs for AGL to ASL coordinate
 #    filename = get_simu_filename('irr_d1', '20210716-1600',)
 #    ds = xr.open_dataset(filename,
