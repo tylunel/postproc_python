@@ -14,52 +14,56 @@ import pandas as pd
 import tools
 import shapefile
 import global_variables as gv
+from metpy.plots import StationPlot
 
 #########################################"""
 model = 'irr_d1'
-ilevel = 5  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
+ilevel = 3   #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
 
-var = 'PGF'  #'WIND' or 'PGF'
+var = 'WIND'  #'WIND' or 'PGF'
 
 # Datetime
-wanted_date = '20210729-2300'
+wanted_date = '20210722-2300'
 
 #domain_nb = int(model[-1])
 domain_nb = 1
 
 speed_plane = 'horiz'  # 'horiz': horizontal normal wind, 'verti' for W
 
-if var == 'WIND':
-    if speed_plane == 'verti':
-        vmax_cbar = 1
-        vmin_cbar = -vmax_cbar
-        cmap_name = 'seismic'
-    elif speed_plane == 'horiz':
-        vmax_cbar = 15
-        vmin_cbar = 0
-        cmap_name = 'BuPu'
-elif var == 'PGF':
-    if speed_plane == 'verti':
-        vmax_cbar = 0.1
-        vmin_cbar = -vmax_cbar
-        cmap_name = 'seismic'
-    elif speed_plane == 'horiz':
-        vmax_cbar = 0.0003
-        vmin_cbar = 0
-        cmap_name = 'BuPu'
+if speed_plane == 'verti':
+    vmax_cbar = 1
+    vmin_cbar = -vmax_cbar
+    cmap_name = 'seismic'
+elif speed_plane == 'horiz':
+    vmax_cbar = 15
+    vmin_cbar = 0
+    cmap_name = 'BuPu'
 
-zoom_on = 'urgell'  #None for no zoom, 'urgell', 'liaise'
+zoom_on = 'marinada'  #None for no zoom, 'urgell', 'liaise'
+
+add_smc_obs = True
+
+if add_smc_obs:
+    alpha = 0.4
+    if zoom_on == 'marinada':
+        barb_length_coeff = 1.2
+    else:
+        barb_length_coeff = 1.1
+else:
+    alpha = 0.9
 
 save_plot = True
 save_folder = f'./figures/winds/{model}/{speed_plane}/{ilevel}/zoom_{zoom_on}/'
 
-if var == 'WIND':
-    barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
-elif var == 'PGF':
-    barb_size_option = 'pgf_weak'
-
+barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
 ###########################################
+
+if add_smc_obs and ilevel > 6:
+    raise ValueError(f"""Height of model level and of observation stations
+                     are significantly different:
+                     - SMC stations: 2-10m
+                     - model: {gv.layers_height_MNH_LIAISE[ilevel]}m""")
 
 barb_size_increments = gv.barb_size_increments
 barb_size_description = gv.barb_size_description
@@ -74,12 +78,7 @@ figsize = prop['figsize']
 
 filename = tools.get_simu_filename(model, wanted_date,
                                    global_simu_folder=gv.global_simu_folder)
-#filename = tools.get_simu_filename(
-#        model, 
-#        wanted_date,
-#        file_suffix='',  #'dg' or ''
-#        out_suffix='.OUT',
-#        global_simu_folder=gv.global_temp_folder)
+
 
 # load file, dataset and set parameters
 ds1 = xr.open_dataset(filename,
@@ -87,40 +86,16 @@ ds1 = xr.open_dataset(filename,
                       )
 
 # other calculations
-
 ds1['DIV'] = mcalc.divergence(ds1['UT'], ds1['VT'])
-
-ds1['DENS'] = mcalc.density(
-    ds1['PRES']*units.hectopascal,
-    ds1['TEMP']*units.celsius, 
-    ds1['RVT']*units.gram/units.gram)
-
-ds1['MSLP3D'] = tools.calc_mslp(ds1, ilevel=None)
-
-ds1['PRES_GRAD_W'], ds1['PRES_GRAD_U'], ds1['PRES_GRAD_V'] = \
-    mcalc.gradient(ds1['MSLP3D'].squeeze()[:, :, :], axes=['level', 'ni', 'nj'])
-ds1['PGF_U'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_U']
-ds1['PGF_V'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_V']
-ds1['PGF_W'] = -(1/ds1['DENS'])*ds1['PRES_GRAD_W']
-ds1['PGF'], ds1['PGF_dir'] = tools.calc_ws_wd(ds1['PGF_U'], ds1['PGF_V'])
-
 
 fig1 = plt.figure(figsize=figsize)
 
 #%% WIND SPEED COLORMAP
 if speed_plane == 'horiz':
-    if var == 'WIND':
-        ws = mcalc.wind_speed(ds1['UT'] * units.meter_per_second, 
-                              ds1['VT'] * units.meter_per_second)
-    elif var == 'PGF':
-        ws, _ = tools.calc_ws_wd(ds1['PGF_U'], ds1['PGF_V'])
-#wd = mpcalc.wind_direction(ds1['UT'] * units.meter_per_second, 
-#                           ds1['VT'] * units.meter_per_second)
+    ws = mcalc.wind_speed(ds1['UT'] * units.meter_per_second, 
+                          ds1['VT'] * units.meter_per_second)
 elif speed_plane == 'verti':
-    if var == 'WIND':
-        ws = ds1['WT']
-    elif var == 'PGF':
-        ws = ds1['PGF_W']
+    ws = ds1['WT']
 
 # keep only layer of interest
 ws_layer = ws.squeeze()[ilevel, :, :]
@@ -140,12 +115,9 @@ cbar.set_label('Wind speed [m/s]')
 
 X = ds1.longitude
 Y = ds1.latitude
-if var == 'WIND':
-    U = ds1['UT'].squeeze()[ilevel, :,:]
-    V = ds1['VT'].squeeze()[ilevel, :,:]
-elif var == 'PGF':
-    U = ds1['PGF_U'].squeeze()[ilevel, :,:]
-    V = ds1['PGF_V'].squeeze()[ilevel, :,:]
+
+U = ds1['UT'].squeeze()[ilevel, :,:]
+V = ds1['VT'].squeeze()[ilevel, :,:]
 
 plt.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs], 
           U[::skip_barbs, ::skip_barbs], V[::skip_barbs, ::skip_barbs],
@@ -156,7 +128,8 @@ plt.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs],
 #                 'height':1,
 #                 'width':1,
                  'emptybarb':0.01},
-          barb_increments=barb_size_increments[barb_size_option]
+          barb_increments=barb_size_increments[barb_size_option],
+          alpha=alpha,
           )
 plt.annotate(barb_size_description[barb_size_option],
              xy=(0.1, 0.02),
@@ -221,7 +194,8 @@ points = ['cendrosa', 'elsplans',
 #          'irta-corn', 
 #          'border_irrig_noirr',
 #          'puig formigosa', 
-          'tossal_baltasana', 
+#          'tossal_baltasana', 
+          'lleida',
           'tossal_gros', 
 #          'tossal_torretes', 
           'coll_lilla',
@@ -236,32 +210,45 @@ for site in sites:
                 color='r',
                 s=15        #size of markers
                 )
-#    if site == 'elsplans':
-#        plt.text(sites[site]['lon']-0.1,
-#                 sites[site]['lat']-0.03, 
-#                 site, 
-#                 fontsize=9)
-#    else:
     plt.text(sites[site]['lon']+0.01,
              sites[site]['lat']+0.01, 
              site, 
              fontsize=12)
 
 #%% STATION PLOT
-#from metpy.plots import StationPlot
-#
-#ax = plt.gca()
-#Cendro = StationPlot(ax, sites['cendrosa']['lon'], sites['cendrosa']['lat'])
-#Cendro.plot_barb(4, 5, 
-#                 pivot='middle',
-#                 length=barb_length*4,     #length of barbs
-#                  sizes={
-#        #                 'spacing':1, 
-#        #                 'height':1,
-#        #                 'width':1,
-#                         'emptybarb':0.01},
-#                  barb_increments=barb_size_increments[barb_size_option]
-#                  )
+    
+if add_smc_obs:
+    ax = plt.gca()
+    
+    stations_2m = ['VH', 'WK', 'V1', 'WB', 'VM', 'WX', 'WA', 'WC', 'V8', 'XI',
+                   'XM', 'WL', 'UM', 'WI', 'VE']
+    stations_10m = ['VK', 'C6', 'C7', 'C8', 'D1', 'XD', 'XR', 'XA', 'VP', 'VB','VQ']
+    stations_unk = ['YJ', 'CW', 'MR', 'VM', 'WV', 'VD', 'YD', 'XX', 'YJ', ]
+    stations_all = stations_2m + stations_10m + stations_unk
+    
+    for station in stations_all:
+        # get data
+        datafolder = gv.global_data_liaise + '/SMC_22stations/'
+        filename = f'LIAISE_{station}_SMC_MTO-1MN_L0_{wanted_date[:8]}_V01.nc'
+        try:
+            obs = xr.open_dataset(datafolder + filename)
+            # find closest time
+            obs['time_dist'] = np.abs(obs.time - pd.Timestamp(wanted_date).to_datetime64())
+            obs_t = obs.where(obs['time_dist'] == obs['time_dist'].min(), 
+                              drop=True).squeeze()
+        except (FileNotFoundError, ValueError):
+            continue
+        
+        obs_t['UT'], obs_t['VT'] = tools.calc_u_v(obs_t['WS'], obs_t['WD'])
+    
+        # plot station
+        location = StationPlot(ax, obs['lon'], obs['lat'])
+        location.plot_barb(obs_t['UT'], obs_t['VT'],
+                           pivot='middle',
+                           length=barb_length*barb_length_coeff,     #length of barbs
+                           sizes={'emptybarb':0.1},
+                           barb_increments=barb_size_increments[barb_size_option]
+                           )
 
 #%% FIGURE OPTIONS
 if speed_plane == 'horiz':
