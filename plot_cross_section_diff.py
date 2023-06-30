@@ -19,25 +19,23 @@ import global_variables as gv
 ########## Independant parameters ###############
 
 # Simulation to show: 'irr' or 'std'
-model = 'irr_d2'
-#domain to consider: 1 or 2
-domain_nb = int(model[-1])
+models_list = ['irr_d1', 'std_d1']
 # Surface variable to show below the section
 surf_var = 'WG2_ISBA'
 surf_var_label = 'Q_vol_soil'
 # Set type of wind representation: 'verti_proj' or 'horiz'
 wind_visu = 'verti_proj'
 # Datetime
-wanted_date = '20210722-1200'
+wanted_date = '20210717-2300'
 # altitude ASL or height AGL: 'asl' or 'agl'
 alti_type = 'asl'
 # maximum level (height AGL) to plot
 toplevel = 2500
 
 # where to place the cross section
-nb_points_beyond = 15
-site_end = 'elsplans'
+nb_points_beyond = 10
 site_start = 'cendrosa'
+site_end = 'torredembarra'
 
 
 # Arrow/barbs esthetics:
@@ -50,8 +48,8 @@ barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 # Save the figure
 figsize = (15,9)
 save_plot = True
-simu_folders = ['irr_d2', 'std_d2']
-folder_res = 'diff_{0}_{1}'.format(simu_folders[0], simu_folders[1])
+
+folder_res = 'diff_{0}_{1}'.format(models_list[0], models_list[1])
 save_folder = './figures/cross_sections/{0}/section_{1}_{2}/{3}/'.format(
         folder_res, site_start, site_end, wind_visu)
 
@@ -68,13 +66,13 @@ barb_size_description = {
         }
 
 
-end = (gv.sites[site_end]['lat'], gv.sites[site_end]['lon'])
-start = (gv.sites[site_start]['lat'], gv.sites[site_start]['lon'])
+end = (gv.whole[site_end]['lat'], gv.whole[site_end]['lon'])
+start = (gv.whole[site_start]['lat'], gv.whole[site_start]['lon'])
 
 
 section_ds = {}
 
-for model in simu_folders:
+for model in models_list:
     # Dependant parameters
     filename = tools.get_simu_filename(model, wanted_date, 
     #                                      domain=domain_nb,
@@ -151,8 +149,8 @@ for model in simu_folders:
     #concatenation of all profile in order to create the 2D section dataset
     section_ds[model] = xr.concat(section, dim="i_sect")
 
-section_diff = section_ds[simu_folders[0]] - section_ds[simu_folders[1]]
-section_diff['ZS'] = section_ds[simu_folders[0]]['ZS']
+section_diff = section_ds[models_list[0]] - section_ds[models_list[1]]
+section_diff['ZS'] = section_ds[models_list[0]]['ZS']
 
 #%% PLOT
 # create figure
@@ -302,8 +300,7 @@ ax[1].set_yticks([])
 ax[1].set_ylabel(surf_var)
 
 # Global options
-plot_title = 'Cross section on {0}-{1}-{2}-domain{3}'.format(
-        wanted_date, model, wind_visu, domain_nb)
+plot_title = f'{wanted_date}_diff_{models_list[0]}-{models_list[1]}-{wind_visu}'
 fig.suptitle(plot_title)
 
 if save_plot:

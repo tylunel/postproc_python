@@ -24,9 +24,9 @@ site = 'cendrosa'
 #domain to consider for simu files: 1 or 2
 #domain_nb = 2
 
-ilevel = 3   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
+ilevel = 10   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
-save_plot = False 
+save_plot = True 
 #save_folder = './figures/winds/'.format(domain_nb)
 save_folder = './figures/wind_series/'
 figsize = (11, 6) #small for presentation: (6,6), big: (15,9)
@@ -52,7 +52,6 @@ simu_folders = {key:gv.simu_folders[key] for key in models}
 global_simu_folder = gv.global_simu_folder
 
 date = '2021-07'
-
 
 colordict = {'irr_d2': 'g', 
              'std_d2': 'r',
@@ -152,8 +151,12 @@ def plot_windrose(ws, wd, start_date=None, end_date=None, fig=None, **kwargs):
 #%% Dependant Parameters
 
 if site == 'cendrosa':
-    varname_obs_ws = 'ws_2'
-    varname_obs_wd = 'wd_2'
+    if ilevel == 3:
+        varname_obs_ws = 'ws_2'
+        varname_obs_wd = 'wd_2'
+    elif ilevel == 10:
+        varname_obs_ws = 'ws_4'
+        varname_obs_wd = 'wd_4'
     datafolder = global_data_liaise + '/cendrosa/30min/'
     filename_prefix = 'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
@@ -164,14 +167,16 @@ elif site == 'preixana':
     filename_prefix = 'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'elsplans':
-    varname_obs_ws = 'UTOT_10m'
-    varname_obs_wd = 'DIR_10m'
-    freq = '30'  # '5' min or '30'min
-    datafolder = global_data_liaise + '/elsplans/mat_50m/{0}min/'.format(freq)
-    filename_prefix = 'LIAISE_'
+    if ilevel == 3:
+        varname_obs_ws = 'UTOT_10m'
+        varname_obs_wd = 'DIR_10m'
+    elif ilevel == 10:
+        varname_obs_ws = 'UTOT_50m'
+        varname_obs_wd = 'DIR_50m'
+    freq = '5'  # '5' min or '30'min
+    datafolder = global_data_liaise + '/elsplans/mat_50m/{0}min_v4/'.format(freq)
     date = date.replace('-', '')
-    in_filenames_obs = filename_prefix + date
-#    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
+    in_filenames_obs = f'LIAISE_ELS-PLANS_UKMO_MTO-{str(freq).zfill(2)}MIN_L2_{date}'
 elif site == 'irta-corn':
     varname_obs_ws = 'WS'
     varname_obs_wd = 'WD'
@@ -210,7 +215,6 @@ fig, ax = plt.subplots(2, 1, figsize=figsize)
 
 #%% PLOT OBS
 
-
 ws_obs = obs[varname_obs_ws]
 wd_obs = obs[varname_obs_wd]
 
@@ -219,13 +223,13 @@ if site == 'elsplans':
             start=obs.time.min().values, 
 #            start=pd.Timestamp('20210702-0000'),
             periods=len(obs[varname_obs_ws]), 
-            freq='30T')
+            freq=f'{freq}T')
     #turn outliers into NaN
 #    ws_obs_filtered = ws_obs.where(
 #            (ws_obs-ws_obs.mean()) < (3*ws_obs.std()), 
 #             np.nan)
     ws_obs_filtered = ws_obs.where(
-            (ws_obs-ws_obs.mean()) < np.nanpercentile(ws_obs.data, 96), 
+            (ws_obs-ws_obs.mean()) < np.nanpercentile(ws_obs.data, 94), 
              np.nan)
 else:
     ws_obs_filtered = ws_obs  # no filtering
@@ -343,7 +347,7 @@ for model in simu_folders:
             rmse[model][wind_charac] = float('%.3g' % np.sqrt(np.nanmean(diff[model][wind_charac]**2)))
 
 
-plot_title = 'wind at {0}'.format(site)
+plot_title = f'wind at {site} - level {ilevel}'
 
 fig.suptitle(plot_title)
 ax[0].set_xlim([np.min(dati_arr_sim), np.max(dati_arr_sim)])

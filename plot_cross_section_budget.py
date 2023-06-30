@@ -35,7 +35,7 @@ var_name_bu_list_dict = {  # includes only physical and most significant terms
         'RV': ['VTURB', 'MAFL', 'ADV',],
         'VV': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
         'UU': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
-        'WW': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
+        'WW': ['VTURB', 'GRAV', 'PRES', 'ADV',],
         }
 
 var_name_bu_list = var_name_bu_list_dict[budget_type]
@@ -58,7 +58,11 @@ elif budget_type == 'TK':
     coef_visu = 10
     scale_val = 0.01
     unit = 'm2.s-3'
-elif budget_type in ['UU', 'VV', 'WW']:
+elif budget_type == 'WW':
+    coef_visu = 1
+    scale_val = 0.1
+    unit = 'm.s-2'
+elif budget_type in ['UU', 'VV']:
     coef_visu = 20
     scale_val = 0.002
     unit = 'm.s-2'

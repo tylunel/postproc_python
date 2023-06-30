@@ -16,6 +16,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import tools
+import global_variables as gv
 #import numpy as np
 
 ##########################################
@@ -23,7 +24,7 @@ date_begin = 20210630  #keep it as float, even if it is a date
 date_end = 20210801
 #Be careful for conflicts with partial_filename
 
-datafolder = '/cnrm/surface/lunelt/data_LIAISE/SMC_22stations/'
+datafolder = gv.global_data_liaise + '/SMC_22stations/'
 #filename_ex = 'LIAISE_C6_SMC_MTO-1MN_L0_20210910_V01.nc'    
 partial_filename = '202107'
 
@@ -169,7 +170,7 @@ fig, ax = plt.subplots(1, figsize=(10,8))
 
 # Load PGD for background of maps
 DS = xr.open_dataset(
-    '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.01_pgds_irr/' + \
+    gv.global_simu_folder + '/2.01_pgds_irr/' + \
     'PGD_400M_CovCor_v26_ivars.nc')
 
 ax.pcolormesh(DS.longitude.data, 

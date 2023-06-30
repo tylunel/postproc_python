@@ -107,14 +107,21 @@ towns = {'arbeca': {'lat': 41.54236,
                 'lon': 1.29126},
          'calafell': {'lat': 41.19005,
 #                      'lon': 1.57218},  # real value, but issue with budget
-                      'lon': 1.52552},  # modified value
+                      'lon': 1.54552},  # modified value
          'santa_coloma': {'lat': 41.53407,
                           'lon': 1.38441},
         'pi_sol': {'lat': 41.302951,
                    'lon': 1.52552},
         'el_morell': {'lat': 41.191488,
                       'lon': 1.208416},
-#        '__': {'lat': ,
+         'tarragona_offshore': {'lat': 41.035459,
+                                'lon': 1.273698},
+         'calafell_offshore': {'lat': 41.033799,
+                               'lon': 1.54552},
+         'linyola': {'lat': 41.710657,
+                     'lon': 0.903243,
+                     'alt': 254},
+#         '__': {'lat': ,
 #                'lon': },
               }
 
@@ -163,17 +170,21 @@ areas_corners = {
                    'pi_sol', 'el_morell',],                
     'coast': ['pi_sol', 'el_morell',
               'tarragona', 'calafell', ],
+    'sea': ['tarragona', 'calafell', 
+            'calafell_offshore', 'tarragona_offshore', ],
               }
 
 field_capa = {'cendrosa': {1: 0.28, 2: 0.18, 3: 0.23},  # To determine via plot on August
               'preixana': {1: 0.25, 2: 0.30, 3: 0.187}, # To determine via plot on May
               'irta-corn': {1: 0.39, 2:  0.39, 3: 0.33, 4: 0.34, 5: 0.38},  #estimated at 20cm
+              'irta': {1: 0.39, 2:  0.39, 3: 0.33, 4: 0.34, 5: 0.38},  #estimated at 20cm
               'elsplans': {10: 0.30, 20: 0.30, 30: 0.30, 40: 0.30},  #arbitrary, inspired of preixana
               }       
 
 wilt_pt = {'cendrosa': {1: 0.141, 2: 0.07, 3: 0.125} ,  # To determine via plot on August
            'preixana': {1: 0.065, 2: 0.135, 3: 0.115}, # To determine via plot on May
            'irta-corn': {1: 0.05, 2:  0.05, 3: 0.05, 4: 0.05, 5: 0.05},  #estimated at 20cm
+           'irta': {1: 0.05, 2:  0.05, 3: 0.05, 4: 0.05, 5: 0.05},  #estimated at 20cm
            'elsplans': {10: 0.03, 20: 0.11, 30: 0.24, 40: 0.17},  #estimated on july only (pb)
            }   
 

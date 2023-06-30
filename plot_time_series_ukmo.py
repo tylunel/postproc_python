@@ -16,11 +16,11 @@ from metpy import calc as mcalc
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'elsplans'
+site = 'irta'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'TEMP_2m'
+varname_obs = 'LE'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -40,11 +40,11 @@ varname_obs = 'TEMP_2m'
 #Q_1_1_1
 
 ukmo_model = ['ukmo_irr', 'ukmo_std']
-varname_sim_ukmo = 'air_potential_temperature'
+varname_sim_ukmo = 'surface_upward_latent_heat_flux'
 # surface_temperature, air_temperature, air_potential_temperature, specific_humidity_0,
 # surface_downwelling_shortwave_flux_in_air
 
-varname_sim_list = ['T2M_ISBA']
+varname_sim_list = ['LE_P9']
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 # U_STAR, BOWEN
 
@@ -68,7 +68,7 @@ models = [
          ]
 
 errors_computation = False
-add_seb_residue = False
+add_seb_residue = True
 ######################################################
 
 simu_folders = {key:gv.simu_folders[key] for key in models}
@@ -176,7 +176,7 @@ elif site == 'elsplans':
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
 #    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
-elif site in ['irta-corn', 'irta-corn-real']:
+elif site in ['irta', 'irta-corn', 'irta-corn-real']:
     datafolder = gv.global_data_liaise + '/irta-corn/seb/'
     in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
 else:
@@ -187,7 +187,7 @@ lon = gv.sites[site]['lon']
 
 
 #%% OBS: Concatenate and plot data
-if site in ['irta-corn', 'irta-corn-real']:
+if site in ['irta', 'irta-corn', 'irta-corn-real']:
     out_filename_obs = in_filenames_obs
 #    dat_to_nc = 'uib'  #To create a new netcdf file
     dat_to_nc = None   #To keep existing netcdf file
@@ -221,9 +221,9 @@ if site in ['preixana', 'cendrosa']:
                 obs['soil_moisture_{0}'.format(i)],
                 gv.wilt_pt[site][i],
                 gv.field_capa[site][i],) 
-elif site in ['irta-corn', 'irta-corn-real']:
+elif site in ['irta-corn', 'irta-corn-real', 'irta']:
     for i in [1,2,3,4,5]:
-        site = 'irta-corn'
+#        site = 'irta-corn'
         obs['swi_{0}'.format(i)] = tools.calc_swi(
                 obs['VWC_{0}0cm_Avg'.format(i)],
                 gv.wilt_pt[site][i],
@@ -311,11 +311,11 @@ if varname_obs != '':
         else:
             raise ValueError('add_seb_residue available only on LE and H')
             
-        obs_residue_corr.plot(
-            label='obs_residue_corr',
-            color=colordict['obs'],
-            linestyle=':',
-            linewidth=1)
+#        obs_residue_corr.plot(
+#            label='obs_residue_corr',
+#            color=colordict['obs'],
+#            linestyle=':',
+#            linewidth=1)
         
         plt.fill_between(obs_var_corr.time, 
                           obs_var_corr.data,
@@ -438,7 +438,7 @@ for  varname_sim in varname_sim_list:
 
 #%% Add irrigation datetime
 if add_irrig_time:
-    if site == 'irta-corn':
+    if site in ['irta-corn', 'irta']:
         sm_var = obs['VWC_40cm_Avg']
     if site == 'cendrosa':
         sm_var = obs['soil_moisture_3']

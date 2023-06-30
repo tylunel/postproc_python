@@ -30,7 +30,7 @@ elif site in ['cendrosa', 'linyola']:
 elif site in ['irta', 'irta-corn']:
     source_obs_list = ['windrass', 'mast']
 
-wanted_date = '20210721-0200'
+wanted_date = '20210721-1500'
 toplevel = 1500
 
 # 'uhf', 'windcube', 'mast'

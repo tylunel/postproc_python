@@ -138,6 +138,41 @@ def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[],
     return ds_subset.squeeze()
 
 
+def load_dataset(varname_sim_list, model, concat_if_not_existing=True):
+    """
+    Load a simulation file in netcdf format. If not already existing,
+    tries to concatenate multiple instantaneous output files into a series.
+    
+    Parameters:
+    varname_sim_list: ex:['T2M_ISBA', 'H_P9']
+    model: 'std_d1', 'irr_d1', 'irrlagrip30_d1'
+    concat_if_not_existing: Try to concatenate or not if the concatenated file
+        does not exist yet
+    """
+    global_simu_folder = gv.global_simu_folder
+    
+    for i, varname_item in enumerate(varname_sim_list):
+        # get format of file to concatenate
+        in_filenames_sim = gv.format_filename_simu[model]
+        gridnest_nb = in_filenames_sim[6]  # integer: 1 or 2 in my case
+        # set name of concatenated output file
+        out_filename_sim = f'LIAIS.{gridnest_nb}.{varname_item}.nc'
+        # path of file
+        datafolder = global_simu_folder + gv.simu_folders[model]
+        # concatenate multiple days if not already existing
+        if concat_if_not_existing:
+            concat_simu_files_1var(datafolder, varname_item, 
+                                   in_filenames_sim, out_filename_sim)
+            
+        if i == 0:      # if first data, create new dataset
+            ds = xr.open_dataset(datafolder + out_filename_sim)
+        else:           # append data to existing dataset
+            ds_temp = xr.open_dataset(datafolder + out_filename_sim)
+            ds = ds.merge(ds_temp)
+    
+    return ds
+
+
 def open_budget_file(filename, budget_type):
     """
     Add longitude, latitude, ni, nj coordinates to a dataset which does not
@@ -168,13 +203,13 @@ def open_budget_file(filename, budget_type):
         latitude_X = 'latitude_v'
         longitude_X = 'longitude_v'
     elif budget_type == 'WW':
-        cart_nj_X = 'cart_nj_w'
-        cart_ni_X = 'cart_ni_w'
-        cart_level_X = 'cart_level'
-        nj_X = 'nj_w'
-        ni_X = 'ni_w'
-        latitude_X = 'latitude_w'
-        longitude_X = 'longitude_w'
+        cart_nj_X = 'cart_nj'
+        cart_ni_X = 'cart_ni'
+        cart_level_X = 'cart_level_w'
+        nj_X = 'nj'
+        ni_X = 'ni'
+        latitude_X = 'latitude'
+        longitude_X = 'longitude'
     elif budget_type in ['TH', 'RV', 'TK']:
         cart_nj_X = 'cart_nj'
         cart_ni_X = 'cart_ni'
@@ -195,9 +230,7 @@ def open_budget_file(filename, budget_type):
                 pt = meta.sel(ni_u=ni_val, nj_u=nj_val)
             elif budget_type == 'VV':
                 pt = meta.sel(ni_v=ni_val, nj_v=nj_val)
-            elif budget_type == 'WW':
-                pt = meta.sel(ni_w=ni_val, nj_w=nj_val)
-            elif budget_type in ['TH', 'RV', 'TK']:
+            elif budget_type in ['TH', 'RV', 'TK', 'WW']:
                 pt = meta.sel(ni=ni_val, nj=nj_val)
             lat_arr[j, i] = float(pt[latitude_X])
             lon_arr[j, i] = float(pt[longitude_X])
@@ -344,7 +377,7 @@ def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=True,
     return obs_ukmo_xr
     
 
-def open_ukmo_rs(datafolder, filename):
+def open_ukmo_rs(datafolder, filename, add_metpy_units=False):
     """
     Open the radiosounding from UK MetOffice formatted under .txt,
     and return it into xarray dataset with same variable names 
@@ -405,13 +438,70 @@ def open_ukmo_rs(datafolder, filename):
     #compute datetimes from time
     obs_ukmo['time'] = pd.to_timedelta(obs_ukmo['seconds'], 'S') + datetime
     
-    
     obs_ukmo_xr = xr.Dataset.from_dataframe(obs_ukmo)
-    for key in units_row.index:
-        obs_ukmo_xr[key] = obs_ukmo_xr[key]*units(units_row[key])
-#        obs_ukmo_xr[key]['units'] = units_row[key]
+    # add units
+    if add_metpy_units:
+        for key in units_row.index:
+            obs_ukmo_xr[key] = obs_ukmo_xr[key]*units(units_row[key])
 
     return obs_ukmo_xr
+
+
+def open_ukmo_lidar(datafolder,
+                    filter_low_data=True, level_low_filter=100,
+                    create_netcdf=True,):
+    """
+    Open the lidar doppler data from UK MetOffice formatted under .txt,
+    and return it into xarray dataset with same variable names 
+    than .nc file from cnrm.
+    
+    Parameters:
+        datafolder: str, contains multiple files that will be concatenated
+            together
+        filter_low_data: bool, to remove or not the lowest data 
+            that may be inacurrate
+        level_low_filter: float, UKMO mentions that below 100m, data may be
+            inacurrate.
+        create_netcdf: bool
+    """
+    
+    fnames = os.listdir(datafolder)
+    fnames = [f for f in fnames if '.hpl' in f]  # keep only .hpl files
+    fnames.sort()
+    
+    dict_ws = {}
+    dict_wd = {}
+    
+    for filename in fnames:
+        datetime = pd.Timestamp(filename[58:73])
+#        datetime = filename[58:73]  # string format
+        obs_ukmo = pd.read_table(datafolder + filename,
+                                 skiprows=1,
+                                 delim_whitespace=True,  # one or more space as delimiter
+                                 names=['level_agl', 'WD', 'WS'])
+        #drop rows that are null
+        obs_ukmo = obs_ukmo[obs_ukmo['WS'] != 0]
+        if filter_low_data:
+            obs_ukmo = obs_ukmo[obs_ukmo['level_agl'] > level_low_filter]
+        obs_ukmo.set_index(['level_agl'], inplace=True)
+        
+        dict_ws[datetime] = obs_ukmo['WS']
+        dict_wd[datetime] = obs_ukmo['WD']
+        
+    df_ws = pd.DataFrame(dict_ws)
+    df_wd = pd.DataFrame(dict_wd)
+    
+    obs_ukmo_xr = xr.merge([xr.DataArray(df_ws, name='WS'), 
+                            xr.DataArray(df_wd, name='WD')],)
+    obs_ukmo_xr = obs_ukmo_xr.rename({'dim_1': 'time'})
+        
+    if create_netcdf:
+        out_filename = filename[:64] + '.nc'  # out_filename= 'LIAISE_[...]-30MIN_L1_202107.nc'
+        obs_ukmo_xr.to_netcdf(datafolder + out_filename, 
+                              engine='netcdf4')
+
+    return obs_ukmo_xr
+
 
 def open_uib_seb(QC_threshold = 9, create_netcdf=True):
     """
@@ -834,7 +924,7 @@ def check_filename_datetime(filepath, fix=False):
     
 
 def concat_obs_files(datafolder, in_filenames, out_filename, 
-                     dat_to_nc=None):
+                     dat_to_nc=None, overwrite=False):
     """
     Check if file already exists. If not create it by concatenating files
     that correspond to "in_filenames*". It uses shell script, and the command
@@ -856,20 +946,20 @@ def concat_obs_files(datafolder, in_filenames, out_filename,
     in the datafolder if not existing before.        
     """
     
-    # CREATE netCDF file from .dat if not existing yet
-    if dat_to_nc == 'ukmo':
-        fnames = os.listdir(datafolder)
-        for f in fnames:
-            if '.dat' not in f:
-                pass
-            else:
-                open_ukmo_mast(datafolder, f, 
-                               create_netcdf=True, remove_modi=True)
-    elif dat_to_nc == 'uib':
-        open_uib_seb(create_netcdf=True)
+    if not os.path.exists(datafolder + out_filename) or overwrite:
+        # CREATE netCDF file from .dat
+        if dat_to_nc == 'ukmo':
+            fnames = os.listdir(datafolder)
+            for f in fnames:
+                if '.dat' not in f:
+                    pass
+                else:
+                    open_ukmo_mast(datafolder, f, 
+                                   create_netcdf=True, remove_modi=True)
+        elif dat_to_nc == 'uib':
+            open_uib_seb(create_netcdf=True)
     
     # CONCATENATE
-    if not os.path.exists(datafolder + out_filename):
         print("creation of file: ", out_filename)
         out = os.system('''
             cd {0}
@@ -1722,12 +1812,24 @@ def calc_ws_wd(ut, vt):
     wd = xr.where(wd_temp<0, wd_temp+360, wd_temp)
     return ws, wd
 
+def calc_u_v(ws, wd):
+    """
+    Compute wind components ut and vt from wind speed and direction.
+    
+    wd must be in degrees (0°=N, 90°=E, 180°=S, 270°=W).
+
+    """
+    vt = -np.cos((wd/360)*2*np.pi) * ws
+    ut = -np.sin((wd/360)*2*np.pi) * ws
+
+    return ut, vt
+
 
 def calc_thetav(theta, spec_humidity):
     return theta + 0.61*spec_humidity*theta
 
 
-def height_to_pressure_std(height):
+def height_to_pressure_std(height, p0=101325):
     r"""Convert height data to pressures using the U.S. standard atmosphere [NOAA1976]_.
 
     The implementation inverts the formula outlined in [Hobbs1977]_ pg.60-61.
@@ -1735,6 +1837,7 @@ def height_to_pressure_std(height):
     Parameters
     ----------
     height : Atmospheric height [m]
+    p0 : reference pressure at sea level [Pa]
 
     Returns
     -------
@@ -1815,6 +1918,39 @@ def temperature_from_potential_temperature(pressure, potential_temperature,
 
     Returns
     -------
+        Temperature corresponding to the potential temperature and pressure
+
+    See Also
+    --------
+    dry_lapse
+    potential_temperature
+
+    Notes
+    -----
+    Formula:
+    .. math:: T = \Theta (P / P_0)^\kappa
+
+    """
+    return potential_temperature * exner_function(pressure, reference_pressure)
+
+
+def potential_temperature_from_temperature(pressure, temperature,
+                                           reference_pressure=100000):
+    r"""Calculate the temperature from a given potential temperature.
+
+    Uses the inverse of the Poisson equation to calculate the temperature from a
+    given potential temperature at a specific pressure level.
+
+    Parameters
+    ----------
+    pressure : `pint.Quantity`
+        Total atmospheric pressure
+
+    potential_temperature : `pint.Quantity`
+        Potential temperature
+
+    Returns
+    -------
     `pint.Quantity`
         Temperature corresponding to the potential temperature and pressure
 
@@ -1842,8 +1978,7 @@ def temperature_from_potential_temperature(pressure, potential_temperature,
        Renamed ``theta`` parameter to ``potential_temperature``
 
     """
-    return potential_temperature * exner_function(pressure, reference_pressure)
-
+    return temperature / exner_function(pressure, reference_pressure)
 
 def calc_fao56_et_0(rn_MJ, t_2m, ws_2m, rh_2m, p_atm, gnd_flx=0, gamma=66):
     """
@@ -2494,36 +2629,7 @@ def calc_soil_prop(PCLAY=0.35, PSAND=0.15,
     return res_dict
 
 
-def load_dataset(varname_sim_list, model, concat_if_not_existing=True):
-    """
-    
-    varname_sim_list: ex:['T2M_ISBA', 'H_P9']
-    model: 'std_d1', 'irr_d1', 'irrlagrip30_d1'
-    concat_if_not_existing: Try to concatenate or not if the concatenated file
-        does not exist yet
-    """
-    global_simu_folder = gv.global_simu_folder
-    
-    for i, varname_item in enumerate(varname_sim_list):
-        # get format of file to concatenate
-        in_filenames_sim = gv.format_filename_simu[model]
-        gridnest_nb = in_filenames_sim[6]  # integer: 1 or 2 in my case
-        # set name of concatenated output file
-        out_filename_sim = f'LIAIS.{gridnest_nb}.{varname_item}.nc'
-        # path of file
-        datafolder = global_simu_folder + gv.simu_folders[model]
-        # concatenate multiple days if not already existing
-        if concat_if_not_existing:
-            concat_simu_files_1var(datafolder, varname_item, 
-                                   in_filenames_sim, out_filename_sim)
-            
-        if i == 0:      # if first data, create new dataset
-            ds = xr.open_dataset(datafolder + out_filename_sim)
-        else:           # append data to existing dataset
-            ds_temp = xr.open_dataset(datafolder + out_filename_sim)
-            ds = ds.merge(ds_temp)
-    
-    return ds
+
 
 def diag_lowleveljet_height(ds, top_layer_agl=1000, wind_var='WS',
                              new_height_var='H_LOWJET', 
@@ -2581,8 +2687,43 @@ def diag_lowleveljet_height(ds, top_layer_agl=1000, wind_var='WS',
 
 
 if __name__ == '__main__':
-    ds= load_dataset(['T2M_ISBA', 'Q2M_ISBA'], 'irrlagrip30_d1')
     
+    datafolder = '/home/lunelt/Data/data_LIAISE/elsplans/lidar/202107/'
+    filename = 'LIAISE_ELS-PLANS_UKMO_DOPPLER-LIDAR-WIND-PROFILE-30MIN_L1_20210718-033100_V1.0.hpl'
+
+    ds = open_ukmo_lidar(datafolder, filename, 
+                         filter_low_data=True, level_low_filter=100,
+                         create_netcdf=True)
+        
+#    fnames = os.listdir(datafolder)
+#    fnames.sort()
+#    dict_ws = {}
+#    dict_wd = {}
+#    
+#    for filename in fnames:
+##        datetime = pd.Timestamp(filename[58:73])
+#        datetime = filename[58:73]
+#        obs_ukmo = pd.read_table(datafolder + filename,
+#                                 skiprows=1,
+#                                 delim_whitespace=True,  # one or more space as delimiter
+#                                 names=['level_agl', 'WD', 'WS'])
+#        #drop rows that are null
+#        obs_ukmo = obs_ukmo[obs_ukmo['WS'] != 0]
+#        if filter_low_data:
+#            obs_ukmo = obs_ukmo[obs_ukmo['level_agl'] > level_low_filter]
+#        obs_ukmo.set_index(['level_agl'], inplace=True)
+#        
+#        dict_ws[datetime] = obs_ukmo['WS']
+#        dict_wd[datetime] = obs_ukmo['WD']
+#        
+#    df_ws = pd.DataFrame(dict_ws)
+#    df_wd = pd.DataFrame(dict_wd)
+#    
+#    obs_ukmo_xr = xr.merge([xr.DataArray(df_ws, name='WS'), 
+#                            xr.DataArray(df_wd, name='WD')],)
+#    obs_ukmo_xr.rename({'dim_1': 'time'})
+#    
+##        dict_res[datetime] = obs_ukmo.to_dict()
     
     
 # TESTs for AGL to ASL coordinate

@@ -23,9 +23,9 @@ import matplotlib as mpl
 model = 'irr_d1'
 
 # Datetime
-wanted_date = '20210717-2300'
+wanted_date = '20210722-2300'
 
-varname_colormap = 'WS'
+varname_colormap = 'THT'
 colormap='coolwarm'
 
 # values color for contourf plot
@@ -44,6 +44,9 @@ elif varname_colormap == 'TKET':
 elif varname_colormap == 'RVT':
     vmin = 0
     vmax = 0.020
+elif varname_colormap == 'WT':
+    vmin = -1.5
+    vmax = -vmin
 else:
     vmin = None
     vmax = None
@@ -51,7 +54,7 @@ else:
 norm_cm=mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 #norm_cm=mpl.colors.LogNorm(vmin=vmin, vmax=vmax)  # for TKE
 
-varname_contourmap = 'HLOWJET'
+varname_contourmap = 'RVT'
 
 # Surface variable to show below the section
 surf_var = 'WG2_ISBA'
@@ -152,14 +155,14 @@ data['WPROJ'] = misc.windvec_verti_proj(data['UT'], data['VT'],
 #                                     wind_var='WPROJ_OPPOSITE', 
 #                                     new_height_var='HLOWJET_WPROJ',
 #                                     upper_bound=0.9)
-data = tools.diag_lowleveljet_height(data,
-                                     wind_var='WS', 
-                                     new_height_var='HLOWJET_NOSE',
-                                     upper_bound=0.70)
-data = tools.diag_lowleveljet_height(data,
-                                     wind_var='WS', 
-                                     new_height_var='HLOWJET_MAX',
-                                     upper_bound=1)
+#data = tools.diag_lowleveljet_height(data,
+#                                     wind_var='WS', 
+#                                     new_height_var='HLOWJET_NOSE',
+#                                     upper_bound=0.70)
+#data = tools.diag_lowleveljet_height(data,
+#                                     wind_var='WS', 
+#                                     new_height_var='HLOWJET_MAX',
+#                                     upper_bound=1)
 
 #%% INTERPOLATION
 
@@ -280,7 +283,8 @@ else:
     cont = ax[0].contour(Xmesh,
                          alti,
                          data2.T,
-                         cmap='viridis'  #viridis is default
+                         cmap='viridis',  #viridis is default,
+                         levels=np.arange(290, 320),
                          )
     ax[0].clabel(cont, cont.levels, inline=True, fontsize=10)
 

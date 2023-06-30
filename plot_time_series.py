@@ -15,11 +15,11 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'elsplans'
+site = 'irta-corn'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'H_2m'
+varname_obs = 'TA_1_1_1'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -38,12 +38,12 @@ varname_obs = 'H_2m'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim_list = ['H_P1']
+varname_sim_list = ['T2M_ISBA']
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 # U_STAR, BOWEN
 
 #If varname_sim is 3D:
-ilevel = 1   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
+ilevel =  10  #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
 add_irrig_time = True
 figsize = (12, 7) #small for presentation: (6,6), big: (15,9)
@@ -57,7 +57,7 @@ models = [
 #        'std_d2', 
         'std_d1',
         'irr_d1',
-        'irrlagrip30_d1',
+#        'irrlagrip30_d1',
 #        'lagrip100_d1',
          ]
 
@@ -373,10 +373,12 @@ for  varname_sim in varname_sim_list:
         
         dati_arr_sim = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, ds[varname_sim].shape[0])])
 
+        ds = ds.squeeze()  # new: may induce bugs ??
         ds['record'] = dati_arr_sim
         ds = ds.drop_vars(['time'])
         ds = ds.rename({'record': 'time'})
         
+        # to compare performance score on only 2 last of july
         if model == 'irrlagrip30_d1':
             ds = ds.where(ds.time > pd.Timestamp('20210714T0100'), drop=True)
         

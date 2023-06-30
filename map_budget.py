@@ -30,7 +30,7 @@ var_name_bu_list_dict = {  # includes only physical and most significant terms
         'RV': ['VTURB', 'MAFL', 'ADV',],
         'VV': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
         'UU': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
-        'WW': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
+        'WW': ['VTURB', 'GRAV', 'PRES', 'ADV',],
         }
 
 var_name_bu_list = var_name_bu_list_dict[budget_type]
