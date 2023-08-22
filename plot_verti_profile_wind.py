@@ -12,16 +12,13 @@ import xarray as xr
 import global_variables as gv
 import pandas as pd
 import tools
-import metpy.calc as mcalc
 from scipy.stats import circmean, circstd
 from metpy.units import units
 import metpy.calc as mpcalc
 
-
-
 ##############################
 
-site = 'elsplans'
+site = 'cendrosa'
 
 if site == 'elsplans':
     source_obs_list = ['uhf', 'lidar', 'mast', 'radiosondes']
@@ -30,24 +27,24 @@ elif site in ['cendrosa', 'linyola']:
 elif site in ['irta', 'irta-corn']:
     source_obs_list = ['windrass', 'mast']
 
-wanted_date = '20210721-1500'
-toplevel = 1500
+wanted_date = '20210722-1200'
+toplevel = 2500
 
 # 'uhf', 'windcube', 'mast'
-simu_list = ['irr_d1', 
-             'std_d1',
+simu_list = ['irr_d2_old', 
+             'std_d2_old',
              ]
 
 # Path in simu is the direct 1d column
-straight_profile = False
+straight_profile = True
 # Path in simu is average of neighbouring grid points
 mean_profile = True
-column_width = 3
+column_width = 8
 
-figsize = [9, 7] #small for presentation: [6, 5], big: [9, 7]
+figsize = [8, 7] #small for presentation: [6, 5], big: [9, 7]
 
 save_plot = True
-save_folder = f'./figures/verti_profile/{site}/winds/'
+save_folder = f'./figures/verti_profiles/{site}/winds/'
 
 ##############################
 colordict = {'irr_d2': 'g', 
@@ -105,6 +102,10 @@ if site == 'elsplans':
         ds_t['integration_time'] = 2
 
         obs_dict['uhf'] = ds_t
+        
+        if obs_dict['uhf']['WS'].isnull().all():  # if only NaN values
+            print('No UHF data available')
+            source_obs_list.remove('uhf')
     
     # -------- LIDAR ---------
     if 'lidar' in source_obs_list:
@@ -217,6 +218,10 @@ elif site in ['cendrosa', 'linyola']:
         ds_t['integration_time'] = 60
         # Write result for this source
         obs_dict['uhf'] = ds_t
+        
+        if obs_dict['uhf']['WS'].isnull().all():  # if only NaN values
+            print('No UHF data available')
+            source_obs_list.remove('uhf')
         
     # ---------- WINDCUBE ---------
     if 'windcube' in source_obs_list:
@@ -346,8 +351,9 @@ else:
 
 
 
-#%% OBS PLOT
-
+#%% PLOT
+# --- OBS ---
+column_width = 10
 fig, ax = plt.subplots(1, 2, sharey=True, figsize=figsize,)
 
 for source in source_obs_list:
@@ -375,7 +381,7 @@ for source in source_obs_list:
                )
 
 
-#%% SIMU
+# --- SIMU ---
 
 lat, lon = gv.whole[site]['lat'], gv.whole[site]['lon']
 
@@ -385,7 +391,7 @@ height = {}
 
 for model in simu_list:     # model will be 'irr' or 'std'
     # retrieve and open file
-    filename_simu = tools.get_simu_filename(model, wanted_date)
+    filename_simu = tools.get_simu_filepath(model, wanted_date)
     ds = xr.open_dataset(filename_simu)
     # put u, v, w in middle of grid
     ds = tools.center_uvw(ds)
@@ -401,16 +407,17 @@ for model in simu_list:     # model will be 'irr' or 'std'
     if mean_profile:
         ut_3d_column = var3d_low['UT'][
             :, 
-            int(index_lat-column_width/2):int(index_lat+column_width/2), 
-            int(index_lon-column_width/2):int(index_lon+column_width/2)]
+            int(index_lat-column_width/2)+1:int(index_lat+column_width/2)+1, 
+            int(index_lon-column_width/2)+1:int(index_lon+column_width/2)+1]
         vt_3d_column = var3d_low['VT'][
             :, 
-            int(index_lat-column_width/2):int(index_lat+column_width/2), 
-            int(index_lon-column_width/2):int(index_lon+column_width/2)]
+            int(index_lat-column_width/2)+1:int(index_lat+column_width/2)+1, 
+            int(index_lon-column_width/2)+1:int(index_lon+column_width/2)+1]
         
-        wd_3d_column = mpcalc.wind_direction(ut_3d_column, vt_3d_column)
-        ws_3d_column = mpcalc.wind_speed(ut_3d_column, vt_3d_column)
-        
+#        wd_3d_column = mpcalc.wind_direction(ut_3d_column, vt_3d_column)
+#        ws_3d_column = mpcalc.wind_speed(ut_3d_column, vt_3d_column)
+        ws_3d_column, wd_3d_column = tools.calc_ws_wd(ut_3d_column, 
+                                                      vt_3d_column)
         
         ws_1d = ws_3d_column.mean(dim=['nj', 'ni'])
         ws_1d_std = ws_3d_column.std(dim=['nj', 'ni'])
@@ -456,7 +463,7 @@ for model in simu_list:     # model will be 'irr' or 'std'
                 )
         
 ax[0].grid()
-ax[0].set_xlim([0,10])
+ax[0].set_xlim([0,9])
 ax[0].set_xlabel('wind speed [m/s]')
 ax[0].set_ylabel('height agl [m]')
 

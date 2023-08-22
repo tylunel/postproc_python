@@ -15,11 +15,11 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'irta-corn'
+site = 'cendrosa'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'TA_1_1_1'
+varname_obs = 'soil_temp_1'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -38,34 +38,42 @@ varname_obs = 'TA_1_1_1'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim_list = ['T2M_ISBA']
+varname_sim_list = ['TG2_ISBA']
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 # U_STAR, BOWEN
+
+vmin, vmax = 10, 55
 
 #If varname_sim is 3D:
 ilevel =  10  #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
-add_irrig_time = True
-figsize = (12, 7) #small for presentation: (6,6), big: (15,9)
+figsize = (7, 7) #small for presentation: (6,6), big: (15,9), paper:(7, 7)
+plt.rcParams.update({'font.size': 11})
+
 save_plot = True
-save_folder = './figures/time_series/{0}/domain1/'.format(site)
+save_folder = './figures/time_series/{0}/domain2/'.format(site)
 
 models = [
 #        'irr_d2_old', 
 #        'std_d2_old',
-#        'irr_d2', 
-#        'std_d2', 
-        'std_d1',
-        'irr_d1',
+        'irr_d2', 
+        'std_d2', 
+#        'std_d1',
+#        'irr_d1',
 #        'irrlagrip30_d1',
 #        'lagrip100_d1',
          ]
 
 remove_alfalfa_growth = False
-errors_computation = True
+errors_computation = False
+compare_to_residue_corr = False
 
 add_seb_residue = False
-compare_to_residue_corr = False
+
+add_irrig_time = False
+
+kelvin_to_celsius = True
+
 ######################################################
 
 simu_folders = {key:gv.simu_folders[key] for key in models}
@@ -106,7 +114,10 @@ elif varname_obs in ['soil_temp_1', 'soil_temp_2', 'soil_temp_3',
                      'T_10cm_Avg', 'T_20cm_Avg', 'T_30cm_Avg', 'T_40cm_Avg',
                      'T_50cm_Avg']:
     ylabel = 'soil temperature [K]'
-    offset_obs = 273.15
+    if kelvin_to_celsius:
+        offset_obs = 0
+    else:
+        offset_obs = 273.15
 elif varname_obs in ['swd']:
     ylabel = 'shortwave downward radiation [W/m2]'
 elif varname_obs in ['lmon_1', 'lmon_2', 'lmon_3']:
@@ -128,8 +139,10 @@ elif varname_obs in ['WQ_2m', 'WQ_10m']:
 elif varname_obs in ['ta_1', 'ta_2', 'ta_3', 'ta_4', 'ta_5', 'TEMP_2m',
                      'TA_1_1_1']:
     ylabel = 'air temperature [K]'
-    offset_obs = 273.15
-#    offset_obs = 0
+    if kelvin_to_celsius:
+        offset_obs = 0
+    else:
+        offset_obs = 273.15
 elif varname_obs in ['hus_1', 'hus_2', 'hus_3', 'hus_4', 'hus_5', 'RHO_2m']:
     ylabel = 'specific humidity [kg/kg]'
     coeff_obs = 0.001
@@ -173,90 +186,86 @@ elif site in ['irta-corn', 'irta-corn-real',]:
     datafolder = gv.global_data_liaise + '/irta-corn/seb/'
     in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
 else:
-    raise ValueError('Site name not known')
+    print('Warning: Site without observation')
+    varname_obs = ''
     
-lat = gv.sites[site]['lat']
-lon = gv.sites[site]['lon']
+lat = gv.whole[site]['lat']
+lon = gv.whole[site]['lon']
 
 
-#%% OBS: Concatenate and plot data
-if site in ['irta-corn', 'irta-corn-real']:
-    out_filename_obs = in_filenames_obs
-#    dat_to_nc = 'uib'  #To create a new netcdf file
-    dat_to_nc = None   #To keep existing netcdf file
-elif site == 'elsplans':
-    out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
-    dat_to_nc = 'ukmo'
-#    dat_to_nc = None   #To keep existing netcdf file
-else:
-    out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
-    dat_to_nc = None
+#%% OBS: LOAD and COMPUTE SOME DIAGs
+if varname_obs != '':
+    if site in ['irta-corn', 'irta-corn-real']:
+        out_filename_obs = in_filenames_obs
+    #    dat_to_nc = 'uib'  #To create a new netcdf file
+        dat_to_nc = None   #To keep existing netcdf file
+    elif site == 'elsplans':
+        out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
+        dat_to_nc = 'ukmo'
+    #    dat_to_nc = None   #To keep existing netcdf file
+    else:
+        out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
+        dat_to_nc = None
+        
+    # CONCATENATE multiple days
+    tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs, 
+                           dat_to_nc=dat_to_nc)
     
-# CONCATENATE multiple days
-tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs, 
-                       dat_to_nc=dat_to_nc)
-
-obs = xr.open_dataset(datafolder + out_filename_obs)
-
-# DIAG - process other variables:
-if site in ['preixana', 'cendrosa']:
-    # net radiation
-    obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
-    # bowen ratio -  diff from bowen_ratio_1
-    obs['bowen'] = obs['shf_1'] / obs['lhf_1']
-    obs['SEB_RESIDUE'] = obs['rn']-obs['lhf_1']-obs['shf_1']-obs['soil_heat_flux']
-    obs['EVAP_FRAC'] = obs['lhf_1'] / (obs['lhf_1'] + obs['shf_1'])
-    obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
-#    obs['EVAP_FRAC'].data = obs['EVAP_FRAC'].data.clip(min=0, max=1)
-#    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
-#    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
-    for i in [1,2,3]:
-        obs['swi_{0}'.format(i)] = tools.calc_swi(
-                obs['soil_moisture_{0}'.format(i)],
-                gv.wilt_pt[site][i],
-                gv.field_capa[site][i],) 
-elif site in ['irta-corn', 'irta-corn-real']:
-    for i in [1,2,3,4,5]:
-        site = 'irta-corn'
-        obs['swi_{0}'.format(i)] = tools.calc_swi(
-                obs['VWC_{0}0cm_Avg'.format(i)],
-                gv.wilt_pt[site][i],
-                gv.field_capa[site][i],)
-    obs['Q_1_1_1'] = tools.psy_ta_rh(
-        obs['TA_1_1_1'], 
-        obs['RH_1_1_1'],
-        obs['PA']*1000)['hr']
-    obs['air_density'] = obs['PA']*1000/(287.05*(obs['TA_1_1_1']+273.15))
-    obs['U_STAR'] = np.sqrt(obs['TAU']/obs['air_density'])
-    obs['SEB_RESIDUE'] = obs['NETRAD']-obs['LE']-obs['H']-obs['G_plate_1_1_1']
-    obs['EVAP_FRAC'] = obs['LE'] / (obs['LE'] + obs['H'])
-    obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
-#    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
-#    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
-#    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
-elif site == 'elsplans':
-    ## Flux calculations
-    obs['H_2m'] = obs['WT_2m']*1200  # =Cp_air * rho_air
-    obs['LE_2m'] = obs['WQ_2m']*2264000  # =L_eau
-    obs['NETRAD'] = obs['SWDN_rad'] + obs['LWDN_rad'] - obs['SWUP_rad'] - obs['LWUP_rad']
-    obs['SEB_RESIDUE'] = obs['NETRAD']-obs['LE_2m']-obs['H_2m']-obs['SFLXA_subsoil']
-    obs['SEB_RESIDUE'] = obs['SEB_RESIDUE'].where(
-                obs['SEB_RESIDUE']>-1000, 
-                np.nan)
-    obs['EVAP_FRAC'] = obs['LE_2m'] / (obs['LE_2m'] + obs['H_2m'])
-    obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
-    ## Webb Pearman Leuning correction
-    obs['BOWEN_2m'] = obs['H_2m'] / obs['LE_2m']
-    #obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.016)*(0+(1.2/300)*obs['WT_2m'])  #eq (25)
-    obs['LE_2m_WPL'] = obs['LE_2m']*(1.010)*(1+0.051*obs['BOWEN_2m'])  #eq (47) of paper WPL
+    obs = xr.open_dataset(datafolder + out_filename_obs)
     
-    for i in [10,20,30,40]:
-        obs['SWI{0}_subsoil'.format(i)] = tools.calc_swi(
-                obs['PR{0}_subsoil'.format(i)]*0.01,  #conversion from % to decimal
-                gv.wilt_pt[site][i],
-                gv.field_capa[site][i],)
-    
-# PLOT:
+    # DIAG - process other variables:
+    if site in ['preixana', 'cendrosa']:
+        # net radiation
+        obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
+        # bowen ratio -  diff from bowen_ratio_1
+        obs['bowen'] = obs['shf_1'] / obs['lhf_1']
+        obs['SEB_RESIDUE'] = obs['rn']-obs['lhf_1']-obs['shf_1']-obs['soil_heat_flux']
+        obs['EVAP_FRAC'] = obs['lhf_1'] / (obs['lhf_1'] + obs['shf_1'])
+        obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
+        for i in [1,2,3]:
+            obs['swi_{0}'.format(i)] = tools.calc_swi(
+                    obs['soil_moisture_{0}'.format(i)],
+                    gv.wilt_pt[site][i],
+                    gv.field_capa[site][i],) 
+    elif site in ['irta-corn', 'irta-corn-real']:
+        for i in [1,2,3,4,5]:
+            site = 'irta-corn'
+            obs['swi_{0}'.format(i)] = tools.calc_swi(
+                    obs['VWC_{0}0cm_Avg'.format(i)],
+                    gv.wilt_pt[site][i],
+                    gv.field_capa[site][i],)
+        obs['Q_1_1_1'] = tools.psy_ta_rh(
+            obs['TA_1_1_1'], 
+            obs['RH_1_1_1'],
+            obs['PA']*1000)['hr']
+        obs['air_density'] = obs['PA']*1000/(287.05*(obs['TA_1_1_1']+273.15))
+        obs['U_STAR'] = np.sqrt(obs['TAU']/obs['air_density'])
+        obs['SEB_RESIDUE'] = obs['NETRAD']-obs['LE']-obs['H']-obs['G_plate_1_1_1']
+        obs['EVAP_FRAC'] = obs['LE'] / (obs['LE'] + obs['H'])
+        obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
+    elif site == 'elsplans':
+        ## Flux calculations
+        obs['H_2m'] = obs['WT_2m']*1200  # =Cp_air * rho_air
+        obs['LE_2m'] = obs['WQ_2m']*2264000  # =L_eau
+        obs['NETRAD'] = obs['SWDN_rad'] + obs['LWDN_rad'] - obs['SWUP_rad'] - obs['LWUP_rad']
+        obs['SEB_RESIDUE'] = obs['NETRAD']-obs['LE_2m']-obs['H_2m']-obs['SFLXA_subsoil']
+        obs['SEB_RESIDUE'] = obs['SEB_RESIDUE'].where(
+                    obs['SEB_RESIDUE']>-1000, 
+                    np.nan)
+        obs['EVAP_FRAC'] = obs['LE_2m'] / (obs['LE_2m'] + obs['H_2m'])
+        obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
+        ## Webb Pearman Leuning correction
+        obs['BOWEN_2m'] = obs['H_2m'] / obs['LE_2m']
+        #obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.016)*(0+(1.2/300)*obs['WT_2m'])  #eq (25)
+        obs['LE_2m_WPL'] = obs['LE_2m']*(1.010)*(1+0.051*obs['BOWEN_2m'])  #eq (47) of paper WPL
+        
+        for i in [10,20,30,40]:
+            obs['SWI{0}_subsoil'.format(i)] = tools.calc_swi(
+                    obs['PR{0}_subsoil'.format(i)]*0.01,  #conversion from % to decimal
+                    gv.wilt_pt[site][i],
+                    gv.field_capa[site][i],)
+        
+#%% OBS PLOT:
 fig = plt.figure(figsize=figsize)
 
 if varname_obs != '':
@@ -319,7 +328,7 @@ if varname_obs != '':
             raise ValueError('add_seb_residue available only on LE and H')
             
         obs_residue_corr.plot(
-            label='obs_residue_corr',
+            label='obs_adjust',
             color=colordict['obs'],
             linestyle=':',
             linewidth=1)
@@ -332,7 +341,7 @@ if varname_obs != '':
                           )
 
 
-#%% SIMU:
+#%% SIMU - LOAD and PLOT:
 diff = {}
 rmse = {}
 bias = {}
@@ -382,11 +391,14 @@ for  varname_sim in varname_sim_list:
         if model == 'irrlagrip30_d1':
             ds = ds.where(ds.time > pd.Timestamp('20210714T0100'), drop=True)
         
+        # find indices from lat,lon values 
+        index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
+        
         # keep variable of interest
         var_md = ds[varname_sim]
         
-        # find indices from lat,lon values 
-        index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
+        if kelvin_to_celsius:
+            var_md = var_md - 273.15
         
         if len(var_md.shape) == 5:
             var_1d = var_md[:, :, ilevel, index_lat, index_lon].data #1st index is time, 2nd is ?, 3rd is Z,..
@@ -427,15 +439,15 @@ for  varname_sim in varname_sim_list:
     
 
 #%% Add irrigation datetime
-if add_irrig_time:
+if add_irrig_time and varname_obs != '':
     if site == 'irta-corn':
         sm_var = obs['VWC_40cm_Avg']
     if site == 'cendrosa':
         sm_var = obs['soil_moisture_3']
     if site == 'preixana':
-        sm_var = None
+        sm_var = None  # not irrigated, but could represent rain
     if site == 'elsplans':
-        sm_var = None
+        sm_var = None  # not irrigated, but could represent rain
     dati_list = tools.get_irrig_time(sm_var)
     plt.vlines(dati_list, 
                ymin=obs_var_corr.min().data, 
@@ -461,8 +473,11 @@ else:
 plot_title = '{0} at {1}'.format(ylabel, site)
 ax = plt.gca()
 ax.set_ylabel(ylabel)
+ax.set_ylim([vmin, vmax])
 
-ax.set_xlim([np.min(dati_arr_sim), np.max(dati_arr_sim)])
+ax.set_xlim([np.min(dati_arr_sim), 
+             (np.max(dati_arr_sim) - pd.Timedelta(1, 'h'))])
+ax.set_xlabel('time UTC')
 
 # add grey zones for night
 days = np.arange(1,30)
@@ -500,13 +515,14 @@ else:
 
 
 plt.title(plot_title)
-#plt.title('test')
 plt.grid()
 
 # keep only hours as X axis
 #plt.xticks(dati_arr[1:25:2], labels=np.arange(2,25,2))
-#plt.tick_params(rotation=0)
+plt.xticks(rotation=30)
 
+
+#plt.tight_layout()  # ensure that all figure elements fit in frame
 #%% Save figure
 
 if save_plot:

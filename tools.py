@@ -62,10 +62,10 @@ def indices_of_lat_lon(ds, lat, lon, verbose=True):
     
     # Gross evaluation of lat, lon (because latitude lines are curved)
     distance2lat = np.abs(lat_dat - lat)
-    index_lat = np.argwhere(distance2lat <= distance2lat.min())[0,0]
+    index_lat = np.argwhere(distance2lat <= np.nanmin(distance2lat))[0,0]
     
     distance2lon = np.abs(lon_dat - lon)
-    index_lon = np.argwhere(distance2lon <= distance2lon.min())[0,1]
+    index_lon = np.argwhere(distance2lon <= np.nanmin(distance2lon))[0,1]
     
 #    print("Before refinement : index_lat={0}, index_lon={1}".format(
 #            index_lat, index_lon))
@@ -101,7 +101,7 @@ def indices_of_lat_lon(ds, lat, lon, verbose=True):
 def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[],
               nb_indices_exterior=0):
     """
-    Extract a subset of domain.
+    Extract a subset of a domain.
     
     """
     
@@ -257,10 +257,22 @@ def open_budget_file(filename, budget_type):
     
     # rename for simplicity in processing in other functions, but may be risky...
     ds = ds.rename({cart_level_X: 'level'})
-    if budget_type in ['VV', 'UU', 'WW']:
-        ds = ds.rename({nj_X: 'nj', ni_X: 'ni', 
+    
+    if budget_type in ['VV', 'UU']:
+        
+        meta_subset = subset_ds(meta,
+                  lat_range=[ds[latitude_X].min(), ds[latitude_X].max()],
+                  lon_range=[ds[longitude_X].min(), ds[longitude_X].max()],
+                  )
+        
+        # interpolate on mass points (center of grid)
+        if budget_type == 'UU':
+            ds = ds.interp(ni_u=meta_subset.ni.values, nj_u=meta_subset.nj.values)
+        elif budget_type == 'VV':
+            ds = ds.interp(ni_v=meta_subset.ni.values, nj_v=meta_subset.nj.values)
+        
+        ds = ds.rename({nj_X: 'nj', ni_X: 'ni',
                         longitude_X: 'longitude', latitude_X: 'latitude'})
-
     
     return ds
 
@@ -751,7 +763,13 @@ def get_simu_filename_old(model, date='20210722-1200', domain=2,
     filename = father_folder + simu_filelist[model]
     return filename
 
-def get_simu_filename(model, date='20210722-1200', 
+def get_simu_filename(*args, **kwargs):
+    raise ValueError("""
+                     Deprecated function get_simu_filename().
+                     Use get_simu_filepath() instead.
+                     """)
+
+def get_simu_filepath(model, date='20210722-1200', 
                       file_suffix='dg',  #'dg' or ''
                       out_suffix='',  #'.OUT' or ''
                       global_simu_folder=gv.global_simu_folder,
@@ -795,33 +813,29 @@ def get_simu_filename(model, date='20210722-1200',
         hour_nb_2f = "24"
         hour_nb_3f = "024"
         day_nb = str(pd_date.day - 1) 
-    
         
-    simu_filelist = {
-        'std_d2': 'LIAIS.1.S{0}{1}.001{2}.nc'.format(
-                day_nb, hour_nb_2f, file_suffix),
-        'irr_d2': 'LIAIS.1.S{0}{1}.001{2}.nc'.format(
-                day_nb, hour_nb_2f, file_suffix),
-        'std_d2_old': 'LIAIS.2.SEG{0}.{1}{2}.nc'.format(
-                day_nb, hour_nb_3f, file_suffix),
-        'irr_d2_old': 'LIAIS.2.SEG{0}.{1}{2}.nc'.format(
-                day_nb, hour_nb_3f, file_suffix),
-        'irr_d1': 'LIAIS.1.SEG{0}.{1}{2}.nc'.format(
-                day_nb, hour_nb_3f, file_suffix),
-        'std_d1': 'LIAIS.1.SEG{0}.{1}{2}.nc'.format(
-                day_nb, hour_nb_3f, file_suffix),
-        'lagrip100_d1': 'LIAIS.1.SEG{0}.{1}{2}.nc'.format(
-                day_nb, hour_nb_3f, file_suffix),
-        'temp': 'LIAIS.1.SEG{0}{1}.{2}{3}.nc'.format(
-                day_nb, out_suffix, hour_nb_3f, file_suffix),
-        }
+#    simu_filelist = {
+#        'std_d2': f'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
+#        'irr_d2': f'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
+#        'std_d2_old': f'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
+#        'irr_d2_old': f'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
+#        'std_d2_old_old': f'LIAIS.2.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
+#        'irr_d2_old_old': f'LIAIS.2.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
+#        'irr_d1': f'LIAIS.1.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
+#        'std_d1': f'LIAIS.1.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
+#        'lagrip100_d1': f'LIAIS.1.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
+#        'temp': f'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
+#        }
+    filename = gv.format_filename_simu_new[model].format(
+            day_nb=day_nb, hour_nb_2f=hour_nb_2f, 
+            hour_nb_3f=hour_nb_3f, file_suffix=file_suffix)
     
-    filename = global_simu_folder + gv.simu_folders[model] + simu_filelist[model]
+    filepath = global_simu_folder + gv.simu_folders[model] + filename
     
     #check if nomenclature of filename is ok
-    check_filename_datetime(filename)
+    check_filename_datetime(filepath)
     
-    return filename
+    return filepath
 
 def get_simu_filename_000(model, date='20210722-1200'):
     """
@@ -1150,7 +1164,7 @@ def distance_from_lat_lon(lat_lon_1, lat_lon_2):
     return dist
 
 
-def center_uvw(data):
+def center_uvw(data, data_type='wind', budget_type='UU', varname_bu='PRES'):
     """
     Interpolate in middle of grid for variable UT, VT and WT,
     rename the associated coordinates, and squeezes the result.
@@ -1163,15 +1177,29 @@ def center_uvw(data):
         data: xarray.Dataset,
             same dataset but with winds positionned in the center of grid
     """
-    
-    data['UT'] = data['UT'].interp(ni_u=data.ni.values, nj_u=data.nj.values).rename(
-            {'ni_u': 'ni', 'nj_u': 'nj'})
-    data['VT'] = data['VT'].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
-            {'ni_v': 'ni', 'nj_v': 'nj'})
-    # remove useless coordinates
-    data_new = data.drop(['latitude_u', 'longitude_u', 
-                          'latitude_v', 'longitude_v',
-                          'ni_u', 'nj_u', 'ni_v', 'nj_v'])
+    if data_type == 'wind':
+        data['UT'] = data['UT'].interp(ni_u=data.ni.values, nj_u=data.nj.values).rename(
+                {'ni_u': 'ni', 'nj_u': 'nj'})
+        data['VT'] = data['VT'].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
+                {'ni_v': 'ni', 'nj_v': 'nj'})
+        # remove useless coordinates
+        data_new = data.drop(['latitude_u', 'longitude_u', 
+                              'latitude_v', 'longitude_v',
+                              'ni_u', 'nj_u', 'ni_v', 'nj_v'])
+    # for components UU and VV of MNH budgets ()
+    elif data_type == 'budget':
+        if budget_type == 'UU':
+            data[varname_bu] = data[varname_bu].interp(ni_u=data.ni.values, nj_u=data.nj.values).rename(
+                {'ni_u': 'ni', 'nj_u': 'nj'})
+            # remove useless coordinates
+            data_new = data.drop(['latitude_u', 'longitude_u', 
+                                  'ni_u', 'nj_u',])
+        if budget_type == 'VV':
+            data[varname_bu] = data[varname_bu].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
+                {'ni_v': 'ni', 'nj_v': 'nj'})
+            # remove useless coordinates
+            data_new = data.drop(['latitude_v', 'longitude_v',
+                                  'ni_v', 'nj_v'])
     
     # TRY loop in case no WT found in file
     try:
@@ -2328,7 +2356,9 @@ def calc_mslp(ds, ilevel=1, z0=0):
 
 def windvec_verti_proj(u, v, level, angle):
     """Compute the projected horizontal wind vector on an axis with a given angle w.r.t. the x/ni axes (West-East)
-
+    
+    Copied from MNHPy.
+    
     Parameters
     ----------
     u : array 3D
@@ -2347,7 +2377,7 @@ def windvec_verti_proj(u, v, level, angle):
     -------
 
     projected_wind : array 3D
-        a 3D wind component projected on the axe to be used with Panel_Plot.pvector as Lvar1
+        a 3D wind component projected on the axe
     """
     projected_wind = copy.deepcopy(u)
     for k in range(len(level)):
@@ -2687,72 +2717,8 @@ def diag_lowleveljet_height(ds, top_layer_agl=1000, wind_var='WS',
 
 
 if __name__ == '__main__':
-    
-    datafolder = '/home/lunelt/Data/data_LIAISE/elsplans/lidar/202107/'
-    filename = 'LIAISE_ELS-PLANS_UKMO_DOPPLER-LIDAR-WIND-PROFILE-30MIN_L1_20210718-033100_V1.0.hpl'
+    filename_bu = gv.global_simu_folder + gv.simu_folders['irr_d1'] + f'LIAIS.1.SEG16.000.nc'
 
-    ds = open_ukmo_lidar(datafolder, filename, 
-                         filter_low_data=True, level_low_filter=100,
-                         create_netcdf=True)
-        
-#    fnames = os.listdir(datafolder)
-#    fnames.sort()
-#    dict_ws = {}
-#    dict_wd = {}
-#    
-#    for filename in fnames:
-##        datetime = pd.Timestamp(filename[58:73])
-#        datetime = filename[58:73]
-#        obs_ukmo = pd.read_table(datafolder + filename,
-#                                 skiprows=1,
-#                                 delim_whitespace=True,  # one or more space as delimiter
-#                                 names=['level_agl', 'WD', 'WS'])
-#        #drop rows that are null
-#        obs_ukmo = obs_ukmo[obs_ukmo['WS'] != 0]
-#        if filter_low_data:
-#            obs_ukmo = obs_ukmo[obs_ukmo['level_agl'] > level_low_filter]
-#        obs_ukmo.set_index(['level_agl'], inplace=True)
-#        
-#        dict_ws[datetime] = obs_ukmo['WS']
-#        dict_wd[datetime] = obs_ukmo['WD']
-#        
-#    df_ws = pd.DataFrame(dict_ws)
-#    df_wd = pd.DataFrame(dict_wd)
-#    
-#    obs_ukmo_xr = xr.merge([xr.DataArray(df_ws, name='WS'), 
-#                            xr.DataArray(df_wd, name='WD')],)
-#    obs_ukmo_xr.rename({'dim_1': 'time'})
-#    
-##        dict_res[datetime] = obs_ukmo.to_dict()
+    ds_bu_UU = open_budget_file(filename_bu, 'UU').isel(time_budget=18)
     
-    
-# TESTs for AGL to ASL coordinate
-#    filename = get_simu_filename('irr_d1', '20210716-1600',)
-#    ds = xr.open_dataset(filename,
-#                         decode_coords="coordinates",
-#                         )
-##    ds_in = ds[['THT', 'TEMP', 'RVT', 'PABST', 'ZS']].isel(nj=59, ni=[175,176,177], level=1).squeeze()
-#    ds['DENS'] = mcalc.density(
-#            ds['PABST']*units.pascal,
-#            ds['TEMP']*units.celsius, 
-#            ds['RVT']*units.gram/units.gram)
-#    
-#    ds_subset = subset_ds(ds[['PABST', 'THT', 'DENS', 'ZS']],
-#                          zoom_on='liaise').squeeze()
-###    ds_subset = ds[['PABST', 'THT', 'DENS', 'ZS']].squeeze()
-##
-#    ds_asl = agl_to_asl_coords(ds_subset, alti_asl_arr=np.arange(100, 900, 10))
-#
-##    test = interp_iso_agl(50, ds_asl, 'THT_ASL', verbose=True)
-#    
-##    ds_agl = asl_to_agl_coords(ds_asl, alti_agl_arr=np.arange(10,200,20))
-#    ds_agl = asl_to_agl_coords(ds_asl, alti_agl_arr=np.array(ds_subset.level[:20]))
-#    
-#
-##    orig = ds_subset.THT[10,:,:]
-##    diff = orig - test
-#    diff_THT = ds_agl['THT'] - ds_subset['THT']
-#    print('diff max: ', diff_THT.max())
-##    
-##    diff_THT[1,:,:].plot()
 

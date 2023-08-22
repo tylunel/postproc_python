@@ -6,9 +6,9 @@
 Gathers global variables for use in scripts. 
 """
 
-#global_simu_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
-global_simu_folder = '/media/lunelt/7C2EB31F2EB2D0FE/Tanguy/'
-global_temp_folder = '/home/lunelt/Data/temp_outputs/'
+global_simu_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
+#global_simu_folder = '/media/lunelt/7C2EB31F2EB2D0FE/Tanguy/'
+#global_temp_folder = '/home/lunelt/Data/temp_outputs/'
 
 #global_data_liaise = '/cnrm/surface/lunelt/data_LIAISE/'
 global_data_liaise = '/home/lunelt/Data/data_LIAISE/'
@@ -17,8 +17,10 @@ global_data_liaise = '/home/lunelt/Data/data_LIAISE/'
 simu_folders = {
         'irr_d2': '2.17_irr_d2_21-22_bugfix/',
         'std_d2': '1.17_std_d2_21-22_bugfix/',
-        'irr_d2_old': '2.13_irr_d1d2_21-24/', 
-        'std_d2_old': '1.11_std_d1d2_21-24/',
+        'irr_d2_old': '2.16_irr_d2_21-22/',
+        'std_d2_old': '1.16_std_d2_21-22/',
+        'irr_d2_old_old': '2.13_irr_d1d2_21-24/', 
+        'std_d2_old_old': '1.11_std_d1d2_21-24/',
         'irr_d1': '2.15_irr_d1_15-30/',
         'std_d1': '1.15_std_d1_15-30/',
 #        'lagrip100_d1': '5.15_lagrip100_d1_15-30/',  #param had issue
@@ -29,23 +31,49 @@ simu_folders = {
 format_filename_simu = {            
         'irr_d2':     'LIAIS.1.S????.001dg.nc',
         'std_d2':     'LIAIS.1.S????.001dg.nc',
-        'irr_d2_old': 'LIAIS.2.SEG??.0??dg.nc', 
-        'std_d2_old': 'LIAIS.2.SEG??.0??dg.nc',
+        'irr_d2_old':     'LIAIS.1.S????.001dg.nc',
+        'std_d2_old':     'LIAIS.1.S????.001dg.nc',
+        'irr_d2_old_old': 'LIAIS.2.SEG??.0??dg.nc', 
+        'std_d2_old_old': 'LIAIS.2.SEG??.0??dg.nc',
         'irr_d1':     'LIAIS.1.SEG??.0??dg.nc',
         'std_d1':     'LIAIS.1.SEG??.0??dg.nc',
 #        'lagrip100_d1': 'LIAIS.1.SEG??.0??.nc',
         'irrlagrip30_d1': 'LIAIS.1.SEG??.0??dg.nc',
         }
 
-sites = {'cendrosa': {'lat': 41.6925905,
-                      'lon': 0.9285671,
-                      'alt': 240},
-         'preixana': {'lat': 41.59373,
-                      'lon': 1.07250,
-                      'alt': 354},
-         'elsplans': {'lat': 41.590111,
-                      'lon': 1.029363,
-                      'alt': 334},
+format_filename_simu_new = {  
+        'std_d2': 'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
+        'irr_d2': 'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
+        'std_d2_old': 'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
+        'irr_d2_old': 'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
+        'std_d2_old_old': 'LIAIS.2.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
+        'irr_d2_old_old': 'LIAIS.2.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
+        'irr_d1': 'LIAIS.1.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
+        'std_d1': 'LIAIS.1.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
+        'lagrip100_d1': 'LIAIS.1.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
+        'temp': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
+        }
+# Apply .format() after corresponding string works!
+# ex: format_filename_simu_new['std_d2'].format(day_nb=22, hour_nb_2f=12, hour_nb_2f='012', file_suffix='dg')
+
+sites = {'cendrosa': {
+#                'lat': 41.6925905,  # precise real coordinates
+#                'lon': 0.9285671,  # precise real coordinates
+                'lat': 41.69,  # rounded
+                'lon': 0.93,   # rounded
+                'alt': 240,
+                'longname': 'La Cendrosa'},
+         'preixana': {
+                 'lat': 41.59373,
+                 'lon': 1.07250,
+                 'alt': 354},
+         'elsplans': {
+#                 'lat': 41.590111,  # precise real coordinates
+#                 'lon': 1.029363,  # precise real coordinates
+                 'lat': 41.590,  # rounded
+                 'lon': 1.029,  # rounded
+                 'alt': 334,
+                 'longname': 'Els Plans'},
 #         'irta-corn': {
 ##                       'lon': 0.805333},  # wrong position, but 100% irr zone in model irr_d1
 #                         'lat': 41.5922,  # wrong position, but 100% irr zone in model
@@ -78,7 +106,8 @@ towns = {'arbeca': {'lat': 41.54236,
          'barcelona': {'lat': 41.4025,
                        'lon': 1.1870},
          'lleida': {'lat': 41.6186,
-                    'lon': 0.6257},
+                    'lon': 0.6257,
+                    'longname': 'Lleida'},
          'zaragoza': {'lat': 41.6547,
                       'lon': -0.8784},
          'torredembarra': {'lat': 41.145077,
@@ -131,6 +160,9 @@ mountains = {'tossal_baltasana': {'lat': 41.3275,
                                 'lon': 1.44177},
              'tossal_gros': {'lat': 41.47857,
                              'lon': 1.12942},
+             'serra_tallat': {'lat': 41.48,
+                             'lon': 1.12,
+                             'longname': 'Serra del Tallat'},
              'tossal_torretes': {'lat': 42.02244,
                                  'lon': 0.93800},
              'moncayo': {'lat': 41.7871,
@@ -229,6 +261,13 @@ zoom_domain_prop = {
         'lon_range': [0.6, 1.4],
         'figsize': (9,7),
         },
+    'urgell-paper-zoom': {
+        'skip_barbs': 6,
+        'barb_length': 5.5,
+        'lat_range': [41.45, 41.80],
+        'lon_range': [0.7, 1.2],
+        'figsize': (9,7),
+        },
     'd2': {
         'skip_barbs': 3,
         'barb_length': 4.5,
@@ -256,6 +295,33 @@ zoom_domain_prop = {
 #        figsize=(13,7)
 #    elif domain_nb == 2:
 #        figsize=(10,7)
+    }
+    
+zoom_barbs_prop_400m = {
+    'liaise': {
+        'skip_barbs': 1, # 1/skip_barbs will be printed
+        'barb_length': 5.5,
+        },
+   'urgell': {
+        'skip_barbs': 4,
+        'barb_length': 4.5,
+        },
+    'urgell-paper': {
+        'skip_barbs': 6,
+        'barb_length': 4.5,
+        },
+    'd2': {
+        'skip_barbs': 3,
+        'barb_length': 4.5,
+        },
+    'marinada': {
+        'skip_barbs': 2,
+        'barb_length': 4.5,
+        },
+    None: {
+        'skip_barbs': 1,
+        'barb_length': 4.5,
+        },
     }
 
 layers_depth_DIF = [-0.01, -0.04, -0.1, -0.2, -0.4, -0.6, 

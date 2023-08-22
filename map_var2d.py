@@ -17,22 +17,22 @@ import metpy.calc as mcalc
 from metpy.units import units
 
 ###############################################
-model = 'irr_d1'
+model = 'std_d2'
 
 domain_nb = int(model[-1])
 
-wanted_date = '20210717-2100'
+wanted_date = '20210722-1200'
 
-color_map = 'coolwarm'    # BuPu, coolwarm, viridis, RdYlGn, YlOrBr, jet,... (add _r to reverse)
+color_map = 'YlGnBu'    # BuPu, coolwarm, viridis, RdYlGn, YlOrBr, jet,... (add _r to reverse)
 
-var_name = 'H_LOWJET'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
-vmin = 0
-vmax = 1000
+var_name = 'TSWI_T_ISBA'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
+vmin = -0.2
+vmax = 1.2
 
 # level, only useful if var 3D
 ilevel = 10  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
 
-zoom_on = 'marinada'  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'urgell-paper'  #None for no zoom, 'liaise' or 'urgell'
 
 save_plot = True
 #save_folder = './figures/scalar_maps/pgd/'
@@ -40,7 +40,7 @@ save_plot = True
 #        domain_nb, model, var_name)
 save_folder = f'./figures/scalar_maps/{model}/{var_name}/{ilevel}/'
 
-add_winds = True
+add_winds = False
 add_pgf = False
 barb_size_option = 'standard'  # 'weak_winds' or 'standard'
 
@@ -53,6 +53,9 @@ lat_range = prop['lat_range']
 lon_range = prop['lon_range']
 figsize = prop['figsize']
 # OR: #locals().update(gv.zoom_domain_prop[zoom_on])
+
+# size of font on figure
+plt.rcParams.update({'font.size': 11})
 
 filename = tools.get_simu_filename(model, wanted_date,
                                    global_simu_folder=gv.global_simu_folder)
@@ -88,7 +91,8 @@ subset_ds = ds1[['WS', 'ZS', 'TKET', 'HBLTOP']]
 
 #%% DATA SELECTION and ZOOM
 
-varNd = ds_diag[var_name]
+#varNd = ds_diag[var_name]
+varNd = ds1[var_name]
 #remove single dimensions
 varNd = varNd.squeeze()
 
@@ -132,9 +136,12 @@ try:
     cbar.set_label(var2d.long_name)
 except AttributeError:
     cbar.set_label(var_name)
+
+#cbar.set_label('LAI [$m^2 m^{-2}$]')
+    
 #cbar.set_clim(vmin, vmax)
 
-#%% WIND BARBS
+# --- WIND BARBS
 
 barb_size_increments = gv.barb_size_increments
 barb_size_description = gv.barb_size_description
@@ -169,7 +176,7 @@ if add_winds or add_pgf:
                  )
 
 
-#%% IRRIGATED, SEA and COUNTRIES BORDERS
+# --- IRRIGATED, SEA and COUNTRIES BORDERS
 
 if domain_nb == 2:
     pgd = xr.open_dataset(
@@ -180,23 +187,23 @@ elif domain_nb == 1:
         gv.global_simu_folder + \
         '2.01_pgds_irr/PGD_2KM_CovCor_v26_ivars.nc')
 
-#Irrigation borders
-#from scipy.ndimage.filters import gaussian_filter
-#sigma = 0.1     #default is 0.1
-#irr_covers = gaussian_filter(pgd.COVER369.data, sigma)
-irr_covers = pgd.COVER369.data
-plt.contour(pgd.longitude.data, 
-            pgd.latitude.data, 
-            irr_covers,
-            levels=0,   #+1 -> number of contour to plot 
-            linestyles='solid',
-            linewidths=1.5,
-            colors='g'
-#            colors=['None'],
-#            hatches='-'
-            )
+# Irrigation borders
+##from scipy.ndimage.filters import gaussian_filter
+##sigma = 0.1     #default is 0.1
+##irr_covers = gaussian_filter(pgd.COVER369.data, sigma)
+#irr_covers = pgd.COVER369.data
+#plt.contour(pgd.longitude.data, 
+#            pgd.latitude.data, 
+#            irr_covers,
+#            levels=0,   #+1 -> number of contour to plot 
+#            linestyles='solid',
+#            linewidths=1.5,
+#            colors='g'
+##            colors=['None'],
+##            hatches='-'
+#            )
 
-#Sea borders
+# Sea borders
 sea_covers = pgd.COVER001.data
 plt.contour(pgd.longitude.data, 
             pgd.latitude.data, 
@@ -220,20 +227,20 @@ plt.plot(france_SW.lon, france_SW.lat,
          color='k',
          linewidth=1)
 
-#%% POINTS SITES
+# --- POINTS SITES
 
 points = [
         'cendrosa',
 #        'ponts',
           'elsplans', 
 #          'irta-corn',
-#          'lleida', 
+          'lleida', 
 #          'zaragoza',
 #          'puig formigosa', 
 #          'tossal_baltasana', 
-          'tossal_gros', 
-          'coll_lilla',
-          'torredembarra',
+#          'tossal_gros', 
+#          'coll_lilla',
+#          'torredembarra',
 #          'tossal_torretes', 
 #       'moncayo', 'tres_mojones', 
 #          'guara', 'caro', 'montserrat', 'joar',
@@ -247,19 +254,19 @@ for site in sites:
                 color='r',
                 s=12        #size of markers
                 )
-#    if site == 'elsplans':
-#        plt.text(sites[site]['lon']-0.1,
-#                 sites[site]['lat']-0.03, 
-#                 site, 
-#                 fontsize=9)
-#    else:
+    # print site name on fig:
+    try:
+        sitename = sites[site]['longname']
+    except KeyError:
+        sitename = site
+        
     plt.text(sites[site]['lon']+0.01,
              sites[site]['lat']+0.01, 
-             site.capitalize(), 
-             fontsize=14)
+             sitename, 
+             fontsize=15)
 
 
-#%% FIGURE OPTIONS and ZOOM
+# --- FIGURE OPTIONS and ZOOM
 if len(varNd.shape) == 2:
     plot_title = '{0} - {1} for simu {2}'.format(
         wanted_date, var_name, model)
@@ -268,15 +275,11 @@ elif len(varNd.shape) == 3:
         wanted_date, var_name, model, var2d.level.round())
 
 plt.title(plot_title)
-plt.xlabel('longitude')
-plt.ylabel('latitude')
+plt.xlabel('longitude', fontsize=12)
+plt.ylabel('latitude', fontsize=12)
 
-if zoom_on is None:
-    plt.ylim([var2d.latitude.min(), var2d.latitude.max()])
-    plt.xlim([var2d.longitude.min(), var2d.longitude.max()])
-else:
-    plt.ylim(lat_range)
-    plt.xlim(lon_range)
+plt.ylim(lat_range)
+plt.xlim(lon_range)
 
 if save_plot:
     tools.save_figure(plot_title, save_folder)

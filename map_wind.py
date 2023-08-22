@@ -17,16 +17,13 @@ import global_variables as gv
 from metpy.plots import StationPlot
 
 #########################################"""
-model = 'irr_d1'
-ilevel = 3   #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
+model = 'irr_d2_old'
+domain_nb = 2
 
-var = 'WIND'  #'WIND' or 'PGF'
+ilevel = 10   #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
 
 # Datetime
-wanted_date = '20210722-2300'
-
-#domain_nb = int(model[-1])
-domain_nb = 1
+wanted_date = '20210722-1200'
 
 speed_plane = 'horiz'  # 'horiz': horizontal normal wind, 'verti' for W
 
@@ -39,9 +36,9 @@ elif speed_plane == 'horiz':
     vmin_cbar = 0
     cmap_name = 'BuPu'
 
-zoom_on = 'marinada'  #None for no zoom, 'urgell', 'liaise'
+zoom_on = 'urgell'  #None for no zoom, 'urgell', 'liaise'
 
-add_smc_obs = True
+add_smc_obs = False
 
 if add_smc_obs:
     alpha = 0.4
@@ -76,9 +73,15 @@ lon_range = prop['lon_range']
 figsize = prop['figsize']
 # OR: #locals().update(gv.zoom_domain_prop[zoom_on])
 
-filename = tools.get_simu_filename(model, wanted_date,
-                                   global_simu_folder=gv.global_simu_folder)
+# for paper: hard-coded:
+skip_barbs = 1
+#barb_length = 5.5
+#barb_size_option = 'weak_winds'
 
+plt.rcParams.update({'font.size': 11})
+
+filename = tools.get_simu_filepath(model, wanted_date,
+                                   global_simu_folder=gv.global_simu_folder)
 
 # load file, dataset and set parameters
 ds1 = xr.open_dataset(filename,
@@ -105,7 +108,8 @@ plt.pcolormesh(ds1.longitude, ds1.latitude, ws_layer,
 #               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
                cmap=cmap_name,
                vmin=vmin_cbar,
-               vmax=vmax_cbar
+               vmax=vmax_cbar,
+               alpha=0.8,
 #               vmin=0,
 #               vmax=1000  
               )
@@ -158,7 +162,7 @@ plt.contour(pgd.longitude.data,
             irr_covers,
             levels=0,   #+1 -> number of contour to plot 
             linestyles='solid',
-            linewidths=1.,
+            linewidths=1.5,
             colors='g'
 #            colors=['None'],
 #            hatches='-'
@@ -195,10 +199,10 @@ points = ['cendrosa', 'elsplans',
 #          'border_irrig_noirr',
 #          'puig formigosa', 
 #          'tossal_baltasana', 
-          'lleida',
-          'tossal_gros', 
+#          'lleida',
+#          'tossal_gros', 
 #          'tossal_torretes', 
-          'coll_lilla',
+#          'coll_lilla',
 #'moncayo', 'tres mojones', 
 #          'guara', 'caro', 'montserrat', 'joar',
           ]
@@ -210,10 +214,16 @@ for site in sites:
                 color='r',
                 s=15        #size of markers
                 )
+    # print site name on fig:
+    try:
+        sitename = sites[site]['longname']
+    except KeyError:
+        sitename = site
+        
     plt.text(sites[site]['lon']+0.01,
              sites[site]['lat']+0.01, 
-             site, 
-             fontsize=12)
+             sitename, 
+             fontsize=15)
 
 #%% STATION PLOT
     
@@ -259,13 +269,12 @@ if speed_plane == 'verti':
 plt.xlabel('longitude')
 plt.ylabel('latitude')
         
-plot_title = '{4} {5} at {0}m on {1} for simu {2} zoomed on {3}'.format(
+plot_title = '{4} wind at {0}m on {1} for simu {2} zoomed on {3}'.format(
         np.round(level_agl, decimals=1), 
         pd.to_datetime(ws_layer.time.values).strftime('%Y-%m-%dT%H%M'),
         model,
         zoom_on,
-        speed_plane,
-        var)
+        speed_plane)
 plt.title(plot_title)
 
 
