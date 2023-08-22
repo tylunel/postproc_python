@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import xarray as xr
-import MNHPy.misc_functions as misc
 import tools
 import metpy.calc as calc
 from metpy.units import units
@@ -106,7 +105,7 @@ for model in models_list:
     else:
         angle = np.arctan(slope)
         
-    data['PROJ'] = misc.windvec_verti_proj(data['UT'], data['VT'], 
+    data['PROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'], 
                                            data.level, angle)
     
     #%% INTERPOLATION

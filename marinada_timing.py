@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import xarray as xr
-import MNHPy.misc_functions as misc
 import tools
 import metpy.calc as mcalc
 from metpy.units import units
@@ -45,7 +44,7 @@ date_list = [
 #        '20210718', 
 #        '20210719', 
 #        '20210720', 
-#        '20210721',
+        '20210721',
 #        '20210722',
         ]
 # altitude ASL or height AGL: 'asl' or 'agl'
@@ -127,7 +126,7 @@ for date in date_list:
             angle = np.pi/2
         else:
             angle = np.arctan(slope)  
-        data['WPROJ'] = misc.windvec_verti_proj(data['UT'], data['VT'], 
+        data['WPROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'], 
                                                data.level, angle)
         
         #%% INTERPOLATION
@@ -206,7 +205,7 @@ for date in date_list:
     
     # add some DIAGs
     coast_index = len(section_ds.i_sect) - nb_points_beyond
-    df['dist_coast']=abs((df['i_sect']-coast_index)*line['nij_step'])
+    df['dist_coast']=abs((df['i_sect']-coast_index)*line['nij_step'])/1000  # in km
     df['time'] = [datime.time() for datime in df.index]
     
     # FILTERING
@@ -235,32 +234,37 @@ for date in date_list:
 
 for date in res_filt_dict:
     res_filt_dict[date]['hour'] = [datime.hour for datime in res_filt_dict[date].index]
-    
-    
+#    # convert from m to km
+#    df_filt['dist_coast'] = df_filt['dist_coast']/1000
+
 plt.figure(figsize=(7,7))
 # plot progression of marinada
 for date in date_list:
     df_filt = res_filt_dict[date]
-    plt.plot(df_filt.hour, df_filt.dist_coast,
+
+    plt.plot(df_filt.dist_coast, df_filt.hour,
              label=date)
 
 
 # add line of main sites:
-distances_dict = {'coll_lilla': 28000,
-                  'tossal_gros': 43800,
-                  'els_plans': 58750,
-                  'cendrosa': 72810,
+distances_dict = {'torredembarra': 0.5,
+                  'coll_lilla': 28,
+                  'tossal_gros': 43.8,
+                  'els_plans': 58.75,
+                  'cendrosa': 72.81,
                   }
 for site in distances_dict:
-    plt.hlines(distances_dict[site], 6, 24,
+    plt.vlines(distances_dict[site], 6, 24,
                colors='k', linestyle='--')  # coll_lilla
-    plt.text(6, distances_dict[site]+500, site)
+    plt.text(distances_dict[site]+1, 6, site, rotation=90)
 
-plt.ylim(0, df_filt.dist_coast.max())
-plt.ylabel('distance to coast [m]')
-plt.xlabel('hour UTC')
+#plt.xlim(0, df_filt.dist_coast.max())
+plt.xlim(0, 100)
+
+plt.xlabel('distance to coast [km]')
+plt.ylabel('hour UTC')
 plt.legend()
-plt.grid(axis='x')
+plt.grid(axis='y')
 
 #%% POST-PROCESSING
 
@@ -311,6 +315,18 @@ df_summary = pd.concat([
         keys=['mean_wind_synop','arrival_tossal_gros'])
             
 df_corr = df_summary.corr()
+
+
+#%% Calculate wind speed
+
+df_filt = res_filt_dict['20210716']
+
+ws_dict = {}
+for i in range(len(df_filt.hour)-1):
+    ws = (df_filt.iloc[i+1].dist_coast - df_filt.iloc[i].dist_coast) / \
+            (df_filt.iloc[i+1].hour - df_filt.iloc[i].hour)   # in km/h
+    ws_dict[(df_filt.iloc[i+1].hour + df_filt.iloc[i].hour)/2] = ws/3.6
+    print(ws/3.6)
 
 #%% PLOT
 ## create figure

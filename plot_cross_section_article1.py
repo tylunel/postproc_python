@@ -19,7 +19,7 @@ import matplotlib as mpl
 ########## Independant parameters ###############
 
 # Simulation to show: 'irr' or 'std'
-model = 'irr_d2'
+model = 'irr_d2_old'
 
 # Datetime
 wanted_date = '20210722-1200'
@@ -63,9 +63,9 @@ varname_contourmap = 'RVT'
 vmin_contour, vmax_contour = 5, 15
 
 # Surface variable to show below the section
-surf_var = 'H'   # WG2_ISBA, H, LE
-surf_var_label = 'H'
-vmin_surf_var, vmax_surf_var = -100, 500
+surf_var = 'WG2_ISBA'
+surf_var_label = 'Q_vol_soil'
+vmin_surf_var, vmax_surf_var = 0, 0.4
 
 # Set type of wind representation: 'verti_proj' or 'horiz'
 wind_visu = 'verti_proj'
@@ -87,107 +87,42 @@ skip_barbs_y = 10    #if 1: 1barb/10m, if 5: 1barb/50m, etc
 arrow_size = 1.2  #works for arrow and barbs
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
-uib_adapt = True
+uib_adapt = False
 
 # Save the figure
 figsize = (12,7)
 save_plot = True
-save_folder = f'./figures/cross_sections/{model}/section_{site_start}_{site_end}/{wind_visu}/{varname_colormap}_{varname_contourmap}/'
+save_folder = '/home/lunelt/Documents/redaction/article1_irrigation_breeze/fig/'
 
 plt.rcParams.update({'font.size': 11})
 ###########################################
-#domain to consider: 1 or 2
-domain_nb = int(model[-1])
 
 barb_size_increments = gv.barb_size_increments
 barb_size_description = gv.barb_size_description
 
 
-# ----------- from MARIA ANTONIA ------------
-if uib_adapt:
-#    filename = '/cnrm/surface/lunelt/FROM_MARIAANTONIA/MSB21.3.12H18.002_BIS.cdf'
-    filename = '/home/lunelt/Data/MSB21.3.12H18.002_BIS.cdf'
-    
-    #load file
-    ds = xr.open_dataset(filename)
-    
-    # ------- Modify the dataset to have same structure than direct netcdf MNH output
-    # remove the '--PROC1' part of variable names
-    vardict = {}
-    for var in ds.variables:
-        print(var)
-        if '--PROC1' in str(var):
-            newvar = var.replace('--PROC1', '')
-            vardict[var] = newvar
-        
-    ds = ds.rename(vardict)
-    ds = ds.rename({'DIMX': 'ni', 'DIMY': 'nj', 'DIMZ': 'level'})    
-    
-    # IMPORTANT:
-    # Put the real values here
-    lon_min, lon_max = 2.5, 3.5   # min and max longitude values of the domain
-    lat_min, lat_max = 39, 40.15
-    level_min, level_max = 0, 10000
-    # create the level AGL range. This is just an example with a square stretching.
-    level_array = (np.linspace(np.sqrt(level_min), 
-                              np.sqrt(level_max), 
-                              len(ds.level)))**2
-   # ---------------------------------------
-    ds['level'] = level_array
-                               
-    lon_grid, lat_grid = np.meshgrid(np.linspace(lon_min, lon_max, len(ds.ni)), 
-                                     np.linspace(lat_min, lat_max, len(ds.nj)))
-    
-#    ds = ds.assign_coords({'longitude': np.linspace(lon_min, lon_max, len(ds.ni))})
-    ds = ds.assign_coords({
-        'longitude': xr.DataArray(
-            lon_grid,
-            dims=['nj', 'ni']),
-        'latitude': xr.DataArray(
-            lon_grid,
-            dims=['nj', 'ni']),
-    })
-    
-    # ------- Parameters for choosing where to do the cross-section -----
-#    end = (39.8, 3.25)
-#    start = (39.65, 3.0)
-    start = (39.1, 2.6)  # starting point for cross section
-    end = (40, 3.4)   # ending point for cross section
-    site_start = str(start)
-    site_end = str(end)
-    
-    vmin, vmax = None, None
-    vmin_contour, vmax_contour = None, None
-    vmin_surf_var, vmax_surf_var = None, None
-    
-    # Check order of start and end sites
-    if start[1] > end[1]:
-        raise ValueError("site_start must be west of site_end")
-    
-else:
-    filename = tools.get_simu_filepath(model, wanted_date)
-#    filename = '/home/lunelt/Data/temp_outputs/LIAIS.1.SEG03.009.nc'
-    ds = xr.open_dataset(filename)
-    
-    end = (gv.whole[site_end]['lat'], gv.whole[site_end]['lon'])
-    start = (gv.whole[site_start]['lat'], gv.whole[site_start]['lon'])
+end = (gv.whole[site_end]['lat'], gv.whole[site_end]['lon'])
+start = (gv.whole[site_start]['lat'], gv.whole[site_start]['lon'])
 
-    # Check order of start and end sites
-    if gv.whole[site_start]['lon'] > gv.whole[site_end]['lon']:
-        raise ValueError("site_start must be west of site_end")
 
+if gv.whole[site_start]['lon'] > gv.whole[site_end]['lon']:
+    raise ValueError("site_start must be west of site_end")
+
+# Dependant parameters
+filename = tools.get_simu_filepath(model, wanted_date)
+ds = xr.open_dataset(filename)
 
 # Computation of other diagnostic variable
-#ds['DENS'] = mcalc.density(
-#    ds['PRES']*units.hectopascal,
-#    ds['TEMP']*units.celsius, 
-#    ds['RVT']*units.gram/units.gram)
-#
-#ds = tools.center_uvw(ds)
-#ds['DIV'] = mcalc.divergence(ds['UT'], ds['VT'])
-#ds['WS'], ds['WD'] = tools.calc_ws_wd(ds['UT'], ds['VT'])
-#
-#ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'] - (ds['MRR']+ds['MRC'])/1000)
+ds['DENS'] = mcalc.density(
+    ds['PRES']*units.hectopascal,
+    ds['TEMP']*units.celsius, 
+    ds['RVT']*units.gram/units.gram)
+
+ds = tools.center_uvw(ds)
+ds['DIV'] = mcalc.divergence(ds['UT'], ds['VT'])
+ds['WS'], ds['WD'] = tools.calc_ws_wd(ds['UT'], ds['VT'])
+
+ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'] - (ds['MRR']+ds['MRC'])/1000)
 
 try:
     data_reduced = ds[['UT', 'VT', 'WT', 'ZS',
@@ -329,7 +264,7 @@ cm = ax[0].contourf(Xmesh,
                     data1.T, 
                     cmap=colormap,  # 'OrRd', 'coolwarm'
 #                    levels=np.linspace(298, 315, 18),  # to keep always same colorbar limits
-#                    levels=np.linspace(vmin, vmax, vmax-vmin+1),  # to keep always 1K per color variation
+                    levels=np.linspace(vmin, vmax, vmax-vmin+1),  # to keep always 1K per color variation
 #                    levels=np.linspace(vmin, vmax, 20),
 #                    levels=20,
                     extend = 'both',  #highlights the min and max in different color
@@ -359,7 +294,7 @@ else:
                          data2.T,
                          cmap='viridis_r',  #viridis is default,
 #                         levels=np.arange(vmin_contour, vmax_contour),
-#                         levels=np.linspace(vmin_contour, vmax_contour, vmax_contour-vmin_contour+1),
+                         levels=np.linspace(vmin_contour, vmax_contour, vmax_contour-vmin_contour+1),
 #                         vmin=vmin, vmax=vmax,  # for adaptative colormap
                          )
     ax[0].clabel(cont, cont.levels, inline=True, fontsize=13)
@@ -406,10 +341,10 @@ elif wind_visu == 'verti_proj':     # 2.2  winds - verti and projected wind
 
 # x-axis with sites names
 ax[0].set_xticks(list(abscisse_sites.keys()))
-ax[0].set_xticklabels(list(abscisse_sites.values()), 
-                       rotation=0, fontsize=12)
-#ax[0].set_xticklabels(['La Cendrosa', 'Els Plans'], 
+#ax[0].set_xticklabels(list(abscisse_sites.values()), 
 #                       rotation=0, fontsize=12)
+ax[0].set_xticklabels(['La Cendrosa', 'Els Plans'], 
+                       rotation=0, fontsize=12)
 # x-axis with lat-lon values
 #ax.set_xticks(data1.i_sect[::10])
 #ax.set_xticklabels(abscisse_coords[::10], rotation=0, fontsize=9)
@@ -454,13 +389,16 @@ ax[1].set_yticks([])
 ax[1].set_ylabel('soil moisture')
 
 ## Global options
-plot_title = 'Cross section on {0}-{1}-{2}'.format(
-        wanted_date, model, wind_visu)
-#plot_title = 'Cross section of ABL between irrigated and rainfed areas on July 22 at 12:00 - {0}'.format(
-#        model)
-#plot_title = 'Cross section on July 22 at 12:00 - {0}'.format(model)
+
+if 'irr' in model:
+    plot_title =  'IRR'
+    figname = 'Cross_section_on_20210722-1200-irr_d2-verti_proj-domain2'
+elif 'std' in model:
+    plot_title =  'STD'
+    figname = 'Cross_section_on_20210722-1200-std_d2-verti_proj-domain2'
+            
 ax[0].set_title(plot_title)
 #fig.suptitle(plot_title)
 
 if save_plot:
-    tools.save_figure(plot_title, save_folder)
+    tools.save_figure(figname, save_folder)

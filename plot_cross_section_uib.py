@@ -63,7 +63,7 @@ varname_contourmap = 'RVT'
 vmin_contour, vmax_contour = 5, 15
 
 # Surface variable to show below the section
-surf_var = 'H'   # WG2_ISBA, H, LE
+surf_var = 'H_ISBA'   # WG2_ISBA, H, LE
 surf_var_label = 'H'
 vmin_surf_var, vmax_surf_var = -100, 500
 
@@ -87,7 +87,7 @@ skip_barbs_y = 10    #if 1: 1barb/10m, if 5: 1barb/50m, etc
 arrow_size = 1.2  #works for arrow and barbs
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
-uib_adapt = True
+uib_adapt = False
 
 # Save the figure
 figsize = (12,7)
@@ -165,8 +165,8 @@ if uib_adapt:
         raise ValueError("site_start must be west of site_end")
     
 else:
-    filename = tools.get_simu_filepath(model, wanted_date)
-#    filename = '/home/lunelt/Data/temp_outputs/LIAIS.1.SEG03.009.nc'
+#    filename = tools.get_simu_filepath(model, wanted_date)
+    filename = '/home/lunelt/Data/temp_outputs/LIAIS.1.SEG03.009.nc'
     ds = xr.open_dataset(filename)
     
     end = (gv.whole[site_end]['lat'], gv.whole[site_end]['lon'])
@@ -177,17 +177,17 @@ else:
         raise ValueError("site_start must be west of site_end")
 
 
-# Computation of other diagnostic variable
-#ds['DENS'] = mcalc.density(
-#    ds['PRES']*units.hectopascal,
-#    ds['TEMP']*units.celsius, 
-#    ds['RVT']*units.gram/units.gram)
-#
-#ds = tools.center_uvw(ds)
-#ds['DIV'] = mcalc.divergence(ds['UT'], ds['VT'])
-#ds['WS'], ds['WD'] = tools.calc_ws_wd(ds['UT'], ds['VT'])
-#
-#ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'] - (ds['MRR']+ds['MRC'])/1000)
+    # Computation of other diagnostic variable
+    #ds['DENS'] = mcalc.density(
+    #    ds['PRES']*units.hectopascal,
+    #    ds['TEMP']*units.celsius, 
+    #    ds['RVT']*units.gram/units.gram)
+    #
+    ds = tools.center_uvw(ds)
+    #ds['DIV'] = mcalc.divergence(ds['UT'], ds['VT'])
+    #ds['WS'], ds['WD'] = tools.calc_ws_wd(ds['UT'], ds['VT'])
+    #
+    #ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'] - (ds['MRR']+ds['MRC'])/1000)
 
 try:
     data_reduced = ds[['UT', 'VT', 'WT', 'ZS',

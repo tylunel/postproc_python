@@ -10,13 +10,14 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import xarray as xr
-import MNHPy.misc_functions as misc
 import tools
 #import metpy.calc as mcalc
 #from metpy.units import units
 import global_variables as gv
 import matplotlib as mpl
 import pandas as pd
+from shapely.geometry import Point, LineString
+
 
 ########## Independant parameters ###############
 
@@ -24,10 +25,9 @@ import pandas as pd
 model = 'irr_d1'
 
 # Datetime
-wanted_date = '20210717-2300'
+wanted_date = '20210716-1200'
 
-budget_type = 'WW'
-nb_var = 5
+budget_type = 'PROJ'
 
 var_name_bu_list_dict = {  # includes only physical and most significant terms 
         'TK': ['DISS', 'TR', 'ADV', 'DP', 'TP', ],
@@ -36,10 +36,14 @@ var_name_bu_list_dict = {  # includes only physical and most significant terms
         'VV': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
         'UU': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
         'WW': ['VTURB', 'GRAV', 'PRES', 'ADV',],
+        'PROJ': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],  #is projection of UU an VV in transect
         }
 
 var_name_bu_list = var_name_bu_list_dict[budget_type]
-var_name_bu = var_name_bu_list[nb_var]
+
+var_name_bu = 'PRES'
+#nb_var = 5
+#var_name_bu = var_name_bu_list[nb_var]
 
 varname_contourmap = 'THT'
 
@@ -62,7 +66,7 @@ elif budget_type == 'WW':
     coef_visu = 1
     scale_val = 0.1
     unit = 'm.s-2'
-elif budget_type in ['UU', 'VV']:
+elif budget_type in ['UU', 'VV', 'PROJ']:
     coef_visu = 20
     scale_val = 0.002
     unit = 'm.s-2'
@@ -82,7 +86,7 @@ norm_cm=mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 surf_var = 'WG2_ISBA'
 surf_var_label = 'Q_vol_soil'
 # Set type of wind representation: 'verti_proj' or 'horiz'
-wind_visu = 'verti_proj'
+vector_visu = 'verti_proj'
 
 # altitude ASL or height AGL: 'asl' or 'agl'
 alti_type = 'asl'
@@ -94,6 +98,7 @@ nb_points_beyond = 4
 site_start = 'cendrosa'
 site_end = 'torredembarra'
 
+sites_to_project = ['elsplans', 'serra_tallat', 'coll_lilla']
 
 # Arrow/barbs esthetics:
 skip_barbs_x = 2
@@ -105,7 +110,7 @@ barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 # Save the figure
 figsize = (12,7)
 save_plot = True
-save_folder = f'./figures/cross_sections/{model}/section_{site_start}_{site_end}/{wind_visu}/{budget_type}_{var_name_bu}/'
+save_folder = f'./figures/cross_sections/{model}/section_{site_start}_{site_end}/{vector_visu}/{budget_type}_{var_name_bu}/'
 
 ###########################################
 #domain to consider: 1 or 2
@@ -122,13 +127,51 @@ if gv.whole[site_start]['lon'] > gv.whole[site_end]['lon']:
     raise ValueError("site_start must be west of site_end")
 
 
-filename = tools.get_simu_filename(model, wanted_date)
-ds = xr.open_dataset(filename)
+filepath = tools.get_simu_filepath(model, wanted_date)
+ds = xr.open_dataset(filepath)
 
 day = pd.Timestamp(wanted_date).day
 hour = pd.Timestamp(wanted_date).hour
 filename_bu = gv.global_simu_folder + gv.simu_folders[model] + f'LIAIS.1.SEG{day}.000.nc'
-ds_bu = tools.open_budget_file(filename_bu, budget_type).isel(time_budget=hour)
+
+if budget_type == 'PROJ':
+    ds_bu_UU = tools.open_budget_file(filename_bu, 'UU').isel(time_budget=hour)
+    ds_bu_VV = tools.open_budget_file(filename_bu, 'VV').isel(time_budget=hour)
+#    ds_bu_UU = tools.center_uvw(ds_bu_UU, data_type='budget', budget_type='UU',
+#                                varname_bu=var_name_bu)
+#    ds_bu_VV = tools.center_uvw(ds_bu_VV)
+    
+    ds_bu_UU = tools.subset_ds(ds_bu_UU, 
+                              lat_range = [start[0], end[0]], 
+                              lon_range = [start[1], end[1]],
+                              nb_indices_exterior=nb_points_beyond+2)
+    ds_bu_VV = tools.subset_ds(ds_bu_VV, 
+                              lat_range = [start[0], end[0]], 
+                              lon_range = [start[1], end[1]],
+                              nb_indices_exterior=nb_points_beyond+2)
+    
+    # merge the 2 datasets in 1
+    ds_bu_UU = ds_bu_UU.rename({var_name_bu: f'{var_name_bu}_UU'})
+    ds_bu_VV = ds_bu_VV.rename({var_name_bu: f'{var_name_bu}_VV'})
+    
+    da_UU = xr.DataArray(ds_bu_UU[f'{var_name_bu}_UU'].data, 
+                           coords=ds_bu_UU[f'{var_name_bu}_UU'].coords,
+                           name=f'{var_name_bu}_UU')
+    da_VV = xr.DataArray(ds_bu_VV[f'{var_name_bu}_VV'].data, 
+                           coords=ds_bu_UU[f'{var_name_bu}_UU'].coords,
+                           name=f'{var_name_bu}_VV')
+    ds_bu = xr.merge([da_UU, da_VV])
+    
+    ds_bu[f'{var_name_bu}_VAL'], ds_bu[f'{var_name_bu}_DIR'] = tools.calc_ws_wd(
+#            ds_bu[f'{var_name_bu}_UU'], ds_bu[f'{var_name_bu}_VV'])
+            da_UU, da_VV)
+    
+#    # change the name of the varname of interest
+#    var_name_bu = var_name_bu_proj
+    
+else:
+    ds_bu = tools.open_budget_file(filename_bu, budget_type).isel(time_budget=hour)
+
 
 # Computation of other diagnostic variable
 ds = tools.center_uvw(ds)
@@ -141,7 +184,8 @@ ds['WS'], ds['WD'] = tools.calc_ws_wd(ds['UT'], ds['VT'])
 #                   varname_colormap, varname_contourmap, surf_var]]
 #except:
 data = ds[['UT', 'VT', 'WT', 'ZS', surf_var, varname_contourmap]]
-data_bu = ds_bu[[var_name_bu,]]
+data_bu = ds_bu[[f'{var_name_bu}_VAL', f'{var_name_bu}_DIR',
+                 f'{var_name_bu}_VV', f'{var_name_bu}_UU']]
 
 #data_redsub = tools.subset_ds(data_reduced, 
 #                              lat_range = [start[0], end[0]], 
@@ -153,7 +197,7 @@ data_bu = ds_bu[[var_name_bu,]]
 
 #%% CREATE SECTION LINE on standard grid
 
-line = tools.line_coords(data_bu, start, end, 
+line = tools.line_coords(data, start, end, 
                          nb_indices_exterior=nb_points_beyond)
 ni_range = line['ni_range']
 nj_range = line['nj_range']
@@ -168,8 +212,8 @@ if slope == 'vertical':
 else:
     angle = np.arctan(slope)
     
-data['WPROJ'] = misc.windvec_verti_proj(data['UT'], data['VT'], 
-                                       data.level, angle)
+data['WPROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'], 
+                                        data.level, angle)
 #data['WPROJ_OPPOSITE'] = - data['WPROJ']
 #
 #data = tools.diag_lowleveljet_height(data, 
@@ -232,7 +276,11 @@ section = []
 abscisse_coords = []
 abscisse_sites = {}
 
-print('section interpolation on {0} points (~1sec/pt) for budget'.format(len(ni_range_bu)))
+data_bu[f'{var_name_bu}_PROJ'] = tools.windvec_verti_proj(
+        data_bu[f'{var_name_bu}_UU'], data_bu[f'{var_name_bu}_VV'], 
+        data_bu.level, angle)
+
+print('section interpolation on {0} points (~10 ms/pt) for budget'.format(len(ni_range_bu)))
 for i, ni in enumerate(ni_range_bu):
     nj=nj_range_bu[i]
     #interpolation of all variables on ni_range
@@ -276,7 +324,7 @@ max_ZS = section_ds['ZS'].max()
 section_ds = section_ds.where(section_ds.level<(level_range.max()), drop=True)
 section_ds_bu = section_ds_bu.where(section_ds_bu.level<(level_range.max()), drop=True)
 
-#%%
+
 ## --- Adapt to alti_type ------
 #create grid mesh (eq. to X)
 X = np.meshgrid(section_ds.i_sect, section_ds.level)[0]
@@ -298,7 +346,7 @@ elif alti_type == 'agl':
 
 ### 1.1. Color map (pcolor or contourf)
 #data1 = section_ds[varname_colormap]
-data1 = section_ds_bu[var_name_bu]
+data1 = section_ds_bu[f'{var_name_bu}_PROJ']
 cm = ax[0].pcolormesh(Xmesh,
                       alti,
                       data1.T,
@@ -346,15 +394,24 @@ else:
                          )
     ax[0].clabel(cont, cont.levels, inline=True, fontsize=10)
 
-### 1.3. Winds
-if wind_visu == 'horiz':            # 2.1 winds - flat direction and force
+### 1.3. Winds or acceleration Vector projected: 
+if vector_visu == 'horiz':            # 2.1 winds - flat direction and force
+    
+    # If you wish to have the arrows representing the acceleration:
+#    if budget_type == 'PROJ':  # acceleration data
+#        data_u = section_ds_bu['PRES_UU']
+#        data_v = section_ds_bu['PRES_VV']
+#    else:  # wind data
+    data_u = section_ds['UT']
+    data_v = section_ds['VT']
+        
     ax[0].barbs(
             #Note that X & alti have dimensions reversed
             Xmesh[::skip_barbs_y, ::skip_barbs_x], 
             alti[::skip_barbs_y, ::skip_barbs_x], 
             #Here dimensions are in the proper order
-            section_ds['UT'][::skip_barbs_x, ::skip_barbs_y].T, 
-            section_ds['VT'][::skip_barbs_x, ::skip_barbs_y].T, 
+            data_u[::skip_barbs_x, ::skip_barbs_y].T, 
+            data_v[::skip_barbs_x, ::skip_barbs_y].T, 
             pivot='middle',
             length=5*arrow_size,     #length of barbs
             sizes={
@@ -366,26 +423,58 @@ if wind_visu == 'horiz':            # 2.1 winds - flat direction and force
                    xy=(0.1, 0.9),
                    xycoords='subfigure fraction'
                    )
-elif wind_visu == 'verti_proj':     # 2.2  winds - verti and projected wind
+    
+elif vector_visu == 'verti_proj':     # 2.2  winds - verti and projected wind
+    
+    # If you wish to have the arrows representing the acceleration:
+#    if budget_type == 'PROJ':  # acceleration data
+#        compo_horiz = section_ds_bu[f'{var_name_bu}_PROJ'] * 1000
+#        compo_verti = section_ds_bu[f'{var_name_bu}_PROJ'] * 0
+#        unit = ' 10$^{-3}$ m.s$^{-2}$}'
+#    else:  # wind data
+    compo_horiz = section_ds['WPROJ']  # horizontal component
+    compo_verti = section_ds['WT']  # vertical component
+    unit = ' m.s$^{-1}$'
+    
     Q = ax[0].quiver(
             #Note that X & alti have dimensions reversed
             Xmesh[::skip_barbs_y, ::skip_barbs_x], 
             alti[::skip_barbs_y, ::skip_barbs_x], 
             #Here dimensions are in the proper order
-            section_ds['WPROJ'][::skip_barbs_x, ::skip_barbs_y].T, 
-            section_ds['WT'][::skip_barbs_x, ::skip_barbs_y].T, 
+            compo_horiz[::skip_barbs_x, ::skip_barbs_y].T, 
+            compo_verti[::skip_barbs_x, ::skip_barbs_y].T, 
             pivot='middle',
             scale=150/arrow_size,  # arrows scale, if higher, smaller arrows
             alpha=0.3,
             )
     #add arrow scale in top-right corner
-    u_max = abs(section_ds['WPROJ'][::skip_barbs_x, ::skip_barbs_y]).max()
+    vector_max = abs(compo_horiz[::skip_barbs_x, ::skip_barbs_y]).max()
     ax[0].quiverkey(Q, 0.8, 0.9, 
-                    U=u_max, 
-                    label=str((np.round(u_max, decimals=1)).data) + 'm/s', 
+                    U=vector_max, 
+                    label=str((np.round(vector_max, decimals=1)).data) + unit, 
                     labelpos='E',
                     coordinates='figure')
 
+#%% Plot aesthetics
+
+### 1. Main plot - cross-section ---
+    
+# projection  of other sites between sites start and end
+for site_inter in sites_to_project:
+    coords_site_inter = (gv.whole[site_inter]['lat'], gv.whole[site_inter]['lon'])
+    
+    point_site_inter = Point(coords_site_inter)
+    line_cross_section = LineString([start, end])
+    dist = line_cross_section.project(point_site_inter)
+    coords_site_inter_proj = list(line_cross_section.interpolate(dist).coords)[0]
+    
+    fraction_lon_point_inter = (coords_site_inter_proj[1] - start[1]) / (end[1] - start[1])
+    # in term of abscisse
+    list_abscisses_sites = list(abscisse_sites.keys())
+    diff_abscisses = list_abscisses_sites[1] - list_abscisses_sites[0]
+    abscisse_inter = fraction_lon_point_inter * diff_abscisses + list_abscisses_sites[0]
+    # add to the dict
+    abscisse_sites[abscisse_inter] = site_inter 
 
 # x-axis with sites names
 ax[0].set_xticks(list(abscisse_sites.keys()))
@@ -433,8 +522,8 @@ ax[1].set_yticks([])
 #ax[1].set_ylabel(surf_var)
 ax[1].set_ylabel('soil moisture')
 
-## Global options
-plot_title = f'{wanted_date}-{model}-{budget_type}-{var_name_bu}-{wind_visu}'
+### Global options
+plot_title = f'{wanted_date}-{model}-{budget_type}-{var_name_bu}-{vector_visu}'
 #plot_title = 'Cross section of ABL between irrigated and rainfed areas on July 22 at 12:00 - {0}'.format(
 #        model)
 #plot_title = 'Cross section on July 22 at 12:00 - {0}'.format(model)
