@@ -3,13 +3,13 @@
 @author: tylunel
 Creation : 07/01/2021
 
-Script for plotting simple colormaps 
+Script for mapping winds and aggregated budgets per zone
 """
 
 import matplotlib.pyplot as plt
 import xarray as xr
 import tools
-import shapefile
+#import shapefile
 import pandas as pd
 import global_variables as gv
 import metpy.calc as mcalc
@@ -24,7 +24,7 @@ model = 'irr_d1'
 
 domain_nb = int(model[-1])
 
-wanted_date = '20210717-2300'
+wanted_date = '20210716-1800'
 
 color_map = 'YlOrBr'    # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
 
@@ -33,35 +33,42 @@ vmin = 0
 vmax = 1500
 
 # level, only useful if var 3D
-ilevel = 24  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
+#ilevel = 24  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
+ilevel_low = 10
+ilevel_high = 15
+
 
 zoom_on = 'marinada'  #None for no zoom, 'liaise' or 'urgell'
 
 add_winds = True
 barb_size_option = 'standard'  # 'weak_winds' or 'standard'
+arrow_width = 0.003  # 0.004 default
 
 # for BUDGET part
-budget_type = 'WW'
+budget_type = 'UV'
 nb_var = 5
 
 var_name_bu_list_dict = {  # includes only physical and most significant terms 
-        'TK': ['DISS', 'TR', 'ADV', 'DP', 'TP',],
-        'TH': ['VTURB', 'MAFL', 'ADV', 'RAD', 'DISSH',],
-        'RV': ['VTURB', 'MAFL', 'ADV',],
-        'VV': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV',],
-        'UU': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV',],
-        'WW': ['VTURB', 'GRAV', 'PRES', 'ADV',],
+        'TK': ['TOT', 'ADV', 'DISS', 'TR', 'DP', 'TP',],
+        'TH': ['TOT', 'ADV', 'VTURB', 'MAFL','RAD', 'DISSH',],
+        'RV': ['TOT', 'ADV', 'VTURB', 'MAFL',],
+        'VV': ['TOT', 'ADV', 'COR', 'VTURB', 'MAFL', 'PRES',],
+        'UU': ['TOT', 'ADV', 'COR', 'VTURB', 'MAFL', 'PRES',],
+#        'UV': ['TOT_UU', 'COR_UU', 'VTURB_UU', 'MAFL_UU', 'PRES_UU', 'ADV_UU',
+#               'TOT_VV', 'COR_VV', 'VTURB_VV', 'MAFL_VV', 'PRES_VV', 'ADV_VV',],
+        'UV': ['TOT', 'ADV', 'COR', 'VTURB', 'MAFL', 'PRES',],
+        'WW': ['TOT', 'ADV', 'VTURB', 'GRAV', 'PRES',],
         }
 var_name_bu_list = var_name_bu_list_dict[budget_type]
 
 save_plot = True
 #save_folder = './figures/scalar_maps/pgd/'
-save_folder = f'./figures/zonal_maps_budget/{model}/{ilevel}/{budget_type}/'
+save_folder = f'./figures/zonal_maps_budget/{model}/{ilevel_low}-{ilevel_high}/{budget_type}/'
 
 ##############################################
 
 colordict_bu = {'ADV': 'm',
-                'INIF': 'grey',
+                'TOT': 'grey',
                 #TK
                 'TP': 'r', 
                 'DP': 'b', 
@@ -86,8 +93,7 @@ lat_range = prop['lat_range']
 lon_range = prop['lon_range']
 figsize = prop['figsize']
 
-
-filename1 = tools.get_simu_filename(model, wanted_date,
+filename1 = tools.get_simu_filepath(model, wanted_date,
                                    global_simu_folder=gv.global_simu_folder)
 ds1 = xr.open_dataset(filename1)
 
@@ -97,9 +103,17 @@ ds1 = xr.open_dataset(filename1)
 
 day = pd.Timestamp(wanted_date).day
 hour = pd.Timestamp(wanted_date).hour
+
 filename_bu = gv.global_simu_folder + gv.simu_folders[model] + f'LIAIS.1.SEG{day}.000.nc'
 
-ds_bu = tools.open_budget_file(filename_bu, budget_type).isel(time_budget=hour)
+if budget_type in ['PROJ', 'UV']:
+    ds_bu = tools.compound_budget_file(filename_bu).isel(time_budget=hour)
+    ds_bu['TOT_UU'] = (ds_bu['ENDF_UU'] - ds_bu['INIF_UU'])/3600
+    ds_bu['TOT_VV'] = (ds_bu['ENDF_VV'] - ds_bu['INIF_VV'])/3600
+else:
+    ds_bu = tools.open_budget_file(filename_bu, budget_type).isel(time_budget=hour)
+    ds_bu['TOT'] = (ds_bu['ENDF'] - ds_bu['INIF'])/3600
+
 
 #%% DIAG CALCULATION
 ds1 = tools.center_uvw(ds1)
@@ -120,7 +134,7 @@ varNd = varNd.squeeze()
 if len(varNd.shape) == 2:
     var2d = varNd
 elif len(varNd.shape) == 3:
-    var2d = varNd[ilevel,:,:]
+    var2d = varNd[ilevel_low:ilevel_high,:,:]
     
 # remove 999 values, and replace by nan
 var2d = var2d.where(~(var2d == 999))
@@ -158,8 +172,11 @@ barb_size_description = gv.barb_size_description
 if add_winds:
     X = ds1.longitude
     Y = ds1.latitude
-    U = ds1.UT.squeeze()[ilevel, :,:]
-    V = ds1.VT.squeeze()[ilevel, :,:]
+    U = ds1.UT.squeeze()[ilevel_low:ilevel_high, :, :]
+    V = ds1.VT.squeeze()[ilevel_low:ilevel_high, :, :]
+    
+    U = U.mean(dim='level')
+    V = V.mean(dim='level')
     
     ax.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs], 
               U[::skip_barbs, ::skip_barbs], V[::skip_barbs, ::skip_barbs],
@@ -172,9 +189,12 @@ if add_winds:
               alpha=0.2,
               )
     ax.annotate(barb_size_description[barb_size_option],
-                 xy=(0.1, 0.05),
-                 xycoords='subfigure fraction'
-                 )
+                xy=(0.01, 0.97),
+                xycoords='axes fraction',  # for putting it inside of figure     
+#                xy=(0.1, 0.05),
+#                xycoords='subfigure fraction',  # for putting it out of figure
+                fontsize=9,
+                )
 
 
 #%% IRRIGATED, SEA and COUNTRIES BORDERS
@@ -243,7 +263,7 @@ areas_corners = gv.areas_corners
 
 polygon_dict = {}
 
-for area in areas_corners:
+for it_area, area in enumerate(areas_corners):
     print(area)
     corners = areas_corners[area]
     corners_coordinates = []
@@ -254,8 +274,8 @@ for area in areas_corners:
     polygon = Polygon(corners_coordinates)
     polygon_dict[area] = polygon
     
-    var_name_bu_list = var_name_bu_list + ['INIF', 'ENDF']
-    data_in = ds_bu[var_name_bu_list].isel(level=ilevel).astype('float64')
+    data_in = ds_bu.isel(level=np.arange(ilevel_low, ilevel_high))
+    
     # Classify points within the polygon    
     t0 = time.time()
     lon_list = polygon.exterior.xy[0]
@@ -275,17 +295,10 @@ for area in areas_corners:
 #    filtered_da = extracted_da.where(extracted_da > 2)
 #    filtered_ds = extracted_layer.where(90 < extracted_layer['WD']).where(extracted_layer['WD'] < 200)
     filtered_ds = extracted_ds
-    
 
-    for it, var_name_bu in enumerate(var_name_bu_list):
-        if var_name_bu=='INIF':
-            layer_for_fig = (filtered_ds['ENDF'] - filtered_ds['INIF'])/3600  # conv to X to X.s-1
-        elif var_name_bu=='ENDF':
-            break
-        else:
-            layer_for_fig = filtered_ds[var_name_bu]
+    for it_var, var_name_bu in enumerate(var_name_bu_list):
     
-        # PLOT    
+        # PLOT arrows
         
         # OPTIONS2: mean
         if budget_type == 'RV':
@@ -305,51 +318,73 @@ for area in areas_corners:
             scale_val = 0.1
             unit = 'm.s-2'
         elif budget_type in ['UU', 'VV']:
-            coef_visu = 20
+            coef_visu = 25
             scale_val = 0.005
             unit = 'm.s-2'
+        elif budget_type in ['UV', 'PROJ']:
+            coef_visu = 25
+            scale_val = 0.005
+            unit = 'm.s$^{-2}$'
+        
+        if budget_type in ['UV', 'PROJ']:
+            horiz_compo = float(filtered_ds[f'{var_name_bu}_UU'].mean()) * coef_visu
+            verti_compo = float(filtered_ds[f'{var_name_bu}_VV'].mean()) * coef_visu
+        else:
+            horiz_compo = 0
+            verti_compo = float(filtered_ds[var_name_bu].mean()) * coef_visu
+#            verti_compo=abs(float(layer_for_fig.mean()))
 
         lon = polygon.centroid.xy[0][0]
         lat = polygon.centroid.xy[1][0]
 
-        meanval = float(layer_for_fig.mean()) * coef_visu
-#        meanval=abs(float(layer_for_fig.mean()))
         lon_offset = {  # offset on longitude axis to avoid overlapping of arrows
-                'irrig': -0.1, 'dry': -0.04, 'slope_west':-0.05, 
+                'irrig': -0.02, 'dry': -0.04, 'slope_west':-0.05, 
                 'barbera':-0.04, 'slope_east':-0.04, 'coast':-0., 'sea':0.06}
         
-        if area == 'irrig':
-            ax.arrow(lon + lon_offset[area] + it*0.035, lat, 0, meanval,
-                 width=0.004,
-                 color=colordict_bu[var_name_bu],
+        if budget_type in ['UV', 'PROJ']:
+            lon_arrow = lon + lon_offset[area]
+        else:
+            lon_arrow = lon + lon_offset[area] + it_var*0.012
+            
+        ax.arrow(lon_arrow, lat,                    # arrow location
+                 horiz_compo, verti_compo,          # arrow size
+                 width=arrow_width, color=colordict_bu[var_name_bu],  # esthetics
                  )
-            # add legend here
-            ax.text(lon +lon_offset[area]+0.005 + it*0.035, lat, var_name_bu, 
-                    rotation=90) 
-            if it == 0:  # for first value plotted
-                scale_val_arrow = scale_val*coef_visu
+            
+        # add legend in the bottom left corner:
+        if it_area == 0:
+            lon_bottom_left = lon_range[0] + 0.07
+            lat_bottom_left = lat_range[0] + 0.07
+            lon_arrow = lon_bottom_left + it_var*0.035
+            lon_legend = lon_bottom_left + it_var*0.035 - 0.025 
+            
+            scale_val_arrow = scale_val*coef_visu
+            
+            ax.arrow(lon_arrow, lat_bottom_left,    # arrow location
+                     0, scale_val_arrow,      # arrow size
+                     width=arrow_width, color=colordict_bu[var_name_bu], # esthetics
+                     )
+            ax.text(lon_legend, lat_bottom_left, var_name_bu, 
+                    rotation=90)
+            
+            if it_var == 0:  # for first value plotted, add a title and scale
+                # add title of legend
+                ax.text(lon_bottom_left, lat_bottom_left-0.04, 
+                        'Legend', fontweight='bold',
+                        rotation=0)
+                
+                # add scale of legend:
                 #plot arrow equivalent to y axis
-                ax.arrow(lon +lon_offset[area]-0.025, lat, 0, scale_val_arrow,
-                 width=0.002,color='k',
-                 )
-                ax.text(lon +lon_offset[area]-0.05, lat, f'{scale_val} {unit}', 
+                ax.arrow(lon_bottom_left - 0.035, lat_bottom_left, 
+                         0, scale_val_arrow,
+                         width=arrow_width, color='k',
+                         )
+                ax.text(lon_bottom_left - 0.065, lat_bottom_left, 
+                        f'scale: {scale_val} {unit}', 
                         rotation=90)
-        else:  # other areas: diminish space between arrows
-            ax.arrow(lon + lon_offset[area] + it*0.012, lat, 0, meanval,
-                 width=0.004,
-                 color=colordict_bu[var_name_bu],
-                 )
-    
     
     ax.plot(*polygon.exterior.xy)
-    
-    
-#inset = ax.axes([lon, 
-#                  lat, 
-#                  .2, .2], 
-#                facecolor='y'
-#                )
-#ax2 = fig1.add_axes([lon, lat, .2, .2])
+
     
 #%% POINTS SITES
 
@@ -383,11 +418,10 @@ for site in sites:
 
 
 #%% FIGURE OPTIONS and ZOOM
-#if len(varNd.shape) == 2:
-plot_title = f'{wanted_date} - {budget_type} for simu {model} at level {ilevel}'
-#elif len(varNd.shape) == 3:
-#    plot_title = '{0} - {1} for simu {2} at {3}m'.format(
-#        wanted_date, var_name, model, var2d.level.round())
+
+level_low = int(float(ds_bu.level[ilevel_low]))
+level_high = int(float(ds_bu.level[ilevel_high]))
+plot_title = f'{wanted_date} - {budget_type} for simu {model} between {level_low}-{level_high}m agl'
 
 ax.set_title(plot_title)
 ax.set_xlabel('longitude')
