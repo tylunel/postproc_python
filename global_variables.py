@@ -136,7 +136,7 @@ towns = {'arbeca': {'lat': 41.54236,
                 'lon': 1.29126},
          'calafell': {'lat': 41.19005,
 #                      'lon': 1.57218},  # real value, but issue with budget
-                      'lon': 1.54552},  # modified value
+                      'lon': 1.54},  # modified value
          'santa_coloma': {'lat': 41.53407,
                           'lon': 1.38441},
         'pi_sol': {'lat': 41.302951,
@@ -146,7 +146,7 @@ towns = {'arbeca': {'lat': 41.54236,
          'tarragona_offshore': {'lat': 41.035459,
                                 'lon': 1.273698},
          'calafell_offshore': {'lat': 41.033799,
-                               'lon': 1.54552},
+                               'lon': 1.54},
          'linyola': {'lat': 41.710657,
                      'lon': 0.903243,
                      'alt': 254},

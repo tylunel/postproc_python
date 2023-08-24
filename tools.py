@@ -116,8 +116,12 @@ def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[],
             lat_range = lat_range
             lon_range = lon_range
         
-    nj_min, ni_min = indices_of_lat_lon(ds, np.min(lat_range), np.min(lon_range))
-    nj_max, ni_max = indices_of_lat_lon(ds, np.max(lat_range), np.max(lon_range))
+    nj_min, ni_min = indices_of_lat_lon(ds, 
+                                        np.min(lat_range), np.min(lon_range),
+                                        verbose=False)
+    nj_max, ni_max = indices_of_lat_lon(ds, 
+                                        np.max(lat_range), np.max(lon_range),
+                                        verbose=False)
     
     nj_min -= nb_indices_exterior
     ni_min -= nb_indices_exterior
@@ -276,6 +280,44 @@ def open_budget_file(filename, budget_type):
     
     return ds
 
+
+def compound_budget_file(filename_bu):
+    """
+    Create xarray.Dataset with compound budget, typically UU and VV data
+    (code need adaptation in order to work with var different from UU and VV).
+    
+    The variables of the budget datasets merged are renamed:
+        [varname] -> [varname]_[budget_type]
+        ex: 'PRES' becomes 'PRES_UU'
+    
+    return:
+        xarray.Dataset
+    
+    """
+    # load separately the different budget files
+    ds_bu_UU = open_budget_file(filename_bu, 'UU')
+    ds_bu_VV = open_budget_file(filename_bu, 'VV')
+    
+    # ensure that dataset are of the same size:
+    ds_bu_UU = ds_bu_UU.where(ds_bu_VV.nj==ds_bu_UU.nj).where(ds_bu_VV.ni==ds_bu_UU.ni)
+    ds_bu_VV = ds_bu_VV.where(ds_bu_VV.nj==ds_bu_UU.nj).where(ds_bu_VV.ni==ds_bu_UU.ni)
+    
+    # merge the 2 datasets in 1
+    for var_name_bu in list(ds_bu_VV.keys()):
+        ds_bu_UU = ds_bu_UU.rename({var_name_bu: f'{var_name_bu}_UU'})
+        ds_bu_VV = ds_bu_VV.rename({var_name_bu: f'{var_name_bu}_VV'})
+    
+    # fix unsignificant differences in lat/lon coords between datasets
+    # note that 1e-5=0.00001° in latitude or longitude ~= 1m
+    if np.abs(ds_bu_UU.latitude - ds_bu_VV.latitude).max() < 1e-5:
+        ds_bu_VV['latitude'] = ds_bu_UU.latitude
+    if np.abs(ds_bu_UU.longitude - ds_bu_VV.longitude).max() < 1e-5:
+        ds_bu_VV['longitude'] = ds_bu_UU.longitude
+    
+    # eventually merge the datasets
+    ds_bu = xr.merge([ds_bu_UU, ds_bu_VV])
+
+    return ds_bu
 
 def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=True,
                    remove_outliers=False):
@@ -2717,8 +2759,17 @@ def diag_lowleveljet_height(ds, top_layer_agl=1000, wind_var='WS',
 
 
 if __name__ == '__main__':
-    filename_bu = gv.global_simu_folder + gv.simu_folders['irr_d1'] + f'LIAIS.1.SEG16.000.nc'
 
-    ds_bu_UU = open_budget_file(filename_bu, 'UU').isel(time_budget=18)
+    filename_bu = gv.global_simu_folder + gv.simu_folders['irr_d1'] + f'LIAIS.1.SEG16.000.nc'
     
+    t0 = time.time()
+    ds_bu_UU = open_budget_file(filename_bu, 'UU')
+    ds_bu_VV = open_budget_file(filename_bu, 'VV')
+    t1 = time.time()
+    print(t1 - t0)
+    
+    ds_bu = compound_budget_file(filename_bu, var_name_bu='PRES')
+    ds_bu_hour = ds_bu.isel(time_budget=18)
+    t2 = time.time()
+    print(t2 - t1)
 

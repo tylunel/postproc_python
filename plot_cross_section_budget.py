@@ -37,11 +37,12 @@ var_name_bu_list_dict = {  # includes only physical and most significant terms
         'UU': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
         'WW': ['VTURB', 'GRAV', 'PRES', 'ADV',],
         'PROJ': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],  #is projection of UU an VV in transect
+        'UV': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],  #eq. to PROJ
         }
 
 var_name_bu_list = var_name_bu_list_dict[budget_type]
 
-var_name_bu = 'PRES'
+var_name_bu = 'ADV'
 #nb_var = 5
 #var_name_bu = var_name_bu_list[nb_var]
 
@@ -66,10 +67,10 @@ elif budget_type == 'WW':
     coef_visu = 1
     scale_val = 0.1
     unit = 'm.s-2'
-elif budget_type in ['UU', 'VV', 'PROJ']:
+elif budget_type in ['UU', 'VV', 'UV', 'PROJ']:
     coef_visu = 20
     scale_val = 0.002
-    unit = 'm.s-2'
+    unit = 'm.s$^{-2}$'
 else:
     vmin = None
     vmax = None
@@ -132,46 +133,15 @@ ds = xr.open_dataset(filepath)
 
 day = pd.Timestamp(wanted_date).day
 hour = pd.Timestamp(wanted_date).hour
+
 filename_bu = gv.global_simu_folder + gv.simu_folders[model] + f'LIAIS.1.SEG{day}.000.nc'
 
-if budget_type == 'PROJ':
-    ds_bu_UU = tools.open_budget_file(filename_bu, 'UU').isel(time_budget=hour)
-    ds_bu_VV = tools.open_budget_file(filename_bu, 'VV').isel(time_budget=hour)
-#    ds_bu_UU = tools.center_uvw(ds_bu_UU, data_type='budget', budget_type='UU',
-#                                varname_bu=var_name_bu)
-#    ds_bu_VV = tools.center_uvw(ds_bu_VV)
-    
-    ds_bu_UU = tools.subset_ds(ds_bu_UU, 
-                              lat_range = [start[0], end[0]], 
-                              lon_range = [start[1], end[1]],
-                              nb_indices_exterior=nb_points_beyond+2)
-    ds_bu_VV = tools.subset_ds(ds_bu_VV, 
-                              lat_range = [start[0], end[0]], 
-                              lon_range = [start[1], end[1]],
-                              nb_indices_exterior=nb_points_beyond+2)
-    
-    # merge the 2 datasets in 1
-    ds_bu_UU = ds_bu_UU.rename({var_name_bu: f'{var_name_bu}_UU'})
-    ds_bu_VV = ds_bu_VV.rename({var_name_bu: f'{var_name_bu}_VV'})
-    
-    da_UU = xr.DataArray(ds_bu_UU[f'{var_name_bu}_UU'].data, 
-                           coords=ds_bu_UU[f'{var_name_bu}_UU'].coords,
-                           name=f'{var_name_bu}_UU')
-    da_VV = xr.DataArray(ds_bu_VV[f'{var_name_bu}_VV'].data, 
-                           coords=ds_bu_UU[f'{var_name_bu}_UU'].coords,
-                           name=f'{var_name_bu}_VV')
-    ds_bu = xr.merge([da_UU, da_VV])
-    
+if budget_type in ['PROJ', 'UV']:
+    ds_bu = tools.compound_budget_file(filename_bu).isel(time_budget=hour)
     ds_bu[f'{var_name_bu}_VAL'], ds_bu[f'{var_name_bu}_DIR'] = tools.calc_ws_wd(
-#            ds_bu[f'{var_name_bu}_UU'], ds_bu[f'{var_name_bu}_VV'])
-            da_UU, da_VV)
-    
-#    # change the name of the varname of interest
-#    var_name_bu = var_name_bu_proj
-    
+            ds_bu[f'{var_name_bu}_UU'], ds_bu[f'{var_name_bu}_VV'])
 else:
     ds_bu = tools.open_budget_file(filename_bu, budget_type).isel(time_budget=hour)
-
 
 # Computation of other diagnostic variable
 ds = tools.center_uvw(ds)
@@ -374,7 +344,7 @@ cbar = fig.colorbar(cm, cax=cax, orientation='vertical')
 try:
     cbar.set_label(f'{data1.long_name} [{data1.units}]')
 except:
-    cbar.set_label(var_name_bu)
+    cbar.set_label(f'{var_name_bu} [{unit}]')
 
 ### 1.2. Contour map
 if varname_contourmap in ['HBLTOP', 'HLOWJET', 'HLOWJET_WS']:  #1D
@@ -455,7 +425,7 @@ elif vector_visu == 'verti_proj':     # 2.2  winds - verti and projected wind
                     labelpos='E',
                     coordinates='figure')
 
-#%% Plot aesthetics
+### Plot aesthetics
 
 ### 1. Main plot - cross-section ---
     
@@ -511,16 +481,38 @@ ax[0].set_ylabel(ylabel)
 #                 labels = (data_soil.i_sect.values * \
 #                           line['nij_step']/1000)[::9].round(decimals=1)
 #                 )
-labels_arr = np.arange(0,100,10)
-tick_pos = labels_arr/ (line['nij_step']/1000)
-ax[1].set_xticks(ticks = tick_pos,
-                 labels = labels_arr
-                 )
-ax[1].set_xlabel('distance [km]')
 
-ax[1].set_yticks([])
-#ax[1].set_ylabel(surf_var)
-ax[1].set_ylabel('soil moisture')
+subplot_type = 'distance'
+
+if subplot_type == 'soil_state':
+    labels_arr = np.arange(0,100,10)
+    tick_pos = labels_arr/ (line['nij_step']/1000)
+    ax[1].set_xticks(ticks = tick_pos,
+                     labels = labels_arr
+                     )
+    ax[1].set_xlabel('distance [km]')
+    
+    ax[1].set_yticks([])
+    #ax[1].set_ylabel(surf_var)
+    ax[1].set_ylabel('soil moisture')
+    
+if subplot_type == 'distance':
+    # remove the surface subplot
+    fig.delaxes(ax[1])
+    
+    # get index of torredembarra in abscisse_sites
+    torredembarra_ind = list(abscisse_sites.values()).index('torredembarra')
+    # get corresponding abscisse for torredembarra
+    torredembarra_xval = list(abscisse_sites.keys())[torredembarra_ind]
+    
+    def ftest(x):
+        return -(x - torredembarra_xval) * (line['nij_step']/1000)
+    def ftest_recip(x):
+        return -(x/(line['nij_step']/1000) + torredembarra_xval)
+    
+    # add secondary axis
+    secax = ax[0].secondary_xaxis(-0.1, functions=(ftest, ftest_recip))
+    secax.set_xlabel('distance to the sea [km]')
 
 ### Global options
 plot_title = f'{wanted_date}-{model}-{budget_type}-{var_name_bu}-{vector_visu}'
@@ -531,3 +523,5 @@ fig.suptitle(plot_title)
 
 if save_plot:
     tools.save_figure(plot_title, save_folder)
+
+    
