@@ -188,7 +188,7 @@ def open_budget_file(filename, budget_type):
     """
     
     meta = xr.open_dataset(filename)  # metadata of the entire simulation domain, not only the budget one
-    ds = xr.open_dataset(filename, group="Budgets/{0}".format(budget_type))
+    ds = xr.open_dataset(filename, group=f"Budgets/{budget_type}")
     
     if budget_type == 'UU':
         cart_nj_X = 'cart_nj_u'
@@ -756,7 +756,7 @@ def get_obs_filename_from_date(datafolder, wanted_date='20210722-1200',
     distance = abs(nearest_date - wanted_datetime)
     # check it is below threshold
     if distance > dt_threshold:
-        raise ValueError("No obs at wanted datetime (or not close enough)")
+        raise FileNotFoundError("No obs at wanted datetime (or not close enough)")
     
     filename = fnames[i_near]
     
@@ -835,12 +835,12 @@ def get_simu_filepath(model, date='20210722-1200',
     day_nb = str(pd_date.day)        
     hour_nb = str(pd_date.hour)
     minute_nb = pd_date.minute
-    if out_suffix == '.OUT':
-        hour_nb = pd_date.hour*2
-        if minute_nb == 30:
-            hour_nb = hour_nb + 1
-        hour_nb = str(hour_nb)
-        print('hour_nb = {0}'.format(hour_nb))
+#    if out_suffix == '.OUT':
+#        hour_nb = pd_date.hour*2
+#        if minute_nb == 30:
+#            hour_nb = hour_nb + 1
+#        hour_nb = str(hour_nb)
+#        #print('hour_nb = {0}'.format(hour_nb))
     
     # format suffix with 2 digits:
     if len(hour_nb) == 1:
@@ -856,21 +856,10 @@ def get_simu_filepath(model, date='20210722-1200',
         hour_nb_3f = "024"
         day_nb = str(pd_date.day - 1) 
         
-#    simu_filelist = {
-#        'std_d2': f'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
-#        'irr_d2': f'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
-#        'std_d2_old': f'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
-#        'irr_d2_old': f'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
-#        'std_d2_old_old': f'LIAIS.2.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
-#        'irr_d2_old_old': f'LIAIS.2.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
-#        'irr_d1': f'LIAIS.1.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
-#        'std_d1': f'LIAIS.1.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
-#        'lagrip100_d1': f'LIAIS.1.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
-#        'temp': f'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
-#        }
     filename = gv.format_filename_simu_new[model].format(
             day_nb=day_nb, hour_nb_2f=hour_nb_2f, 
-            hour_nb_3f=hour_nb_3f, file_suffix=file_suffix)
+            hour_nb_3f=hour_nb_3f, file_suffix=file_suffix,
+            out_suffix=out_suffix)
     
     filepath = global_simu_folder + gv.simu_folders[model] + filename
     
@@ -878,6 +867,7 @@ def get_simu_filepath(model, date='20210722-1200',
     check_filename_datetime(filepath)
     
     return filepath
+
 
 def get_simu_filename_000(model, date='20210722-1200'):
     """
@@ -1449,8 +1439,9 @@ def psy_ta_rh(tdb, rh, p_atm=101325):
         partial pressure of water vapor in saturated moist air, [Pa]
     p_vap: float
         partial pressure of water vapor in moist air, [Pa]
-    hr: float
+    hr or mixing_ratio: float
         humidity ratio, [kg water/kg dry air]
+        'mixing_ratio' added because 'hr' can be misleading
     t_wb: float
         wet bulb temperature, [°C]
     t_dp: float
@@ -1469,6 +1460,7 @@ def psy_ta_rh(tdb, rh, p_atm=101325):
         "p_vap_sat": p_saturation,
         "p_vap": p_vap,
         "hr": hr,
+        "mixing_ratio": hr,
         "t_wb": twb,
         "t_dp": tdp,
 #        "h": h,
@@ -1920,7 +1912,6 @@ def height_to_pressure_std(height, p0=101325):
 
     """
     t0 = 288  #kelvin
-    p0 = 101325  #Pa
     gamma = 0.0065  #'K/m'
     g = 9.81  #m/s-2
     R = 8.314462618  #'J / mol / K' - molar gas constant
@@ -2016,7 +2007,7 @@ def potential_temperature_from_temperature(pressure, temperature,
     pressure : `pint.Quantity`
         Total atmospheric pressure
 
-    potential_temperature : `pint.Quantity`
+    temperature : `pint.Quantity`
         Potential temperature
 
     Returns
@@ -2330,12 +2321,16 @@ def calc_mslp(ds, ilevel=1, z0=0):
     
     parameters:
         ds with variables 'THT', 'RVT', 'PABST', 'ZS'
+        Units: PABST [Pa], THT [K], RVT [kg/kg] and ZS [m].
     
     ilevel: int, screen level, the level at which we want to extrapolate the
         data to the sea level. If None, computation is done for all levels
         
     z0: float, altitude aslin m at which we want to extrapolate. Default is 0m
         for sea level.
+        
+    return:
+        xarray.DataArray with values in Pa
     """
     lapse_rate = -6.5e-3    # standard atmo lapse rate in K/m
     R0 = 8.314462           # gas constant for dry air J⋅K−1⋅mol−1
@@ -2391,7 +2386,7 @@ def calc_mslp(ds, ilevel=1, z0=0):
     
     height_asl_screenlevel = ds.level + ds['ZS'] - z0
     
-    mslp = 1e-2 * pres_screenlevel*np.exp(g*height_asl_screenlevel/(Rd*T0))
+    mslp = pres_screenlevel*np.exp(g*height_asl_screenlevel/(Rd*T0))
     
     return mslp
 
@@ -2712,48 +2707,68 @@ def diag_lowleveljet_height(ds, top_layer_agl=1000, wind_var='WS',
     is reduced by 5%.
     
     ds must contain ZS variable (ds['ZS'])
+    
+    Parameters:
+        - new_height_var: nariable name that will be added in the output data
+    
 
     """
     ds[new_height_var] = ds['ZS']*0
     
-    length = len(ds.ni)
-    for i, ni in enumerate(ds.ni):
-        print(f'i = {i}/{length}')
-        for j, nj in enumerate(ds.nj):
-            column = ds.isel(nj=j, ni=i)
-            column['dWSdz'] = xr.DataArray(coords={'level':ds.level}, data=np.gradient(column[wind_var]))
-            column['d2WSd2z'] = xr.DataArray(coords={'level':ds.level}, data=np.gradient(column['dWSdz']))
+#    length = len(ds.ni)
+    
+#    dict_coords = {}
+#    for i, co in enumerate(coords):
+#        dict_coords[co] = data['ZS'].shape[i]
+    coords = ds['ZS'].dims
+    coords_value = {}
+    for index, x in np.ndenumerate(ds['ZS']):
+        print(index[0], '/', ds['ZS'].shape[0])
+        
+        for i, coord in enumerate(coords):
+            coords_value[coord] = index[i]
+        
+        column = ds.isel(coords_value)
+        
+    # OLD CODE
+#    for i, ni in enumerate(ds.ni):
+#        print(f'i = {i}/{length}')
+#        for j, nj in enumerate(ds.nj):
+#        column = ds.isel(nj=j, ni=i)
+    
+        column['dWSdz'] = xr.DataArray(coords={'level':ds.level}, data=np.gradient(column[wind_var]))
+        column['d2WSd2z'] = xr.DataArray(coords={'level':ds.level}, data=np.gradient(column['dWSdz']))
+        
+        column = column.where(column.level<top_layer_agl, drop=True)
+        
+        jet_level_indices = []  # indices of jet speed max
+        jet_top_indices = []    # indices of jet speed max - 5%
+        research_jet_top = False
+        for ilevel, level_agl in enumerate(column.level):
+            # first look at the jet height
+            if not research_jet_top:
+                if ilevel<3:
+                    pass
+                else:
+                    sign_temp = column['dWSdz'][ilevel] * column['dWSdz'][ilevel-1]
+                    if sign_temp < 0:  # sign change
+                        if column['d2WSd2z'][ilevel] < 0:  # is a maximum
+                            jet_level_indices.append(ilevel)
+                            jet_speed = column.isel(level=ilevel)[wind_var]
+                            jet_speed_upperlim = jet_speed*upper_bound
+                            research_jet_top = True
+            # second step where we look at the height at which 5% threshold is found
+            elif research_jet_top:
+                if column.isel(level=ilevel)[wind_var] < jet_speed_upperlim:
+                    jet_top_indices.append(ilevel)
+                    research_jet_top = False
+        
+        try:
+            H_LOWJET = float(column.isel(level=jet_top_indices[0]).level)
+        except IndexError:
+            H_LOWJET = np.nan
             
-            column = column.where(column.level<top_layer_agl, drop=True)
-            
-            jet_level_indices = []  # indices of jet speed max
-            jet_top_indices = []    # indices of jet speed max - 5%
-            research_jet_top = False
-            for ilevel, level_agl in enumerate(column.level):
-                # first look at the jet height
-                if not research_jet_top:
-                    if ilevel<3:
-                        pass
-                    else:
-                        sign_temp = column['dWSdz'][ilevel] * column['dWSdz'][ilevel-1]
-                        if sign_temp < 0:  # sign change
-                            if column['d2WSd2z'][ilevel] < 0:  # is a maximum
-                                jet_level_indices.append(ilevel)
-                                jet_speed = column.isel(level=ilevel)[wind_var]
-                                jet_speed_upperlim = jet_speed*upper_bound
-                                research_jet_top = True
-                # second step where we look at the height at which 5% threshold is found
-                elif research_jet_top:
-                    if column.isel(level=ilevel)[wind_var] < jet_speed_upperlim:
-                        jet_top_indices.append(ilevel)
-                        research_jet_top = False
-            
-            try:
-                H_LOWJET = float(column.isel(level=jet_top_indices[0]).level)
-            except IndexError:
-                H_LOWJET = np.nan
-                
-            ds[new_height_var][j, i] = H_LOWJET
+        ds[new_height_var][coords_value] = H_LOWJET
         
     return ds
 
