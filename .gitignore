@@ -1,10 +1,10 @@
 codes_gaetan/
 figures/
 MNHPy/
-old/
+old_no_save/
 __pycache__/
 script_with_MNHPy/
 token-github
 temp_comprehension*
-other_scripts/
+#other_scripts/
 article*/fig/*
