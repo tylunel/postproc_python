@@ -19,7 +19,7 @@ import matplotlib as mpl
 ########## Independant parameters ###############
 
 # Simulation to show: 'irr' or 'std'
-model = 'irr_d2_old'
+model = 'std_d2_old'
 
 # Datetime
 wanted_date = '20210722-1200'
@@ -92,7 +92,7 @@ uib_adapt = False
 # Save the figure
 figsize = (12,7)
 save_plot = True
-save_folder = '/home/lunelt/Documents/redaction/article1_irrigation_breeze/fig/'
+save_folder = './fig/'
 
 plt.rcParams.update({'font.size': 11})
 ###########################################
@@ -240,13 +240,13 @@ if alti_type == 'asl':
     alti = section_ds.ZS[:, 0] + section_ds.level
     alti = alti.T
     #for plot
-    ylabel = 'altitude ASL [m]'
+    ylabel = 'altitude a.s.l. [m]'
 elif alti_type == 'agl':
     #create grid mesh (eq. Y)
     alti = np.meshgrid(section_ds.i_sect, section_ds.level)[1]
     alti = xr.DataArray(alti, dims=['level', 'i_sect'])
     #for plot
-    ylabel = 'height AGL [m]'
+    ylabel = 'height a.g.l. [m]'
     
 
 ### 1.1. Color map (pcolor or contourf)
@@ -275,7 +275,7 @@ divider = make_axes_locatable(ax[0])
 cax = divider.append_axes('right', size='2%', pad=0.05)
 cbar = fig.colorbar(cm, cax=cax, orientation='vertical')
 try:
-    cbar.set_label(f'{data1.long_name} [{data1.units}]')
+    cbar.set_label(f'potential temperature [K]')
 except:
     cbar.set_label(varname_colormap)
 
@@ -370,7 +370,7 @@ divider = make_axes_locatable(ax[1])
 cax = divider.append_axes('right', size='2%', pad=0.05)
 cbar2 = fig.colorbar(p9, cax=cax, orientation='vertical')
 #cbar2.set_label(surf_var_label)
-cbar2.set_label('[m³/m³]')
+cbar2.set_label('soil moisture\n [m³ m$^{-3}$]')
 
 #ax[1].set_xticks(ticks = data_soil.i_sect.values[::9],
 #                 labels = (data_soil.i_sect.values * \
@@ -386,7 +386,7 @@ ax[1].set_xlabel('distance [km]')
 
 ax[1].set_yticks([])
 #ax[1].set_ylabel(surf_var)
-ax[1].set_ylabel('soil moisture')
+#ax[1].set_ylabel('soil moisture')
 
 ## Global options
 

@@ -17,7 +17,7 @@ from scipy.stats import circmean, circstd
 
 ##############################
 
-site = 'elsplans'
+site = 'cendrosa'
 
 if site == 'elsplans':
     source_obs_list = ['uhf', 
@@ -51,7 +51,7 @@ column_width = 8
 figsize = [8, 7] #small for presentation: [6, 5], big: [9, 7]
 
 save_plot = True
-save_folder = '/home/lunelt/Documents/redaction/article1_irrigation_breeze/fig/'
+save_folder = './fig/'
 plt.rcParams.update({'font.size': 11})
 
 ##############################
@@ -477,7 +477,7 @@ for model in simu_list:     # model will be 'irr' or 'std'
         
 ax[0].grid()
 ax[0].set_xlim([0,9])
-ax[0].set_xlabel('wind speed [m $s^{-1}$]')
+ax[0].set_xlabel('wind speed [m s$^{-1}$]')
 ax[0].set_ylabel('height AGL [m]')
 
 ax[1].set_xlim([0,360])
@@ -488,7 +488,7 @@ ax[1].legend(loc='upper left')
 
 plt.ylim([0, toplevel])
 plot_title = f"Wind profile over {gv.sites[site]['longname']}"
-fig.suptitle(plot_title)
+fig.suptitle(plot_title, y=0.93)
 
 if save_plot:
     tools.save_figure(plot_title, save_folder)

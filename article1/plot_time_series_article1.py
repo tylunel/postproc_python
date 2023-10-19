@@ -19,30 +19,18 @@ site = 'cendrosa'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'soil_temp_1'
-# -- For CNRM:
-# ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
-# w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
-# from données lentes: 1->0.2m, 2->2m, 3->10m, 4->25m, 5->50m
-# from eddy covariance measures: 1->3m, 2->25m, 3->50m
-# -- For UKMO (elsplans):
-# TEMP, RHO (=hus), WQ, WT, UTOT, DIR, ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
-# RAIN, PRES, ST01 (=soil_temp), SWDN ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
-# ST01, ST04, ST10, ST17, ST35_subsoil with number being depth in cm, SFLXA=soil flux
-# PR10, PR20, PR40_subsoil (=vol water content), SWI10, SWI40_subsoil
-# LE_2m(_WPL) and H_2m also available by calculation
-# -- For IRTA-corn
-#LE, H, FC_mass, WS, WD, Ux,
-#VWC_40cm_Avg: Average volumetric water content at 35 cm (m3/m3) 
-#T_20cm_Avg (_Std for standard deviation)
-#TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
-#Q_1_1_1
+varname_obs = 'soil_temp_1'  # soil_temp_1, shf_1, lhf_1, ta_2, TEMP_2m, hus_2, RHO_2m
 
-varname_sim_list = ['TG2_ISBA']
-# T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
-# U_STAR, BOWEN
+varname_sim_list = ['TG2_ISBA']  # TG2_ISBA, H_ISBA, LE_ISBA, T2M_ISBA, Q2M_ISBA
+plot_title = ''  #'Soil temperature', Latent heat flux, Air temperature, Specific humidity
+ylabel = 'Temperature [°C]'  # Temperature [°C], Latent heat flux [W m$^{-2}$], 
 
-vmin, vmax = 10, 55
+vmin, vmax = 10,55  # 10,55   -300,700,    15,45    0,0.017
+
+add_seb_residue = False  # for  heat fluxes
+kelvin_to_celsius = True  # for  TG2_ISBA, T2M_ISBA
+secondary_axis = None  # 'evap' for LE
+
 
 #If varname_sim is 3D:
 ilevel =  10  #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
@@ -51,7 +39,7 @@ figsize = (7, 7) #small for presentation: (6,6), big: (15,9), paper:(7, 7)
 plt.rcParams.update({'font.size': 11})
 
 save_plot = True
-save_folder = '/home/lunelt/Documents/redaction/article1_irrigation_breeze/fig/'
+save_folder = './fig/'
 
 models = [
 #        'irr_d2_old', 
@@ -68,11 +56,9 @@ remove_alfalfa_growth = False
 errors_computation = False
 compare_to_residue_corr = False
 
-add_seb_residue = False
-
 add_irrig_time = False
 
-kelvin_to_celsius = True
+
 
 ######################################################
 
@@ -104,66 +90,66 @@ styledict = {'irr_d2': '-',
 # default values (can be change below)
 offset_obs = 0
 coeff_obs = 1
-secondary_axis = None
+
     
 if varname_obs in ['soil_moisture_1', 'soil_moisture_2', 'soil_moisture_3']:
     ylabel = 'soil moisture [m3/m3]'
-elif varname_obs in ['soil_temp_1', 'soil_temp_2', 'soil_temp_3',
-                     'ST01_subsoil', 'ST04_subsoil', 'ST10_subsoil',
-                     'ST17_subsoil', 'ST35_subsoil',
-                     'T_10cm_Avg', 'T_20cm_Avg', 'T_30cm_Avg', 'T_40cm_Avg',
-                     'T_50cm_Avg']:
-    ylabel = 'soil temperature [K]'
-    if kelvin_to_celsius:
-        offset_obs = 0
-    else:
-        offset_obs = 273.15
-elif varname_obs in ['swd']:
-    ylabel = 'shortwave downward radiation [W/m2]'
-elif varname_obs in ['lmon_1', 'lmon_2', 'lmon_3']:
-    ylabel = 'monin-obukhov length [m]'
-elif varname_obs in ['h2o_flux_1', 'h2o_flux_2', 'h2o_flux']:  #this includes Webb Pearman Leuning correction on w_h2o_cov
-    ylabel = 'h2o flux [kg.m-2.s-1]'
-    coeff_obs = 0.001
-    secondary_axis = 'le'
-elif varname_obs in ['co2_flux_1', 'co2_flux_2', 'co2_flux']:  #this includes Webb Pearman Leuning correction on w_h2o_cov
-    ylabel = 'co2 flux [kg.m-2.s-1]'
-    coeff_obs = 44e-9  # from umol/m2/s to kgCO2/m2/s
-elif varname_obs in ['w_h2o_cov_1', 'w_h2o_cov_2', 'w_h2o_cov']:
-    ylabel = 'h2o turbulent flux [kg.m-2.s-1]'
-    coeff_obs = 0.001
-    secondary_axis = 'le'
-elif varname_obs in ['WQ_2m', 'WQ_10m']:
-    ylabel = 'h2o turbulent flux [kg.m-2.s-1]'
-    secondary_axis = 'le'
-elif varname_obs in ['ta_1', 'ta_2', 'ta_3', 'ta_4', 'ta_5', 'TEMP_2m',
-                     'TA_1_1_1']:
-    ylabel = 'air temperature [K]'
-    if kelvin_to_celsius:
-        offset_obs = 0
-    else:
-        offset_obs = 273.15
+#elif varname_obs in ['soil_temp_1', 'soil_temp_2', 'soil_temp_3',
+#                     'ST01_subsoil', 'ST04_subsoil', 'ST10_subsoil',
+#                     'ST17_subsoil', 'ST35_subsoil',
+#                     'T_10cm_Avg', 'T_20cm_Avg', 'T_30cm_Avg', 'T_40cm_Avg',
+#                     'T_50cm_Avg']:
+#    ylabel = 'soil temperature [K]'
+#    if kelvin_to_celsius:
+#        offset_obs = 0
+#    else:
+#        offset_obs = 273.15
+#elif varname_obs in ['swd']:
+#    ylabel = 'shortwave downward radiation [W/m2]'
+#elif varname_obs in ['lmon_1', 'lmon_2', 'lmon_3']:
+#    ylabel = 'monin-obukhov length [m]'
+#elif varname_obs in ['h2o_flux_1', 'h2o_flux_2', 'h2o_flux']:  #this includes Webb Pearman Leuning correction on w_h2o_cov
+#    ylabel = 'h2o flux [kg.m-2.s-1]'
+#    coeff_obs = 0.001
+#    secondary_axis = 'le'
+#elif varname_obs in ['co2_flux_1', 'co2_flux_2', 'co2_flux']:  #this includes Webb Pearman Leuning correction on w_h2o_cov
+#    ylabel = 'co2 flux [kg.m-2.s-1]'
+#    coeff_obs = 44e-9  # from umol/m2/s to kgCO2/m2/s
+#elif varname_obs in ['w_h2o_cov_1', 'w_h2o_cov_2', 'w_h2o_cov']:
+#    ylabel = 'h2o turbulent flux [kg.m-2.s-1]'
+#    coeff_obs = 0.001
+#    secondary_axis = 'le'
+#elif varname_obs in ['WQ_2m', 'WQ_10m']:
+#    ylabel = 'h2o turbulent flux [kg.m-2.s-1]'
+#    secondary_axis = 'le'
+#elif varname_obs in ['ta_1', 'ta_2', 'ta_3', 'ta_4', 'ta_5', 'TEMP_2m',
+#                     'TA_1_1_1']:
+#    ylabel = 'air temperature [K]'
+#    if kelvin_to_celsius:
+#        offset_obs = 0
+#    else:
+#        offset_obs = 273.15
 elif varname_obs in ['hus_1', 'hus_2', 'hus_3', 'hus_4', 'hus_5', 'RHO_2m']:
-    ylabel = 'specific humidity [kg/kg]'
+#    ylabel = 'specific humidity [kg/kg]'
     coeff_obs = 0.001
-elif varname_obs in ['FC_mass']:
-    ylabel = 'CO2 flux in kg/m2/s'
-    coeff_obs = 0.000001
-elif varname_obs in ['WT_2m']:
-    ylabel = 'turbulent sensible temperature flux [K.m-1.s-1]'
-elif varname_obs in ['H_2m']:
-    ylabel = 'turbulent sensible heat flux [W.m-2]'
-elif varname_obs in ['LE_2m']:
-    ylabel = 'turbulent latent heat flux [W.m-2]'
-    secondary_axis = 'evap'
-elif varname_obs in ['LE_2m_WPL']:
-    ylabel = 'turbulent latent heat flux WPL corrected [W.m-2]'
-    secondary_axis = 'evap'
-if varname_obs in ['lhf_1', 'lhf']:
-    secondary_axis = 'evap'
-else:
-    ylabel = varname_obs
-    pass
+#elif varname_obs in ['FC_mass']:
+#    ylabel = 'CO2 flux in kg/m2/s'
+#    coeff_obs = 0.000001
+#elif varname_obs in ['WT_2m']:
+#    ylabel = 'turbulent sensible temperature flux [K.m-1.s-1]'
+#elif varname_obs in ['H_2m']:
+#    ylabel = 'turbulent sensible heat flux [W.m-2]'
+#elif varname_obs in ['LE_2m']:
+#    ylabel = 'turbulent latent heat flux [W.m-2]'
+#    secondary_axis = 'evap'
+#elif varname_obs in ['LE_2m_WPL']:
+#    ylabel = 'turbulent latent heat flux WPL corrected [W.m-2]'
+#    secondary_axis = 'evap'
+#if varname_obs in ['lhf_1', 'lhf']:
+#    secondary_axis = 'evap'
+#else:
+#    ylabel = varname_obs
+#    pass
 #    raise ValueError("nom de variable d'observation inconnue"), 'WQ_2m', 'WQ_10m'
 
 
@@ -291,7 +277,7 @@ if varname_obs != '':
             obs_var_filtered = obs[varname_obs]
         obs_var_corr = (obs_var_filtered+offset_obs)*coeff_obs
         plt.plot(obs_var_corr.time, obs_var_corr, 
-                 label='obs_'+varname_obs,
+                 label='obs',
                  color=colordict['obs'])
     else:
         if remove_alfalfa_growth:
@@ -460,22 +446,21 @@ if add_irrig_time and varname_obs != '':
                label='irrigation')
 
 #%% Plot esthetics
+#
+#if varname_obs == '':
+#    try:
+#        ylabel = ds[varname_sim].comment
+#    except AttributeError:
+#        ylabel = varname_sim
+#else:
+#    try:
+#        ylabel = obs[varname_obs].long_name
+#    except AttributeError:
+#        try:
+#            ylabel = ds[varname_sim].comment
+#        except (AttributeError, KeyError, NameError):
+#            ylabel = varname_obs
 
-if varname_obs == '':
-    try:
-        ylabel = ds[varname_sim].comment
-    except AttributeError:
-        ylabel = varname_sim
-else:
-    try:
-        ylabel = obs[varname_obs].long_name
-    except AttributeError:
-        try:
-            ylabel = ds[varname_sim].comment
-        except (AttributeError, KeyError, NameError):
-            ylabel = varname_obs
-
-plot_title = '{0} at {1}'.format(ylabel, gv.sites[site]['longname'])
 ax = plt.gca()
 ax.set_ylabel(ylabel)
 ax.set_ylim([vmin, vmax])
@@ -500,13 +485,13 @@ if secondary_axis == 'le':
     secax = axes.secondary_yaxis("right",                              
         functions=(lambda evap: evap*2264000,
                    lambda le: le/2264000))
-    secax.set_ylabel('latent heat flux [W/m²]')
+    secax.set_ylabel('latent heat flux [W m$^{-2}$]')
 if secondary_axis == 'evap':
     axes = plt.gca()
     secax = axes.secondary_yaxis("right",                              
         functions=(lambda le: (le/2264000)*3600,
                    lambda evap: (evap*2264000)/3600))
-    secax.set_ylabel('evapotranspiration [mm/h]')
+    secax.set_ylabel('evapotranspiration [mm h$^{-1}$]')
 
 # add errors values on graph
 if errors_computation:

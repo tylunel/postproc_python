@@ -17,7 +17,7 @@ import global_variables as gv
 from metpy.plots import StationPlot
 
 #########################################"""
-model = 'std_d2_old'
+model = 'std_d2'
 domain_nb = 2
 
 ilevel = 3   #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
@@ -26,6 +26,11 @@ ilevel = 3   #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:6
 wanted_date = '20210722-1200'
 
 speed_plane = 'horiz'  # 'horiz': horizontal normal wind, 'verti' for W
+
+if 'irr' in model:
+    plot_title = 'Winds in simu IRR'
+elif 'std' in model:
+    plot_title = 'Winds in simu STD'
 
 if speed_plane == 'verti':
     vmax_cbar = 1
@@ -50,7 +55,7 @@ else:
     alpha = 0.9
 
 save_plot = True
-save_folder = '/home/lunelt/Documents/redaction/article1_irrigation_breeze/fig/'
+save_folder = './fig/'
 
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 plt.rcParams.update({'font.size': 11})
@@ -114,7 +119,8 @@ plt.pcolormesh(ds1.longitude, ds1.latitude, ws_layer,
 #               vmax=1000  
               )
 cbar = plt.colorbar()
-cbar.set_label('Wind speed [m/s]')
+cbar.set_label('Wind speed [m s$^{-1}$]')
+
 #%% WIND BARBS
 
 X = ds1.longitude
@@ -136,8 +142,9 @@ plt.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs],
           alpha=alpha,
           )
 plt.annotate(barb_size_description[barb_size_option],
-             xy=(0.1, 0.02),
-             xycoords='subfigure fraction'
+             xy=(0.06, 0.01),
+             xycoords='subfigure fraction',
+             fontsize=10,
              )
 
 
@@ -182,7 +189,7 @@ plt.contour(pgd.longitude.data,
             )
 
 #France borders
-sf = shapefile.Reader("TM-WORLD-BORDERS/TM_WORLD_BORDERS-0.3.sph")
+sf = shapefile.Reader("../TM-WORLD-BORDERS/TM_WORLD_BORDERS-0.3.sph")
 shapes=sf.shapes()
 france = shapes[64].points
 france_df = pd.DataFrame(france, columns=['lon', 'lat'])
@@ -269,19 +276,7 @@ if speed_plane == 'verti':
 plt.xlabel('longitude')
 plt.ylabel('latitude')
         
-#plot_title = '{4} wind at {0}m on {1} for simu {2} zoomed on {3}'.format(
-#        np.round(level_agl, decimals=1), 
-#        pd.to_datetime(ws_layer.time.values).strftime('%Y-%m-%dT%H%M'),
-#        model,
-#        zoom_on,
-#        speed_plane)
-
-if 'irr' in model:
-    plot_title = 'Winds at 10m in simu IRR'
-elif 'std' in model:
-    plot_title = 'Winds at 10m in simu STD'
 plt.title(plot_title)
-
 
 if zoom_on is None:
     plt.ylim([ws_layer.latitude.min(), ws_layer.latitude.max()])
