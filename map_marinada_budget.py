@@ -15,16 +15,15 @@ import global_variables as gv
 import metpy.calc as mcalc
 from metpy.units import units
 from shapely.geometry import Polygon
-import time
 import numpy as np
 import matplotlib as mpl
 
 ###############################################
-model = 'irr_d1'
+model = 'irrswi1_d1'
 
 domain_nb = int(model[-1])
 
-wanted_date = '20210716-1800'
+wanted_date = '20210716-1300'
 
 color_map = 'YlOrBr'    # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
 
@@ -35,7 +34,7 @@ vmax = 1500
 # level, only useful if var 3D
 #ilevel = 24  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
 ilevel_low = 10
-ilevel_high = 15
+ilevel_high = 30
 
 
 zoom_on = 'marinada'  #None for no zoom, 'liaise' or 'urgell'
@@ -46,7 +45,6 @@ arrow_width = 0.003  # 0.004 default
 
 # for BUDGET part
 budget_type = 'UV'
-nb_var = 5
 
 var_name_bu_list_dict = {  # includes only physical and most significant terms 
         'TK': ['TOT', 'ADV', 'DISS', 'TR', 'DP', 'TP',],
@@ -256,7 +254,7 @@ ax.contour(pgd.longitude.data,
 ##ds_filt = ds1_red.where(marinada)
 #ds_filt = ds1_red
 
-#%% AREAS
+#%% BUDGETS PER AREAS
 #import matplotlib as mpl
 #norm_cm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 areas_corners = gv.areas_corners
@@ -276,15 +274,14 @@ for it_area, area in enumerate(areas_corners):
     
     data_in = ds_bu.isel(level=np.arange(ilevel_low, ilevel_high))
     
-    # Classify points within the polygon    
-    t0 = time.time()
+    # Classify points within the polygon
     lon_list = polygon.exterior.xy[0]
     lat_list = polygon.exterior.xy[1]
     data_in_red = tools.subset_ds(data_in, 
                     lat_range=[np.min(lat_list), np.max(lat_list)], 
-                    lon_range=[np.min(lon_list), np.max(lon_list)])
+                    lon_range=[np.min(lon_list), np.max(lon_list)],
+                    nb_indices_exterior=2)
     classified_points = tools.get_points_in_polygon(data_in_red, polygon)
-    print('time get_pts_.. : ', time.time()-t0)
     
     # concatenate data
     extracted_ds = xr.concat(classified_points, 'ind')
@@ -339,14 +336,19 @@ for it_area, area in enumerate(areas_corners):
 
         lon_offset = {  # offset on longitude axis to avoid overlapping of arrows
                 'irrig': -0.02, 'dry': -0.04, 'slope_west':-0.05, 
-                'barbera':-0.04, 'slope_east':-0.04, 'coast':-0., 'sea':0.06}
+                'conca_barbera':-0.04, 'alt_camp':-0.04, 'coast':-0., 'sea':0.06}
         
         if budget_type in ['UV', 'PROJ']:
-            lon_arrow = lon + lon_offset[area]
+            lon_arrow = lon + lon_offset[area] + 0.01*np.cos(np.arctan2(verti_compo, horiz_compo))
+            lat_arrow = lat + verti_compo*0.1
+            if var_name_bu == 'TOT':  # place the total evolution on the side
+                lon_arrow += 0.05
+                lat_arrow += 0.02
         else:
-            lon_arrow = lon + lon_offset[area] + it_var*0.012
+            lon_arrow = lon + lon_offset[area] + it_var*0.012 + 0.01*np.sin(np.arctan2(verti_compo, horiz_compo))
+            lat_arrow = lat + verti_compo*0.1
             
-        ax.arrow(lon_arrow, lat,                    # arrow location
+        ax.arrow(lon_arrow, lat_arrow,                    # arrow location
                  horiz_compo, verti_compo,          # arrow size
                  width=arrow_width, color=colordict_bu[var_name_bu],  # esthetics
                  )

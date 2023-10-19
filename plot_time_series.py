@@ -19,7 +19,7 @@ site = 'cendrosa'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'soil_temp_1'
+varname_obs = 'hus_2'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -38,14 +38,14 @@ varname_obs = 'soil_temp_1'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim_list = ['TG2_ISBA']
+varname_sim_list = ['RVT']
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 # U_STAR, BOWEN
 
-vmin, vmax = 10, 55
+vmin, vmax = None, None
 
 #If varname_sim is 3D:
-ilevel =  10  #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
+ilevel =  1  #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
 figsize = (7, 7) #small for presentation: (6,6), big: (15,9), paper:(7, 7)
 plt.rcParams.update({'font.size': 11})
@@ -56,12 +56,12 @@ save_folder = './figures/time_series/{0}/domain2/'.format(site)
 models = [
 #        'irr_d2_old', 
 #        'std_d2_old',
-        'irr_d2', 
-        'std_d2', 
-#        'std_d1',
-#        'irr_d1',
+#        'irr_d2', 
+#        'std_d2', 
+        'std_d1',
+        'irr_d1',
 #        'irrlagrip30_d1',
-#        'lagrip100_d1',
+#        'irrswi1_d1',
          ]
 
 remove_alfalfa_growth = False
@@ -72,7 +72,11 @@ add_seb_residue = False
 
 add_irrig_time = False
 
-kelvin_to_celsius = True
+kelvin_to_celsius = False
+
+if 'irrlagrip30_d1' in models and errors_computation:
+    print("""Warning: computation of errors will be run on all of july for
+          'irrlagrip30_d1' - bug to fix in code""")
 
 ######################################################
 
@@ -386,16 +390,16 @@ for  varname_sim in varname_sim_list:
         ds['record'] = dati_arr_sim
         ds = ds.drop_vars(['time'])
         ds = ds.rename({'record': 'time'})
-        
-        # to compare performance score on only 2 last of july
-        if model == 'irrlagrip30_d1':
-            ds = ds.where(ds.time > pd.Timestamp('20210714T0100'), drop=True)
-        
+            
         # find indices from lat,lon values 
         index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
         
         # keep variable of interest
         var_md = ds[varname_sim]
+        
+        # to compare performance score on only 2 last weeks of july - BUG
+#        if model == 'irrlagrip30_d1':
+#            var_md = var_md.where(var_md.time > pd.Timestamp('20210714T0100'), drop=True)
         
         if kelvin_to_celsius:
             var_md = var_md - 273.15

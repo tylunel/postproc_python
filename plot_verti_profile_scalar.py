@@ -19,20 +19,27 @@ import global_variables as gv
 
 
 ########## Independant parameters ###############
-wanted_date = '20210722-2300'
-site = 'irta'  # 'cendrosa', 'elsplans', 'irta'
+wanted_date = '20210716-1700'
+site = 'elsplans'  # 'cendrosa', 'elsplans', 'irta'
 
 # variable name from MNH files: 'THT', 'RVT'
-var_simu = 'THT'
-# variable name from obs files: 'potentialTemperature', 'mixingRatio'
-var_obs = 'potentialTemperature'
+var_simu = 'THTV'
+# variable name from obs files: 'potentialTemperature', 'mixingRatio', virtualPotentialTemperature
+var_obs = 'virtualPotentialTemperature'
 coeff_corr = 1  #to switch from obs to simu2
-vmin, vmax = 288, 317
+
+#vmin, vmax = 288, 314  # for THT
+vmin, vmax = None, None
 
 simu_list = [
+            'irrswi1_d1',
+#            'irrswi1_d1_old',
             'std_d1', 
-            'irr_d1'
+#            'irrlagrip30_d1'
+#            'irr_d1',
             ]
+
+simu_only = False
 
 # Vertical path to show in simu:
 # Path in simu is the direct 1d column
@@ -45,11 +52,11 @@ follow_rs_position = False
 
 
 # highest level AGL plotted
-toplevel = 1500
+toplevel = 2500
 
 save_plot = True
 save_folder = f'figures/verti_profiles/{site}/{var_simu}/'
-figsize=(5, 7)
+figsize=(7, 7)
 
 ##################################################
 
@@ -68,6 +75,9 @@ colordict = {'irr_d2': 'g',
              'std_d2': 'r',
              'irr_d1': 'g', 
              'std_d1': 'r', 
+             'irrlagrip30_d1': 'orange',
+             'irrswi1_d1': 'b',
+             'irrswi1_d1_old': 'c',
              'irr_d2_old': 'g', 
              'std_d2_old': 'r', 
              'obs': 'k'}
@@ -88,28 +98,35 @@ colordict = {'irr_d2': 'g',
         
 
 #%% LOAD OBS DATASET
-if site == 'cendrosa':
-    datafolder = gv.global_data_liaise + site + '/radiosoundings/'
-    filename = tools.get_obs_filename_from_date(datafolder,  wanted_date,
-                                                dt_threshold=pd.Timedelta('0 days 00:45:00'),
-                                                regex_date='202107\d\d.\d\d\d\d')
-    obs = xr.open_dataset(datafolder + filename)
-elif site == 'elsplans':
-    datafolder = gv.global_data_liaise + site + '/radiosoundings/'
-    filename = tools.get_obs_filename_from_date(datafolder,  wanted_date,
-                                                dt_threshold=pd.Timedelta('0 days 00:45:00'),
-                                                regex_date='202107\d\d.\d\d\d\d')
-    obs = tools.open_ukmo_rs(datafolder, filename)
-elif site == 'irta':
-    datafolder = gv.global_data_liaise + '/irta-corn/windrass/'
-    filename = f'LIAISE_IRTA-ET0_SMC_WINDRASS_L0_2021_{wanted_date[4:6]}{wanted_date[6:8]}_V01.nc'
-    obs = xr.open_dataset(datafolder + filename)    
-    obs['time_dist'] = np.abs(obs.time - pd.Timestamp(wanted_date).to_datetime64())
-    ds_t = obs.where(obs['time_dist'] == obs['time_dist'].min(), drop=True).squeeze()
-    # check that time dist is ok
-    if ds_t['time_dist'] > pd.Timedelta(35, 'min'):
-        ds_t = ds_t * np.nan
-    obs = ds_t
+if simu_only == False:
+    try:
+        if site == 'cendrosa':
+            datafolder = gv.global_data_liaise + site + '/radiosoundings/'
+            filename = tools.get_obs_filename_from_date(datafolder,  wanted_date,
+                                                        dt_threshold=pd.Timedelta('0 days 00:45:00'),
+                                                        regex_date='202107\d\d.\d\d\d\d')
+            obs = xr.open_dataset(datafolder + filename)
+        elif site == 'elsplans':
+            datafolder = gv.global_data_liaise + site + '/radiosoundings/'
+            filename = tools.get_obs_filename_from_date(datafolder,  wanted_date,
+                                                        dt_threshold=pd.Timedelta('0 days 00:45:00'),
+                                                        regex_date='202107\d\d.\d\d\d\d')
+            obs = tools.open_ukmo_rs(datafolder, filename)
+        elif site == 'irta':
+            datafolder = gv.global_data_liaise + '/irta-corn/windrass/'
+            filename = f'LIAISE_IRTA-ET0_SMC_WINDRASS_L0_2021_{wanted_date[4:6]}{wanted_date[6:8]}_V01.nc'
+            obs = xr.open_dataset(datafolder + filename)    
+            obs['time_dist'] = np.abs(obs.time - pd.Timestamp(wanted_date).to_datetime64())
+            ds_t = obs.where(obs['time_dist'] == obs['time_dist'].min(), drop=True).squeeze()
+            # check that time dist is ok
+            if ds_t['time_dist'] > pd.Timedelta(35, 'min'):
+                ds_t = ds_t * np.nan
+            obs = ds_t
+        obs_available = True
+    except FileNotFoundError:
+        obs_available = False
+else:
+    obs_available = False
     
 #%% OBS PLOT
 
@@ -125,38 +142,41 @@ elif site == 'irta':
 #else:
 #    Td_obs = (obs.dewPoint).values * units.degC
 #
+if obs_available:
+    if site == 'cendrosa':
+        obs = obs.rename({'altitude': 'level_asl'})
+        obs['level_agl'] = obs.level_asl - gv.sites[site]['alt']
+        obs['pressure'] = obs['pressure']* 100  # convert from hPa to Pa
+        # keep only low layer of atmos (~ABL)
+        obs_low = obs.where(xr.DataArray(obs.level_agl.values<toplevel, dims='time'), 
+                            drop=True)
+    elif site == 'elsplans':
+        obs = obs.rename({'height': 'level_agl'})
+        obs['pressure'] = obs['pressure']* 100  # convert from hPa to Pa
+        obs['temperature'] = obs['temperature'] + 273.15 # convert from °C to K
+        # keep only low layer of atmos (~ABL)
+        obs_low = obs.where(xr.DataArray(obs.level_agl.values<toplevel, dims='index'), 
+                            drop=True)
+    elif site == 'irta':
+        obs = obs.rename({'Z': 'level_agl', 'AIR_T': 'temperature'})
+        obs['level_asl'] = obs['level_agl'] + gv.sites[site]['alt']
+        obs['pressure'] = tools.height_to_pressure_std(obs['level_asl'])
+        # keep only low layer of atmos (~ABL)
+        obs_low = obs.where(obs['level_agl'] < toplevel, drop=True)
+    
+    
+    obs_low['potentialTemperature'] = tools.potential_temperature_from_temperature(
+            obs_low['pressure'], obs_low['temperature'])
+    obs_low['virtualPotentialTemperature'] = \
+        obs_low['potentialTemperature']*(1 + 0.61*obs_low['mixingRatio']/1000)
+    
+    obs_low[var_obs] = obs_low[var_obs]*coeff_corr
+    
+    plt.plot(obs_low[var_obs], obs_low['level_agl'], 
+             label='obs', 
+             color=colordict['obs']
+             )
 
-if site == 'cendrosa':
-    obs = obs.rename({'altitude': 'level_asl'})
-    obs['level_agl'] = obs.level_asl - gv.sites[site]['alt']
-    obs['pressure'] = obs['pressure']* 100  # convert from hPa to Pa
-    # keep only low layer of atmos (~ABL)
-    obs_low = obs.where(xr.DataArray(obs.level_agl.values<toplevel, dims='time'), 
-                        drop=True)
-elif site == 'elsplans':
-    obs = obs.rename({'height': 'level_agl'})
-    obs['pressure'] = obs['pressure']* 100  # convert from hPa to Pa
-    # keep only low layer of atmos (~ABL)
-    obs_low = obs.where(xr.DataArray(obs.level_agl.values<toplevel, dims='index'), 
-                        drop=True)
-elif site == 'irta':
-    obs = obs.rename({'Z': 'level_agl', 'AIR_T': 'temperature'})
-    obs['level_asl'] = obs['level_agl'] + gv.sites[site]['alt']
-    obs['pressure'] = tools.height_to_pressure_std(obs['level_asl'])
-    # keep only low layer of atmos (~ABL)
-    obs_low = obs.where(obs['level_agl'] < toplevel, drop=True)
-
-
-obs_low['potentialTemperature'] = tools.potential_temperature_from_temperature(
-        obs_low['pressure'], obs_low['temperature'])
-
-obs_low[var_obs] = obs_low[var_obs]*coeff_corr
-
-plt.plot(obs_low[var_obs], obs_low['level_agl'], 
-         label='obs', 
-         color=colordict['obs']
-         )
-plt.grid()
     
 
 ## - add wind barbs
@@ -170,13 +190,19 @@ plt.grid()
 var1d = {}
 height = {}
 
-for model in simu_list:     # model will be 'irr' or 'std'
+for model in simu_list:
+    print('model: ', model)
+    
     # retrieve and open file
-    filename_simu = tools.get_simu_filename(model, wanted_date)
+    filename_simu = tools.get_simu_filepath(model, wanted_date, 
+                                            file_suffix='',  #'dg' or ''
+                                            out_suffix='.OUT',)
     ds = xr.open_dataset(filename_simu)
+    ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'])
     
     # find indices from lat,lon values 
-    index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
+    index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon, 
+                                                    verbose=False)
     # keep only variable of interest
     var3d = ds[var_simu]
     # keep only low layer of atmos (~ABL)
@@ -247,9 +273,14 @@ else:
 #plot_title = "Potential temperature profile\nabove La Cendrosa\non July 22 at 12:00"
 plt.title(plot_title)
 plt.xlim([vmin, vmax])
+plt.ylim([0, toplevel])
 plt.ylabel('height AGL (m)')
-plt.xlabel(var3d_low.standard_name + '_[' + var3d_low.units + ']')
+try:
+    plt.xlabel(var3d_low.long_name + '_[' + var3d_low.units + ']')
+except AttributeError:
+    plt.xlabel(var_simu)
 plt.legend()
+plt.grid()
 plt.tight_layout()
 
 #plt.show()

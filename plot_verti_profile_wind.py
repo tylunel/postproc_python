@@ -18,28 +18,44 @@ import metpy.calc as mpcalc
 
 ##############################
 
-site = 'cendrosa'
+site = 'elsplans'
 
 if site == 'elsplans':
-    source_obs_list = ['uhf', 'lidar', 'mast', 'radiosondes']
+    source_obs_list = [
+        'uhf', 
+#        'lidar', 
+        'mast', 
+        'radiosondes'
+        ]
 elif site in ['cendrosa', 'linyola']:
-    source_obs_list = ['uhf', 'windcube', 'mast', 'radiosondes']
+    source_obs_list = [
+        'uhf', 
+        'windcube', 
+        'mast', 
+        'radiosondes'
+        ]
 elif site in ['irta', 'irta-corn']:
-    source_obs_list = ['windrass', 'mast']
+    source_obs_list = [
+        'windrass', 
+        'mast'
+        ]
 
-wanted_date = '20210722-1200'
+wanted_date = '20210716-1900'
 toplevel = 2500
 
 # 'uhf', 'windcube', 'mast'
-simu_list = ['irr_d2_old', 
-             'std_d2_old',
+simu_list = [
+#            'irr_d1',
+            'irrswi1_d1',
+#            'irrlagrip30_d1', 
+            'std_d1',
              ]
 
 # Path in simu is the direct 1d column
 straight_profile = True
 # Path in simu is average of neighbouring grid points
 mean_profile = True
-column_width = 8
+column_width = 3
 
 figsize = [8, 7] #small for presentation: [6, 5], big: [9, 7]
 
@@ -52,7 +68,11 @@ colordict = {'irr_d2': 'g',
              'irr_d1': 'g', 
              'std_d1': 'r', 
              'irr_d2_old': 'g', 
-             'std_d2_old': 'r', 
+             'std_d2_old': 'r',
+             'irrlagrip30_d1': 'orange',
+             'irrswi1_d1': 'b',
+             'irrswi1_d1_old': 'b',
+             # --- obs ---
              'obs_uhf': 'k',
              'obs_mast': 'k',
              'obs_windcube': 'k',
@@ -184,7 +204,7 @@ if site == 'elsplans':
             obs_low['integration_time'] = 0.016  #=1s
             
             obs_dict['radiosondes'] = obs_low
-        except ValueError:
+        except FileNotFoundError:
             print('No radiosondes available')
             source_obs_list.remove('radiosondes')
     
@@ -307,7 +327,7 @@ elif site in ['cendrosa', 'linyola']:
             obs_low['integration_time'] = 0.016  #=1s
             
             obs_dict['radiosondes'] = obs_low
-        except ValueError:
+        except FileNotFoundError:
             print('No radiosondes available')
             source_obs_list.remove('radiosondes')
         
@@ -353,7 +373,7 @@ else:
 
 #%% PLOT
 # --- OBS ---
-column_width = 10
+#column_width = 10
 fig, ax = plt.subplots(1, 2, sharey=True, figsize=figsize,)
 
 for source in source_obs_list:
@@ -391,7 +411,19 @@ height = {}
 
 for model in simu_list:     # model will be 'irr' or 'std'
     # retrieve and open file
-    filename_simu = tools.get_simu_filepath(model, wanted_date)
+    
+    # ------- TEMP -----  
+    # retrieve and open file
+#    if model == 'irrswi1_d1':  #temporary
+#        file_suffix=''
+#    else:
+#        file_suffix='dg'
+    filename_simu = tools.get_simu_filepath(model, wanted_date, 
+                                            file_suffix='',  #'dg' or ''
+                                            out_suffix='.OUT',)
+    # --------------
+#    filename_simu = tools.get_simu_filepath(model, wanted_date)
+    # -------------
     ds = xr.open_dataset(filename_simu)
     # put u, v, w in middle of grid
     ds = tools.center_uvw(ds)
@@ -463,7 +495,7 @@ for model in simu_list:     # model will be 'irr' or 'std'
                 )
         
 ax[0].grid()
-ax[0].set_xlim([0,9])
+ax[0].set_xlim([0,15])
 ax[0].set_xlabel('wind speed [m/s]')
 ax[0].set_ylabel('height agl [m]')
 
@@ -471,7 +503,8 @@ ax[1].set_xlim([0,360])
 ax[1].set_xticks([0, 90, 180, 270, 360], ['N', 'E', 'S', 'W', 'N'])
 ax[1].set_xlabel('wind direction')
 ax[1].grid()
-ax[1].legend()
+
+ax[0].legend(loc='upper left')
 
 plt.ylim([0, toplevel])
 plot_title = f'{wanted_date} - wind from {source_obs_list} at {site}'

@@ -25,9 +25,9 @@ from shapely.geometry import Point, LineString
 model = 'irr_d1'
 
 # Datetime
-wanted_date = '20210716-1200'
+wanted_date = '20210722-2300'
 
-budget_type = 'PROJ'
+budget_type = 'UV'
 
 var_name_bu_list_dict = {  # includes only physical and most significant terms 
         'TK': ['DISS', 'TR', 'ADV', 'DP', 'TP', ],
@@ -42,11 +42,12 @@ var_name_bu_list_dict = {  # includes only physical and most significant terms
 
 var_name_bu_list = var_name_bu_list_dict[budget_type]
 
-var_name_bu = 'ADV'
+var_name_bu = 'PRES'
+# --- nb_var is used by run_day_multi_var.sh:
 #nb_var = 5
 #var_name_bu = var_name_bu_list[nb_var]
 
-varname_contourmap = 'THT'
+varname_contourmap = 'THTV'
 
 colormap='coolwarm'
 
@@ -84,8 +85,9 @@ norm_cm=mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
 
 # Surface variable to show below the section
-surf_var = 'WG2_ISBA'
-surf_var_label = 'Q_vol_soil'
+surf_var = 'LE_ISBA'
+surf_var_label = surf_var
+
 # Set type of wind representation: 'verti_proj' or 'horiz'
 vector_visu = 'verti_proj'
 
@@ -128,7 +130,8 @@ if gv.whole[site_start]['lon'] > gv.whole[site_end]['lon']:
     raise ValueError("site_start must be west of site_end")
 
 
-filepath = tools.get_simu_filepath(model, wanted_date)
+filepath = tools.get_simu_filepath(model, wanted_date, file_suffix='dg',
+                                   out_suffix='')
 ds = xr.open_dataset(filepath)
 
 day = pd.Timestamp(wanted_date).day
@@ -146,6 +149,7 @@ else:
 # Computation of other diagnostic variable
 ds = tools.center_uvw(ds)
 ds['WS'], ds['WD'] = tools.calc_ws_wd(ds['UT'], ds['VT'])
+ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'] - (ds['MRR']+ds['MRC'])/1000)
 
 #try:
 #    data_reduced = ds[['UT', 'VT', 'WT', 'ZS',
@@ -153,19 +157,51 @@ ds['WS'], ds['WD'] = tools.calc_ws_wd(ds['UT'], ds['VT'])
 #                   'DENS', 'DIV', 'WS', 'WD',
 #                   varname_colormap, varname_contourmap, surf_var]]
 #except:
-data = ds[['UT', 'VT', 'WT', 'ZS', surf_var, varname_contourmap]]
-data_bu = ds_bu[[f'{var_name_bu}_VAL', f'{var_name_bu}_DIR',
-                 f'{var_name_bu}_VV', f'{var_name_bu}_UU']]
+data_reduced = ds[['UT', 'VT', 'WT', 'WS', 'ZS', 'THT',
+                   'HBLTOP',
+                   surf_var, 
+                   varname_contourmap
+           ]]
+data_redsub = tools.subset_ds(data_reduced, 
+                              lat_range = [start[0], end[0]], 
+                              lon_range = [start[1], end[1]],
+                              nb_indices_exterior=nb_points_beyond+2)
 
-#data_redsub = tools.subset_ds(data_reduced, 
-#                              lat_range = [start[0], end[0]], 
-#                              lon_range = [start[1], end[1]],
-#                              nb_indices_exterior=nb_points_beyond+2)
+data = data_redsub
+#data = ds
 
-#data = data_redsub
+if budget_type in ['PROJ', 'UV']:
+    data_bu = ds_bu[[f'{var_name_bu}_VAL', f'{var_name_bu}_DIR',
+                     f'{var_name_bu}_VV', f'{var_name_bu}_UU']]
+else:
+    data_bu = ds_bu[[var_name_bu,]]
+    
 
 
-#%% CREATE SECTION LINE on standard grid
+#get total maximum height of relief on domain
+max_ZS = data['ZS'].max()
+if alti_type == 'asl':
+    level_range = np.arange(10, toplevel+max_ZS, 10)
+else:
+    level_range = np.arange(10, toplevel, 10)
+    
+    
+#%% BULK RI and FROUDE
+g = 9.81  #m/s2
+data['RI_BULK'] = ((g/data['THTV'])*(data['THTV'] - data['THTV'].isel(level=1))*data['level']) / \
+    (data['UT']**2 + data['VT']**2)
+data['FROUDE'] = 1/np.sqrt(data['RI_BULK'])
+
+site = 'elsplans'
+ilat, ilon = tools.indices_of_lat_lon(
+        data, gv.sites[site]['lat'], gv.sites[site]['lon'], verbose=True)
+elsplans = data.isel(nj=ilat, ni=ilon)  # elsplans
+# Fr=1 around ilevel=38 - 530m - for date='20210716-1500' / Fr lower higher
+elsplans.isel(level=38)
+    
+
+#%% STANDARD DATA
+### -- create section line
 
 line = tools.line_coords(data, start, end, 
                          nb_indices_exterior=nb_points_beyond)
@@ -181,7 +217,8 @@ if slope == 'vertical':
     angle = np.pi/2
 else:
     angle = np.arctan(slope)
-    
+
+### -- compute compoound of UU and VV
 data['WPROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'], 
                                         data.level, angle)
 #data['WPROJ_OPPOSITE'] = - data['WPROJ']
@@ -192,20 +229,14 @@ data['WPROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'],
 #                                     upper_bound=0.9)
 #data = tools.diag_lowleveljet_height(data,
 #                                     wind_var='WS', 
-#                                     new_height_var='HLOWJET_NOSE',
+#                                     new_height_var='HLOWJET_WS',
 #                                     upper_bound=0.70)
 #data = tools.diag_lowleveljet_height(data,
 #                                     wind_var='WS', 
 #                                     new_height_var='HLOWJET_MAX',
 #                                     upper_bound=1)
 
-#get total maximum height of relief on domain
-max_ZS = data['ZS'].max()
-if alti_type == 'asl':
-    level_range = np.arange(10, toplevel+max_ZS, 10)
-else:
-    level_range = np.arange(10, toplevel, 10)
-    
+### -- interpolate on line
 print('section interpolation on {0} points (~1sec/pt)'.format(len(ni_range)))
 for i, ni in enumerate(ni_range):
     nj=nj_range[i]
@@ -236,20 +267,25 @@ for i, ni in enumerate(ni_range):
 #concatenation of all profile in order to create the 2D section dataset
 section_ds = xr.concat(section, dim="i_sect")
 
-#%% INTERPOLATION on BUDGET grid
+#%% BUDGET DATA
+### -- create section line
 
 line_bu = tools.line_coords(data_bu, start, end, 
                          nb_indices_exterior=nb_points_beyond)
 ni_range_bu = line_bu['ni_range']
 nj_range_bu = line_bu['nj_range']
-section = []
-abscisse_coords = []
-abscisse_sites = {}
 
-data_bu[f'{var_name_bu}_PROJ'] = tools.windvec_verti_proj(
+### -- compute compoound of UU and VV
+if budget_type in ['PROJ', 'UV']:
+    data_bu[f'{var_name_bu}_PROJ'] = tools.windvec_verti_proj(
         data_bu[f'{var_name_bu}_UU'], data_bu[f'{var_name_bu}_VV'], 
         data_bu.level, angle)
 
+### -- interpolate on line
+section = []
+abscisse_coords = []
+abscisse_sites = {}
+    
 print('section interpolation on {0} points (~10 ms/pt) for budget'.format(len(ni_range_bu)))
 for i, ni in enumerate(ni_range_bu):
     nj=nj_range_bu[i]
@@ -316,7 +352,11 @@ elif alti_type == 'agl':
 
 ### 1.1. Color map (pcolor or contourf)
 #data1 = section_ds[varname_colormap]
-data1 = section_ds_bu[f'{var_name_bu}_PROJ']
+if budget_type in ['PROJ', 'UV']:
+    data1 = section_ds_bu[f'{var_name_bu}_PROJ']
+else:
+    data1 = section_ds_bu[var_name_bu]
+
 cm = ax[0].pcolormesh(Xmesh,
                       alti,
                       data1.T,
@@ -348,12 +388,12 @@ except:
 
 ### 1.2. Contour map
 if varname_contourmap in ['HBLTOP', 'HLOWJET', 'HLOWJET_WS']:  #1D
-#    ax[0].plot(section_ds['HBLTOP'] + section_ds['ZS'],
-#              linestyle='--', color='r')
-    ax[0].plot(section_ds['HLOWJET_NOSE'] + section_ds['ZS'],
+    ax[0].plot(section_ds['HBLTOP'] + section_ds['ZS'],
+              linestyle='--', color='r')
+    ax[0].plot(section_ds['HLOWJET_WS'] + section_ds['ZS'],
               linestyle='-.', color='g')
-    ax[0].plot(section_ds['HLOWJET_MAX'] + section_ds['ZS'],
-              linestyle='-.', color='y')
+#    ax[0].plot(section_ds['HLOWJET_MAX'] + section_ds['ZS'],
+#              linestyle='-.', color='y')
 else:
     data2 = section_ds[varname_contourmap]  # x1000 to get it in g/kg if RVT
     cont = ax[0].contour(Xmesh,
@@ -484,7 +524,7 @@ ax[0].set_ylabel(ylabel)
 
 subplot_type = 'distance'
 
-if subplot_type == 'soil_state':
+if subplot_type == 'surface_var':
     labels_arr = np.arange(0,100,10)
     tick_pos = labels_arr/ (line['nij_step']/1000)
     ax[1].set_xticks(ticks = tick_pos,

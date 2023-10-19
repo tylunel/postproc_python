@@ -15,15 +15,16 @@ import tools
 import shapefile
 import global_variables as gv
 from metpy.plots import StationPlot
+import os
 
 #########################################"""
-model = 'irr_d2_old'
-domain_nb = 2
+model = 'irrswi1_d1'
+domain_nb = 1
 
-ilevel = 10   #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
+ilevel = 3   #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
 
 # Datetime
-wanted_date = '20210722-1200'
+wanted_date = '20210716-1200'
 
 speed_plane = 'horiz'  # 'horiz': horizontal normal wind, 'verti' for W
 
@@ -36,9 +37,9 @@ elif speed_plane == 'horiz':
     vmin_cbar = 0
     cmap_name = 'BuPu'
 
-zoom_on = 'urgell'  #None for no zoom, 'urgell', 'liaise'
+zoom_on = 'marinada'  #None for no zoom, 'urgell', 'liaise'
 
-add_smc_obs = False
+add_smc_obs = True
 
 if add_smc_obs:
     alpha = 0.4
@@ -74,7 +75,7 @@ figsize = prop['figsize']
 # OR: #locals().update(gv.zoom_domain_prop[zoom_on])
 
 # for paper: hard-coded:
-skip_barbs = 1
+skip_barbs = 3
 #barb_length = 5.5
 #barb_size_option = 'weak_winds'
 
@@ -230,35 +231,78 @@ for site in sites:
 if add_smc_obs:
     ax = plt.gca()
     
-    stations_2m = ['VH', 'WK', 'V1', 'WB', 'VM', 'WX', 'WA', 'WC', 'V8', 'XI',
-                   'XM', 'WL', 'UM', 'WI', 'VE']
-    stations_10m = ['VK', 'C6', 'C7', 'C8', 'D1', 'XD', 'XR', 'XA', 'VP', 'VB','VQ']
-    stations_unk = ['YJ', 'CW', 'MR', 'VM', 'WV', 'VD', 'YD', 'XX', 'YJ', ]
-    stations_all = stations_2m + stations_10m + stations_unk
-    
-    for station in stations_all:
-        # get data
-        datafolder = gv.global_data_liaise + '/SMC_22stations/'
-        filename = f'LIAISE_{station}_SMC_MTO-1MN_L0_{wanted_date[:8]}_V01.nc'
-        try:
-            obs = xr.open_dataset(datafolder + filename)
-            # find closest time
-            obs['time_dist'] = np.abs(obs.time - pd.Timestamp(wanted_date).to_datetime64())
-            obs_t = obs.where(obs['time_dist'] == obs['time_dist'].min(), 
-                              drop=True).squeeze()
-        except (FileNotFoundError, ValueError):
-            continue
+    # --- with SMC data of liaise database ---
+#    stations_2m = ['VH', 'WK', 'V1', 'WB', 'VM', 'WX', 'WA', 'WC', 'V8', 'XI',
+#                   'XM', 'WL', 'UM', 'WI', 'VE']
+#    stations_10m = ['VK', 'C6', 'C7', 'C8', 'D1', 'XD', 'XR', 'XA', 'VP', 'VB','VQ']
+#    stations_unk = ['YJ', 'CW', 'MR', 'VM', 'WV', 'VD', 'YD', 'XX', 'YJ', ]
+#    stations_all = stations_2m + stations_10m + stations_unk
+#    
+#    for station in stations_all:
+#        # get data
+#        datafolder = gv.global_data_liaise + '/SMC/22_stations_liaise/'
+#        filename = f'LIAISE_{station}_SMC_MTO-1MN_L0_{wanted_date[:8]}_V01.nc'
+#        try:
+#            obs = xr.open_dataset(datafolder + filename)
+#            # find closest time
+#            obs['time_dist'] = np.abs(obs.time - pd.Timestamp(wanted_date).to_datetime64())
+#            obs_t = obs.where(obs['time_dist'] == obs['time_dist'].min(), 
+#                              drop=True).squeeze()
+#        except (FileNotFoundError, ValueError):
+#            continue
+#        
+#        obs_t['UT'], obs_t['VT'] = tools.calc_u_v(obs_t['WS'], obs_t['WD'])
+#    
+#        # plot station
+#        location = StationPlot(ax, obs['lon'], obs['lat'])
+#        location.plot_barb(obs_t['UT'], obs_t['VT'],
+#                           pivot='middle',
+#                           length=barb_length*barb_length_coeff,     #length of barbs
+#                           sizes={'emptybarb':0.1},
+#                           barb_increments=barb_size_increments[barb_size_option]
+#                           )
         
-        obs_t['UT'], obs_t['VT'] = tools.calc_u_v(obs_t['WS'], obs_t['WD'])
-    
+    # --- with global SMC data ---
+    datafolder = gv.global_data_liaise + '/SMC/ALL_stations_july/'
+    for filename in os.listdir(datafolder):
+#        filename = 'C6.nc'
+        file_path = os.path.join(datafolder, filename)
+        if os.path.isfile(file_path):
+            try:
+                obs = xr.open_dataset(file_path)
+                # struggling with the datetime formats in the 3 next lines...
+                obs['datetime'] = [pd.Timestamp(str((elt.data))) for elt in obs['datetime']]
+                obs['datetime64'] = [elt.data.astype('int64') for elt in obs['datetime']]
+                obs['datetime64'] = obs['datetime64'].swap_dims({'datetime64' :'datetime'})
+                # compute distance to wanted datetime
+                obs['time_dist'] = np.abs(obs['datetime64'] - pd.Timestamp(wanted_date).to_datetime64().astype('int64'))
+                # keep the data closest to wanted datetime
+                obs_t = obs.where(obs['time_dist'] == obs['time_dist'].min(), 
+                                  drop=True).squeeze()
+                obs_t['UT'], obs_t['VT'] = tools.calc_u_v(obs_t['VV10'], obs_t['DV10'])
+            except (FileNotFoundError, ValueError):
+                continue
+            
         # plot station
-        location = StationPlot(ax, obs['lon'], obs['lat'])
-        location.plot_barb(obs_t['UT'], obs_t['VT'],
-                           pivot='middle',
-                           length=barb_length*barb_length_coeff,     #length of barbs
-                           sizes={'emptybarb':0.1},
-                           barb_increments=barb_size_increments[barb_size_option]
-                           )
+        print(filename)
+        try:
+            # Create the station object and set the location of it
+            location = StationPlot(ax, obs['lon'], obs['lat'])
+            # plot the wind
+            location.plot_barb(
+                    obs_t['UT'].data, obs_t['VT'].data,
+                   pivot='tip',  # 'tip' or 'middle'
+                   length=barb_length*barb_length_coeff,     #length of barbs
+                   sizes={'emptybarb':0.1},
+                   barb_increments=barb_size_increments[barb_size_option]
+                   )
+            # plot a scalar variable in the circle
+#            plt.scatter(obs['lon'], obs['lat'])
+        except ValueError:
+            print(f"Data not found for {obs['station_name']}")
+            continue
+                
+                
 
 #%% FIGURE OPTIONS
 if speed_plane == 'horiz':

@@ -4,7 +4,7 @@
 Creation : 07/01/2021
 
 Fonctionnement:
-    Seule plusieurs sections ont besoin d'être remplies.    
+    Seules plusieurs sections ont besoin d'être remplies.    
 """
 
 import pandas as pd
@@ -19,7 +19,7 @@ import global_variables as gv
 
 ################%% Independant Parameters (TO FILL IN):
     
-site = 'cendrosa'
+site = 'C6'
 
 #domain to consider for simu files: 1 or 2
 #domain_nb = 2
@@ -32,20 +32,20 @@ save_folder = './figures/wind_series/'
 figsize = (11, 6) #small for presentation: (6,6), big: (15,9)
 
 models = [
-#        'irr_d1',
-#        'irrlagrip30_d1',
+#        'irrswi1_d1',
+        'irrlagrip30_d1',
+        'irrlagrip30_d2',
 #        'std_d1',
 #        'irr_d2_old', 
 #        'std_d2_old',
-        'irr_d2', 
-        'std_d2', 
+#        'irr_d2', 
+#        'std_d2', 
          ]
 
-errors_computation = True
+errors_computation = False
 
 ########################################################
 
-global_data_liaise = gv.global_data_liaise
 simu_folders = {key:gv.simu_folders[key] for key in models}
 
 #father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
@@ -58,6 +58,7 @@ colordict = {'irr_d2': 'g',
              'irr_d1': 'g', 
              'std_d1': 'r', 
              'irrlagrip30_d1': 'y',
+             'irrlagrip30_d2': 'y',
              'irr_d2_old': 'g', 
              'std_d2_old': 'r', 
              'obs': 'k'}
@@ -66,9 +67,11 @@ styledict = {'irr_d2': '-',
              'irr_d1': '--', 
              'std_d1': '--', 
              'irrlagrip30_d1': '--',
+             'irrlagrip30_d2': '-',
              'irr_d2_old': ':', 
              'std_d2_old': ':', 
              'obs': '-'}
+
 
 def plot_wind_speed(ws, dates=None, start_date=None, end_date=None, 
                     fig=None, label='', **kwargs):
@@ -98,6 +101,7 @@ def plot_wind_speed(ws, dates=None, start_date=None, end_date=None,
     ax1.set_ylabel('Wind Speed (m/s)', multialignment='center')
     ax1.grid(visible=True, which='major', axis='y', color='k', linestyle='--',
              linewidth=0.5)
+
 
 def plot_wind_dir(wd, dates=None, start_date=None, end_date=None, 
                   fig=None, label='', **kwargs):
@@ -157,13 +161,13 @@ if site == 'cendrosa':
     elif ilevel == 10:
         varname_obs_ws = 'ws_4'
         varname_obs_wd = 'wd_4'
-    datafolder = global_data_liaise + '/cendrosa/30min/'
+    datafolder = gv.global_data_liaise + '/cendrosa/30min/'
     filename_prefix = 'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'preixana':
     varname_obs_ws = 'ws_2'
     varname_obs_wd = 'wd_2'
-    datafolder = global_data_liaise + '/preixana/30min/'
+    datafolder = gv.global_data_liaise + '/preixana/30min/'
     filename_prefix = 'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'elsplans':
@@ -174,19 +178,23 @@ elif site == 'elsplans':
         varname_obs_ws = 'UTOT_50m'
         varname_obs_wd = 'DIR_50m'
     freq = '5'  # '5' min or '30'min
-    datafolder = global_data_liaise + '/elsplans/mat_50m/{0}min_v4/'.format(freq)
+    datafolder = gv.global_data_liaise + '/elsplans/mat_50m/{0}min_v4/'.format(freq)
     date = date.replace('-', '')
     in_filenames_obs = f'LIAISE_ELS-PLANS_UKMO_MTO-{str(freq).zfill(2)}MIN_L2_{date}'
 elif site == 'irta-corn':
     varname_obs_ws = 'WS'
     varname_obs_wd = 'WD'
-    datafolder = global_data_liaise + '/irta-corn/seb/'
+    datafolder = gv.global_data_liaise + '/irta-corn/seb/'
     in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
     ilevel = 1  # because measurement were made at 3m AGL = 1m above maize
 #    raise ValueError('Site name not known')
+else:  # SMC
+    freq = '30'
+    datafolder = gv.global_data_liaise + '/SMC/ALL_stations_july/' 
+   
     
-lat = gv.sites[site]['lat']
-lon = gv.sites[site]['lon']
+lat = gv.whole[site]['lat']
+lon = gv.whole[site]['lon']
 
 
 #%% OBS: CONCATENATE AND LOAD
@@ -197,16 +205,26 @@ if site == 'irta-corn':
 elif site == 'elsplans':
     out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
     dat_to_nc='ukmo'
-else:
+elif site == 'cendrosa':
     out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
-    dat_to_nc=None
-
+    dat_to_nc = None
+else:  # SMC case
+    out_filename_obs = f'{site}.nc'
+    dat_to_nc = None
+    
 # Concatenate multiple days
-tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs,
-                       dat_to_nc=dat_to_nc)
+if site in ['cendrosa', 'elsplans', 'irta-corn']:
+    tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs,
+                           dat_to_nc=dat_to_nc)
 
 # Load data:
 obs = xr.open_dataset(datafolder + out_filename_obs)
+
+if site not in ['cendrosa', 'elsplans', 'irta-corn']:
+    wind_height = int((obs['obs_wind_height'].data))
+    varname_obs_ws = f'VV{wind_height}'
+    varname_obs_wd = f'DV{wind_height}'
+    obs = obs.rename({'datetime': 'time'})
 
 #fig_speed=plt.figure()
 #fig_dir=plt.figure()
@@ -218,10 +236,10 @@ fig, ax = plt.subplots(2, 1, figsize=figsize)
 ws_obs = obs[varname_obs_ws]
 wd_obs = obs[varname_obs_wd]
 
-if site == 'elsplans':
+if site in ['elsplans', 'C6', 'V1', 'WL']:
     dati_arr_obs = pd.date_range(
-            start=obs.time.min().values, 
-#            start=pd.Timestamp('20210702-0000'),
+#            start=obs.time.min().values,  # old version for elsplans
+            start=pd.Timestamp(str(obs.time.min().values)),
             periods=len(obs[varname_obs_ws]), 
             freq=f'{freq}T')
     #turn outliers into NaN
@@ -253,13 +271,13 @@ bias = {}
 obs_sorted = {}
 sim_sorted = {}
 
-varname_sim_list = ['UT.OUT', 'VT.OUT']
+#varname_sim_list = ['UT.OUT', 'VT.OUT']
 
 for model in simu_folders:
-    if model == 'irrlagrip30_d1':
-        varname_sim_list = ['UT.OUT', 'VT.OUT']
-    else:
-        varname_sim_list = ['UT', 'VT']
+#    if model == 'irrlagrip30_d1':
+#        varname_sim_list = ['UT.OUT', 'VT.OUT']
+#    else:
+    varname_sim_list = ['UT', 'VT']
     
     ds1 = tools.load_dataset(varname_sim_list, model, 
                              concat_if_not_existing=True)
@@ -351,10 +369,11 @@ plot_title = f'wind at {site} - level {ilevel}'
 
 fig.suptitle(plot_title)
 
-ax[0].set_xlim([np.min(dati_arr_sim), np.max(dati_arr_sim)])
-ax[0].grid(visible=True, axis='both')
+if models != []:
+    ax[0].set_xlim([np.min(dati_arr_sim), np.max(dati_arr_sim)])
+    ax[1].set_xlim([np.min(dati_arr_sim), np.max(dati_arr_sim)])
 
-ax[1].set_xlim([np.min(dati_arr_sim), np.max(dati_arr_sim)])
+ax[0].grid(visible=True, axis='both')
 ax[1].grid(visible=True, axis='both')
 
 # add grey zones for night
