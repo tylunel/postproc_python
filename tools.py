@@ -157,7 +157,7 @@ def load_dataset(varname_sim_list, model, concat_if_not_existing=True):
     
     for i, varname_item in enumerate(varname_sim_list):
         # get format of file to concatenate
-        in_filenames_sim = gv.format_filename_simu[model]
+        in_filenames_sim = gv.format_filename_simu_wildcards[model]
         gridnest_nb = in_filenames_sim[6]  # integer: 1 or 2 in my case
         # set name of concatenated output file
         out_filename_sim = f'LIAIS.{gridnest_nb}.{varname_item}.nc'
@@ -835,12 +835,12 @@ def get_simu_filepath(model, date='20210722-1200',
     day_nb = str(pd_date.day)        
     hour_nb = str(pd_date.hour)
     minute_nb = pd_date.minute
-#    if out_suffix == '.OUT':
-#        hour_nb = pd_date.hour*2
-#        if minute_nb == 30:
-#            hour_nb = hour_nb + 1
-#        hour_nb = str(hour_nb)
-#        #print('hour_nb = {0}'.format(hour_nb))
+    if out_suffix == '.OUT':
+        hour_nb = pd_date.hour*2
+        if minute_nb == 30:
+            hour_nb = hour_nb + 1
+        hour_nb = str(hour_nb)
+        #print('hour_nb = {0}'.format(hour_nb))
     
     # format suffix with 2 digits:
     if len(hour_nb) == 1:
@@ -1352,7 +1352,7 @@ def save_figure(plot_title, save_folder='./figures/', verbose=True):
     filename = filename.replace('=', '').replace('(', '').replace(')', '')
     filename = filename.replace(' ', '_').replace(',', '').replace('.', '_')
     filename = filename.replace('/', 'over')
-    plt.savefig(save_folder + '/' + str(filename))
+    plt.savefig(save_folder + '/' + str(filename), dpi=300)
     if verbose:
         print('figure {0} saved in {1}'.format(plot_title, save_folder))
         

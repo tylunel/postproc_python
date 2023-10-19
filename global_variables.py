@@ -5,6 +5,7 @@
 
 Gathers global variables for use in scripts. 
 """
+import pandas as pd
 
 global_simu_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
 #global_simu_folder = '/media/lunelt/7C2EB31F2EB2D0FE/Tanguy/'
@@ -24,11 +25,15 @@ simu_folders = {
         'irr_d1': '2.15_irr_d1_15-30/',
         'std_d1': '1.15_std_d1_15-30/',
 #        'lagrip100_d1': '5.15_lagrip100_d1_15-30/',  #param had issue
-        'irrlagrip30_d1': '7.20_irrlagrip30_d1_1-30/',
+        'irrlagrip30_d1': '7.15_irrlagrip30_d1_15-30/',
+        'irrlagrip30_d2': '7.17_irrlagrip30_d2_16-18/',
+        'irrswi1_d1_old': '8.15_irrswi1_d1_15-30_old/',  # swi =1 at beginning, decreases then
+        'irrswi1_d1': '8.16_irrswi1_d1_15-30_bugfix/',  # swi =1 at beginning, decreases then
+#        'irrlagrip30_d1': '7.20_irrlagrip30_d1_1-30/',
         'temp': '',
          }
 
-format_filename_simu = {            
+format_filename_simu_wildcards = {            
         'irr_d2':     'LIAIS.1.S????.001dg.nc',
         'std_d2':     'LIAIS.1.S????.001dg.nc',
         'irr_d2_old':     'LIAIS.1.S????.001dg.nc',
@@ -39,7 +44,11 @@ format_filename_simu = {
         'std_d1':     'LIAIS.1.SEG??.0??dg.nc',
 #        'lagrip100_d1': 'LIAIS.1.SEG??.0??.nc',
         'irrlagrip30_d1': 'LIAIS.1.SEG??.0??dg.nc',
+        'irrswi1_d1': 'LIAIS.1.SEG??.0??dg.nc',
+        'irrswi1_d1_old': 'LIAIS.1.SEG??.0??dg.nc',
+        'irrlagrip30_d2': 'LIAIS.1.S????.001dg.nc',
         }
+format_filename_simu = format_filename_simu_wildcards
 
 format_filename_simu_new = {  
         'std_d2': 'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
@@ -48,9 +57,13 @@ format_filename_simu_new = {
         'irr_d2_old': 'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
         'std_d2_old_old': 'LIAIS.2.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
         'irr_d2_old_old': 'LIAIS.2.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
-        'irr_d1': 'LIAIS.1.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
-        'std_d1': 'LIAIS.1.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
-        'lagrip100_d1': 'LIAIS.1.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
+        'irr_d1': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
+        'std_d1': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
+        'irrlagrip30_d1': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
+        'irrlagrip30_d2': 'LIAIS.1.S{day_nb}{hour_nb_2f}{out_suffix}.001{file_suffix}.nc',
+        'irrswi1_d1': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
+        'irrswi1_d1_old': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
+        'lagrip100_d1': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
         'temp': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
         }
 # Apply .format() after corresponding string works!
@@ -62,7 +75,8 @@ sites = {'cendrosa': {
                 'lat': 41.69,  # rounded
                 'lon': 0.93,   # rounded
                 'alt': 240,
-                'longname': 'La Cendrosa'},
+                'longname': 'La Cendrosa',
+                'acronym': 'L.C.'},
          'preixana': {
                  'lat': 41.59373,
                  'lon': 1.07250,
@@ -73,7 +87,8 @@ sites = {'cendrosa': {
                  'lat': 41.590,  # rounded
                  'lon': 1.029,  # rounded
                  'alt': 334,
-                 'longname': 'Els Plans'},
+                 'longname': 'Els Plans',
+                 'acronym': 'E.P.'},
 #         'irta-corn': {
 ##                       'lon': 0.805333},  # wrong position, but 100% irr zone in model irr_d1
 #                         'lat': 41.5922,  # wrong position, but 100% irr zone in model
@@ -111,7 +126,9 @@ towns = {'arbeca': {'lat': 41.54236,
          'zaragoza': {'lat': 41.6547,
                       'lon': -0.8784},
          'torredembarra': {'lat': 41.145077,
-                           'lon': 1.4073809},
+                           'lon': 1.4073809,
+                           'longname': 'Torredembarra',
+                           'acronym': 'To.'},
          'ponts': {'lat': 41.91506,
                    'lon': 1.1851},
          'balaguer': {'lat': 41.788303,
@@ -127,7 +144,8 @@ towns = {'arbeca': {'lat': 41.54236,
          'els_omellons': {'lat': 41.50174,
                           'lon': 0.95993},
          'sant_marti': {'lat': 41.55991,
-                        'lon': 1.05504},
+                        'lon': 1.05504,
+                        'acronym': 'S.M.'},
          'fonolleres': {'lat': 41.65754,
                         'lon': 1.20261},
          'villobi': {'lat': 41.43266,
@@ -136,17 +154,18 @@ towns = {'arbeca': {'lat': 41.54236,
                 'lon': 1.29126},
          'calafell': {'lat': 41.19005,
 #                      'lon': 1.57218},  # real value, but issue with budget
-                      'lon': 1.54},  # modified value
+                      'lon': 1.49},  # modified value
          'santa_coloma': {'lat': 41.53407,
                           'lon': 1.38441},
         'pi_sol': {'lat': 41.302951,
-                   'lon': 1.52552},
+#                   'lon': 1.52552},  # real value, but issue with budget
+                   'lon': 1.49},  # modified value
         'el_morell': {'lat': 41.191488,
                       'lon': 1.208416},
          'tarragona_offshore': {'lat': 41.035459,
                                 'lon': 1.273698},
          'calafell_offshore': {'lat': 41.033799,
-                               'lon': 1.54},
+                               'lon': 1.49},
          'linyola': {'lat': 41.710657,
                      'lon': 0.903243,
                      'alt': 254},
@@ -162,7 +181,8 @@ mountains = {'tossal_baltasana': {'lat': 41.3275,
                              'lon': 1.12942},
              'serra_tallat': {'lat': 41.48,
                              'lon': 1.12,
-                             'longname': 'Serra del Tallat'},
+                             'longname': 'Serra del Tallat',
+                             'acronym': 'S.d.T.'},
              'tossal_torretes': {'lat': 42.02244,
                                  'lon': 0.93800},
              'moncayo': {'lat': 41.7871,
@@ -178,16 +198,27 @@ mountains = {'tossal_baltasana': {'lat': 41.3275,
              'joar': {'lat': 42.6345,
                       'lon': -2.34898},
              'coll_lilla': {'lat': 41.34072,
-                            'lon': 1.22014},
+                            'lon': 1.22014,
+                            'longname': 'Coll de Lilla',
+                            'acronym': 'C.d.L.'},
              'puig_pelat': {'lat': 41.26571,
                             'lon': 1.05502},
             'tossal_purunyo': {'lat': 41.30137,
                                'lon': 1.17129},
-           'puig_cabdells': {'lat': 41.40621,
+            'puig_cabdells': {'lat': 41.40621,
                               'lon': 1.31137},
             }
 
-whole = {**sites, **towns, **mountains}
+stations_SMC_coords = pd.read_csv(
+        global_data_liaise + '/SMC/stations_SMC_coords.csv', 
+        sep='\t', decimal=',', 
+        names=['name', 'lat', 'lon', 'altitude'],)
+stations_SMC_coords.index = stations_SMC_coords.name
+stations_SMC_coords = stations_SMC_coords.drop('name', axis=1)
+stations_SMC_coords = stations_SMC_coords[~stations_SMC_coords.index.duplicated()]
+stations_SMC_coords = stations_SMC_coords.to_dict(orient='index')
+
+whole = {**sites, **towns, **mountains, **stations_SMC_coords}
 
 areas_corners = {
     'irrig': ['lleida', 'balaguer', 
@@ -196,9 +227,9 @@ areas_corners = {
             'els_omellons', 'sant_marti', 'fonolleres'],
     'slope_west': ['els_omellons', 'sant_marti', 'fonolleres',
                    'santa_coloma', 'tossal_gros', 'villobi'],
-    'barbera': ['santa_coloma', 'tossal_gros', 'villobi',
+    'conca_barbera': ['santa_coloma', 'tossal_gros', 'villobi',
                    'tossal_purunyo', 'puig_cabdells', 'puig_formigosa'],
-    'slope_east': ['tossal_purunyo', 'puig_cabdells', 'puig_formigosa',
+    'alt_camp': ['tossal_purunyo', 'puig_cabdells', 'puig_formigosa',
                    'pi_sol', 'el_morell',],                
     'coast': ['pi_sol', 'el_morell',
               'tarragona', 'calafell', ],
@@ -259,14 +290,14 @@ zoom_domain_prop = {
         'barb_length': 4.5,
         'lat_range': [41.37, 41.92],
         'lon_range': [0.6, 1.4],
-        'figsize': (9,7),
+        'figsize': (9,6),
         },
     'urgell-paper-zoom': {
         'skip_barbs': 6,
         'barb_length': 5.5,
         'lat_range': [41.45, 41.80],
         'lon_range': [0.7, 1.2],
-        'figsize': (9,7),
+        'figsize': (9,6),
         },
     'd2': {
         'skip_barbs': 3,
@@ -276,11 +307,18 @@ zoom_domain_prop = {
         'figsize': (11,9),
         },
     'marinada': {
-        'skip_barbs': 2,
-        'barb_length': 4.5,
+        'skip_barbs': 3,
+        'barb_length': 5,
         'lat_range': [41.0, 42],
         'lon_range': [0.6, 1.6],
         'figsize': (9,9),
+        },
+    'marinada-wide': {
+        'skip_barbs': 3,
+        'barb_length': 5,
+        'lat_range': [40.9, 42],
+        'lon_range': [0.3, 1.9],
+        'figsize': (11,8),
         },
     None: {
         'skip_barbs': 8,
