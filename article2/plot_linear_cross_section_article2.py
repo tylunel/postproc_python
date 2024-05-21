@@ -21,13 +21,13 @@ from shapely.geometry import Point, LineString
 
 # Simulation to show: 'irr' or 'std'
 models = [
-          'irrlagrip30_d1', 
-          'std_d1',
+#          'irrlagrip30_d1',
+#          'std_d1',
           'irrswi1_d1', 
           ]
 
 # Datetime
-wanted_date = '20210717-0000'
+wanted_date = '20210716-2300'
 
 budget_type = 'UV'
 
@@ -44,23 +44,26 @@ var_name_bu_list_dict = {  # includes only physical and most significant terms
 
 var_name_bu_list = var_name_bu_list_dict[budget_type]
 
-var_name_bu = 'PRES'
+var_to_plot_bu = []
 # --- nb_var is used by run_day_multi_var.sh:
 #nb_var = 5
-#var_name_bu = var_name_bu_list[nb_var]
+#var_to_plot_bu = [var_name_bu_list[nb_var],]
 
-var_name = 'HLOWJET_07'
-vmin, vmax = 0, 1000
+var_to_plot = ['HLOWJET_07', 'FROUDE_HJET_07',]
+#vmin, vmax = 0, 1000
 
-# level (height AGL) to plot
-line_level = 10  #[m]
+add_wind_barbs = False
+
+# level (height AGL) to plot, or list of levels (will be averaged in this case)
+#line_level = [50, 60, 70, 80, 90, 100,]  #[m]
+line_level = np.arange(50,300,25)
 
 # where to place the cross section
 nb_points_beyond = 4
 site_start = 'cendrosa'
 site_end = 'torredembarra'
 
-sites_to_project = ['elsplans', 'serra_tallat', 'coll_lilla']
+sites_to_project = ['elsplans', 'serra_tallat', 'serra_miramar']
 
 # min and max for budget plots
 if budget_type == 'RV':
@@ -88,16 +91,31 @@ vmin_bu = -vmax_bu
 # Save the figure
 figsize = (12,7)
 save_plot = True
-save_folder = f'./figures/linear_cross_sections/section_{site_start}_{site_end}/{budget_type}-{var_name_bu}_{var_name}/'
+save_folder = f'./fig/linear_cross_sections/'
+
+plt.rcParams.update({'font.size': 11})
 
 ###########################################
+simu_names = {'irrswi1_d1': 'FC_IRR',
+              'irrswi1_d1_16_10min': 'FC_IRR',
+              'std_d1':  'NOIRR',
+              'irrlagrip30_d1': 'THOLD_IRR',
+              }
 
+longnames_dict = {
+            'THTV': 'virtual potential\n temperature [K]',
+            'THT': 'potential\n temperature [K]',
+            'PRES_PROJ': 'PGF [m s$^{-1}$]',
+            'FROUDE_HJET_07': 'Froude number',
+            'HLOWJET_07': 'Jet height [m]',
+            }
 
 colordict = {'irr_d2': 'g', 
              'std_d2': 'r',
              'irr_d1': 'g', 
              'std_d1': 'r', 
              'irrlagrip30_d1': 'orange',
+             'irrlagrip30_d1_old': 'yellow',
              'irrswi1_d1': 'b',
              'irr_d2_old': 'g', 
              'std_d2_old': 'r', 
@@ -118,242 +136,288 @@ section_ds_dict = {}
 section_ds_bu_dict = {}
 
 for model in models:
-    filepath = tools.get_simu_filepath(model, wanted_date, file_suffix='dg',
-                                       out_suffix='')
-    ds = xr.open_dataset(filepath)
-    
+    # get day and month of wanted_datetime
     day = pd.Timestamp(wanted_date).day
     hour = pd.Timestamp(wanted_date).hour
     
-    filename_bu = gv.global_simu_folder + gv.simu_folders[model] + f'LIAIS.1.SEG{day}.000.nc'
+    # Standard data
+    filepath = tools.get_simu_filepath(model, wanted_date, 
+                                       file_suffix='dg',
+                                       out_suffix='',
+                                       verbose=True)
+    ds = xr.open_dataset(filepath)
     
-    if budget_type in ['PROJ', 'UV']:
-        ds_bu = tools.compound_budget_file(filename_bu).isel(time_budget=hour)
-        ds_bu[f'{var_name_bu}_VAL'], ds_bu[f'{var_name_bu}_DIR'] = tools.calc_ws_wd(
-                ds_bu[f'{var_name_bu}_UU'], ds_bu[f'{var_name_bu}_VV'])
-    else:
-        ds_bu = tools.open_budget_file(filename_bu, budget_type).isel(time_budget=hour)
-    
-    # Computation of other diagnostic variable
+    # Computation of wind speed diag variable
     ds = tools.center_uvw(ds)
     ds['WS'], ds['WD'] = tools.calc_ws_wd(ds['UT'], ds['VT'])
+    ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'])
     
-
-    data_reduced = ds[['UT', 'VT', 'WT', 'ZS', 'WS', 'THT',
-               'HBLTOP', 'THVREF',
-#               var_name
-               ]]
+    data_reduced = ds[['UT', 'VT', 'WT', 'WS', 'THT', 'THTV', 'ZS',
+#                       *var_to_plot
+                       ]]
     data_redsub = tools.subset_ds(data_reduced, 
                                   lat_range = [start[0], end[0]], 
                                   lon_range = [start[1], end[1]],
                                   nb_indices_exterior=nb_points_beyond+2)
-    
     data = data_redsub
-#    data = ds
-    
-    
-    if budget_type in ['PROJ', 'UV']:
-        data_bu = ds_bu[[f'{var_name_bu}_VAL', f'{var_name_bu}_DIR',
-                         f'{var_name_bu}_VV', f'{var_name_bu}_UU']]
-    else:
-        data_bu = ds_bu[[var_name_bu,]]
-        
 
+    # Budget data
+    filename_bu = gv.global_simu_folder + gv.simu_folders[model] + f'LIAIS.1.SEG{day}.000.nc'
     
+    for i, var_name_bu in enumerate(var_to_plot_bu):
+        if budget_type in ['PROJ', 'UV']:
+            ds_bu = tools.compound_budget_file(filename_bu).isel(time_budget=hour)
+            ds_bu[f'{var_name_bu}_VAL'], ds_bu[f'{var_name_bu}_DIR'] = tools.calc_ws_wd(
+                    ds_bu[f'{var_name_bu}_UU'], ds_bu[f'{var_name_bu}_VV'])
+            if i==0:
+                data_bu = ds_bu[[f'{var_name_bu}_VAL', f'{var_name_bu}_DIR',
+                                 f'{var_name_bu}_VV', f'{var_name_bu}_UU']]
+            else:
+                data_bu[[f'{var_name_bu}_VAL', f'{var_name_bu}_DIR',
+                         f'{var_name_bu}_VV', f'{var_name_bu}_UU']] = \
+                         ds_bu[[f'{var_name_bu}_VAL', f'{var_name_bu}_DIR',
+                                f'{var_name_bu}_VV', f'{var_name_bu}_UU']]
+        else:
+            ds_bu = tools.open_budget_file(filename_bu, budget_type).isel(time_budget=hour)
+            if i==0:
+                data_bu = ds_bu[[var_name_bu,]]
+            else:
+                data_bu[[var_name_bu,]] = ds_bu[[var_name_bu,]]
+
     #get total maximum height of relief on domain
-    if var_name in ['HLOWJET', 'HLOWJET_07', 'FROUDE',]:
-        toplevel=2500
+    diag_list = ['HLOWJET', 'HLOWJET_07', 'FROUDE',]
+    var_in_diag_list = any(elt in diag_list for elt in var_to_plot)
+    
+    if var_in_diag_list:
+        toplevel = 2500
         level_range = np.arange(10, toplevel, 20)
     else:
         level_range = line_level
 
     
-    
-    #%% STANDARD DATA
+#%% STANDARD DATA
     ### -- create section line
-    
-    line = tools.line_coords(data, start, end, 
-                             nb_indices_exterior=nb_points_beyond)
-    ni_range = line['ni_range']
-    nj_range = line['nj_range']
-    slope = line['slope']
-    
-    section = []
-    abscisse_coords = []
-    abscisse_sites = {}
-    
-    if slope == 'vertical':
-        angle = np.pi/2
-    else:
-        angle = np.arctan(slope)
-    
-    ### -- compute compoound of UU and VV
-    data['WPROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'], 
-                                            data.level, angle)
-    
-    ### -- interpolate on line
-    print('section interpolation on {0} points for standard data (~0.1sec/pt)'.format(len(ni_range)))
-    for i, ni in enumerate(ni_range):
-        nj=nj_range[i]
-        #interpolation of all variables on ni_range
-        profile = data.interp(ni=ni, 
-                              nj=nj, 
-                              level=level_range).expand_dims({'i_sect':[i]})
-        section.append(profile)
+    if var_to_plot != []:
+        line = tools.line_coords(data, start, end, 
+                                 nb_indices_exterior=nb_points_beyond)
+        ni_range = line['ni_range']
+        nj_range = line['nj_range']
+        slope = line['slope']
         
-        #store values of lat-lon for the horiz axis
-        lat = np.round(profile.latitude.values, decimals=3)
-        lon = np.round(profile.longitude.values, decimals=3)
-        latlon = str(lat) + '\n' + str(lon)
-        abscisse_coords.append(latlon)
+        section = []
+        abscisse_coords = []
+        abscisse_sites = {}
         
-        #Store values of i and name of site in dict for horiz axis
         if slope == 'vertical':
-            if nj == line['nj_start']:
-                abscisse_sites[i] = site_start
-            elif nj == line['nj_end']:
-                abscisse_sites[i] = site_end
+            angle = np.pi/2
         else:
-            if ni == line['ni_start']:
-                abscisse_sites[i] = site_start
-            elif ni == line['ni_end']:
-                abscisse_sites[i] = site_end
-    
-    #concatenation of all profile in order to create the 2D section dataset
-    section_ds = xr.concat(section, dim="i_sect")
-    
-
-#%% OTHER DIAGs: BULK RI and FROUDE
-    if var_name in ['HLOWJET_07', 'HLOWJET', 'FROUDE',]:
-        g = 9.81  #m/s2
-        data['RI_BULK'] = ((g/data['THVREF'])*(data['THVREF'] - data['THVREF'].isel(level=1))*data['level']) / \
-            (data['UT']**2 + data['VT']**2)
-        data['FROUDE_RI'] = 1/np.sqrt(data['RI_BULK'])
+            angle = np.arctan(slope)
         
-        section_ds = tools.diag_lowleveljet_height(section_ds,
-                                             wind_var='WS', 
-                                             new_height_var='HLOWJET_07',
-                                             upper_bound=0.70)
+        ### -- compute compoound of UU and VV
+        data['WPROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'], 
+                                                data.level, angle)
         
-        section_at_hjet = section_ds.sel(
-            level = section_ds['HLOWJET_07'], method='nearest')
-        section_below_hjet = section_ds.where(
-                section_ds.level < section_ds['HLOWJET_07'], drop=True)
-        section_ds['FROUDE_HJET_07'] = section_at_hjet['THT']*section_below_hjet['WS'].mean(dim='level')**2 / \
-            (g * section_at_hjet['HLOWJET_07'] * (section_at_hjet['THT'] - section_below_hjet['THT'].mean(dim='level')))
+        ### -- interpolate on line
+        print('section interpolation on {0} points for standard data (~0.1sec/pt)'.format(len(ni_range)))
+        for i, ni in enumerate(ni_range):
+            nj=nj_range[i]
+            #interpolation of all variables on ni_range
+            profile = data.interp(ni=ni, 
+                                  nj=nj, 
+                                  level=level_range).expand_dims({'i_sect':[i]})
+            if type(level_range) in [list, np.ndarray] and not var_in_diag_list:
+                profile = profile.mean(dim='level')
+                
+            section.append(profile)
             
-#%%
-        section_ds = section_ds.isel(level=line_level)
-#%%   
-    section_ds_dict[model] = section_ds
+            #store values of lat-lon for the horiz axis
+            lat = np.round(profile.latitude.values, decimals=3)
+            lon = np.round(profile.longitude.values, decimals=3)
+            latlon = str(lat) + '\n' + str(lon)
+            abscisse_coords.append(latlon)
+            
+            #Store values of i and name of site in dict for horiz axis
+            if slope == 'vertical':
+                if nj == line['nj_start']:
+                    abscisse_sites[i] = site_start
+                elif nj == line['nj_end']:
+                    abscisse_sites[i] = site_end
+            else:
+                if ni == line['ni_start']:
+                    abscisse_sites[i] = site_start
+                elif ni == line['ni_end']:
+                    abscisse_sites[i] = site_end
+        
+        #concatenation of all profile in order to create the 2D section dataset
+        section_ds = xr.concat(section, dim="i_sect")
+        
     
-    #%% BUDGET DATA
+        #%% DIAGs on Standard Data: BULK RI and FROUDE
+        if var_in_diag_list:
+            g = 9.81  #m/s2
+            data['RI_BULK'] = ((g/data['THTV'])*(data['THTV'] - data['THTV'].isel(level=1))*data['level']) / \
+                (data['UT']**2 + data['VT']**2)
+            data['FROUDE_RI'] = 1/np.sqrt(data['RI_BULK'])
+            
+            section_ds = tools.diag_lowleveljet_height(section_ds,
+                                                 wind_var='WS', 
+                                                 new_height_var='HLOWJET_07',
+                                                 upper_bound=0.70)
+            
+            section_at_hjet = section_ds.sel(
+                level = section_ds['HLOWJET_07'], method='nearest')
+            section_below_hjet = section_ds.where(
+                    section_ds.level < section_ds['HLOWJET_07'], drop=True)
+            section_ds['FROUDE_HJET_07'] = section_at_hjet['THT']*section_below_hjet['WS'].mean(dim='level')**2 / \
+                (g * section_at_hjet['HLOWJET_07'] * (section_at_hjet['THT'] - section_below_hjet['THT'].mean(dim='level')))
+    
+#            section_ds = section_ds.isel(level=line_level)
+            section_ds.sel(level=line_level, method='nearest')
+       
+        section_ds_dict[model] = section_ds
+    
+#%% BUDGET DATA
     ### -- create section line
-    
-    line_bu = tools.line_coords(data_bu, start, end, 
-                             nb_indices_exterior=nb_points_beyond)
-    ni_range_bu = line_bu['ni_range']
-    nj_range_bu = line_bu['nj_range']
-    
-    ### -- compute compoound of UU and VV
-    if budget_type in ['PROJ', 'UV']:
-        data_bu[f'{var_name_bu}_PROJ'] = tools.windvec_verti_proj(
-            data_bu[f'{var_name_bu}_UU'], data_bu[f'{var_name_bu}_VV'], 
-            data_bu.level, angle)
-    
-    ### -- interpolate on line
-    section = []
-    abscisse_coords = []
-    abscisse_sites = {}
+    if var_to_plot_bu != []:
+        line_bu = tools.line_coords(data_bu, start, end, 
+                                 nb_indices_exterior=nb_points_beyond)
+        ni_range_bu = line_bu['ni_range']
+        nj_range_bu = line_bu['nj_range']
         
-    print('section interpolation on {0} points for budget (~10 ms/pt)'.format(len(ni_range_bu)))
-    for i, ni in enumerate(ni_range_bu):
-        nj=nj_range_bu[i]
-        #interpolation of all variables on ni_range
-        profile = data_bu.interp(ni=ni,
-                                 nj=nj,
-                                 level=line_level).expand_dims({'i_sect':[i]})
-        section.append(profile)
+        ### -- compute compound of UU and VV
+        for var_name_bu in var_to_plot_bu:
+            if budget_type in ['PROJ', 'UV']:
+                data_bu[f'{var_name_bu}_PROJ'] = tools.windvec_verti_proj(
+                    data_bu[f'{var_name_bu}_UU'], data_bu[f'{var_name_bu}_VV'], 
+                    data_bu.level, angle)
         
-        #store values of lat-lon for the horiz axis
-        lat = np.round(profile.latitude.values, decimals=3)
-        lon = np.round(profile.longitude.values, decimals=3)
-        latlon = str(lat) + '\n' + str(lon)
-        abscisse_coords.append(latlon)
+        ### -- interpolate on line
+        section = []
+        abscisse_coords = []
+        abscisse_sites = {}
+            
+        print('section interpolation on {0} points for budget (~10 ms/pt)'.format(len(ni_range_bu)))
+        for i, ni in enumerate(ni_range_bu):
+            nj=nj_range_bu[i]
+            #interpolation of all variables on ni_range
+            profile = data_bu.interp(ni=ni,
+                                     nj=nj,
+                                     level=line_level).expand_dims({'i_sect':[i]})
+            if type(level_range) in [np.ndarray, list]:
+                profile = profile.mean(dim='level')
+            section.append(profile)
+            
+            #store values of lat-lon for the horiz axis
+            lat = np.round(profile.latitude.values, decimals=3)
+            lon = np.round(profile.longitude.values, decimals=3)
+            latlon = str(lat) + '\n' + str(lon)
+            abscisse_coords.append(latlon)
+            
+            #Store values of i and name of site in dict for horiz axis
+            if slope == 'vertical':
+                if nj == line_bu['nj_start']:
+                    abscisse_sites[i] = site_start
+                elif nj == line_bu['nj_end']:
+                    abscisse_sites[i] = site_end
+            else:
+                if ni == line_bu['ni_start']:
+                    abscisse_sites[i] = site_start
+                elif ni == line_bu['ni_end']:
+                    abscisse_sites[i] = site_end
         
-        #Store values of i and name of site in dict for horiz axis
-        if slope == 'vertical':
-            if nj == line_bu['nj_start']:
-                abscisse_sites[i] = site_start
-            elif nj == line_bu['nj_end']:
-                abscisse_sites[i] = site_end
-        else:
-            if ni == line_bu['ni_start']:
-                abscisse_sites[i] = site_start
-            elif ni == line_bu['ni_end']:
-                abscisse_sites[i] = site_end
-    
-    #concatenation of all profile in order to create the 2D section dataset
-    section_ds_bu = xr.concat(section, dim="i_sect")
-    
-    section_ds_bu_dict[model] = section_ds_bu
+        #concatenation of all profile in order to create the 2D section dataset
+        section_ds_bu = xr.concat(section, dim="i_sect")
+        
+        section_ds_bu_dict[model] = section_ds_bu
 
 
 #%% PLOT
 
+# nb of subplot:
+if add_wind_barbs:
+    nb_subplot = len(var_to_plot_bu) + len(var_to_plot) + 1
+    # figsize = (9, 1+2*nb_subplot)
+    gridspec_kw = {'height_ratios': [4]*(nb_subplot-1) + [2]}
+    wind_barbs_yticks = []
+else:
+    nb_subplot = len(var_to_plot_bu) + len(var_to_plot)
+    # figsize = (9, 1+2*nb_subplot)
+    gridspec_kw = {}
+
 # create figure
-fig, ax = plt.subplots(3, figsize=figsize,
-#                       gridspec_kw={'height_ratios': [5, 5, 1]}
+fig, ax = plt.subplots(nb_subplot, figsize=figsize,
+                       gridspec_kw=gridspec_kw
                        )
+if nb_subplot == 1:
+    ax = [ax,]  # to make ax subscriptable and have flexible code afterward
 
-for model in models:
-    section_ds_bu = section_ds_bu_dict[model]
-    section_ds = section_ds_dict[model]
+for i_model, model in enumerate(models):
     
-    # first subplot
-    var_plot = f'{var_name_bu}_PROJ'
-    ax[0].plot(section_ds_bu['i_sect'], section_ds_bu[var_plot],
-               label=model,
-               color=colordict[model])
-    ax[0].set_ylabel(var_plot)
-    ax[0].set_xticklabels([])  # remove x axis ticks labels
-    ax[0].hlines(0, 
-                 section_ds_bu['i_sect'].min(), section_ds_bu['i_sect'].max(),
-                 color='k')
-    ax[0].set_xlim(section_ds_bu['i_sect'].min(), section_ds_bu['i_sect'].max())
+    # budget subplots
+    for i, var_name_bu in enumerate(var_to_plot_bu):
+        # loading here only allows not to load if empty dict
+        section_ds_bu = section_ds_bu_dict[model]
+        
+        var_plot = f'{var_name_bu}_PROJ'
+        ax[i].plot(section_ds_bu['i_sect'], section_ds_bu[var_plot],
+                   label=simu_names[model],
+                   color=colordict[model])
+        
+        ax[i].set_ylabel(longnames_dict[var_plot])
+        ax[i].set_xticklabels([])  # remove x axis ticks labels
+        ax[i].hlines(0, 
+                     section_ds_bu['i_sect'].min(), section_ds_bu['i_sect'].max(),
+                     color='k')
+        ax[i].set_xlim(section_ds_bu['i_sect'].min(), section_ds_bu['i_sect'].max())
+        ax[i].grid()
+#        ax[i].legend()
     
-    # second subplot
-    var_plot = var_name
-    ax[1].plot(section_ds['i_sect'], section_ds[var_plot],
-               label=model,
-               color=colordict[model])
-    ax[1].set_ylabel(var_plot)
-    ax[1].set_xticklabels([])  # remove x axis ticks labels
-    ax[1].set_xlim(section_ds_bu['i_sect'].min(), section_ds_bu['i_sect'].max())
-    
-    # second subplot
-    var_plot = 'FROUDE_HJET_07'
-    ax[2].plot(section_ds['i_sect'], section_ds[var_plot],
-               label=model,
-               color=colordict[model])
-    ax[2].hlines(1, 
-                 section_ds_bu['i_sect'].min(), section_ds_bu['i_sect'].max(),
-                 color='k', linestyle='--')
-    ax[2].set_ylabel(var_plot)
-    ax[2].set_xticklabels([])  # remove x axis ticks labels
-    ax[2].set_xlim(section_ds_bu['i_sect'].min(), section_ds_bu['i_sect'].max())
+    # normal subplot
+    for i, var_name in enumerate(var_to_plot):
+        # loading here only allows not to load if empty dict
+        section_ds = section_ds_dict[model]
 
-ax[0].set_ylim(vmin_bu, vmax_bu)
-ax[0].grid()
-ax[0].legend()
+        i_ax = len(var_to_plot_bu) + i
+        ax[i_ax].plot(section_ds['i_sect'], section_ds[var_name],
+                   label=simu_names[model],
+                   color=colordict[model])
+        ax[i_ax].set_ylabel(longnames_dict[var_name])
+        ax[i_ax].set_xticklabels([])  # remove x axis ticks labels
+        ax[i_ax].set_xlim(section_ds['i_sect'].min(), section_ds['i_sect'].max())
+        ax[i_ax].grid()
+        # ax[i_ax].legend()
+        if 'FROUDE' in var_name:
+            ax[i_ax].hlines(1, 
+                xmin=section_ds['i_sect'].data.min(),
+                xmax=section_ds['i_sect'].data.max(),
+                color='k', linestyle='--',
+                )
+            ax[i_ax].set_ylim(0,6)
+        elif 'HLOWJET' in var_name:
+            ax[i_ax].set_ylim(0,750)
+            
+        
+    if add_wind_barbs:
+        barb_size_option = 'weak_winds'
+        skip_barbs = 2
+        ax[nb_subplot-1].barbs(
+            #Note that X & alti have dimensions reversed
+            section_ds['i_sect'][::skip_barbs], 
+            section_ds['i_sect'][::skip_barbs]*0 + i_model, 
+            #Here dimensions are in the proper order
+            section_ds['UT'][::skip_barbs], 
+            section_ds['VT'][::skip_barbs], 
+            pivot='middle',
+            color=colordict[model],
+            length=6,     #length of barbs
+            sizes={
+    #              'spacing':1, 'height':1, 'width':1,
+                    'emptybarb':0.01},
+            barb_increments=barb_size_increments[barb_size_option],
+            )
+        ax[nb_subplot-1].set_xlim(section_ds['i_sect'].min(), section_ds['i_sect'].max())
+        wind_barbs_yticks.append(simu_names[model])
 
-ax[1].set_ylim(vmin, vmax)
-ax[1].grid()
-ax[1].legend()
-
-ax[2].set_ylim(0, 6)
-ax[2].grid()
-ax[2].legend()
 
 ### Plot aesthetics
 
@@ -377,19 +441,43 @@ for site_inter in sites_to_project:
     abscisse_sites[abscisse_inter] = site_inter 
 
 # x-axis with sites names
-ax[0].set_xticks(list(abscisse_sites.keys()))
-ax[1].set_xticks(list(abscisse_sites.keys()))
-ax[2].set_xticks(list(abscisse_sites.keys()))
-ax[-1].set_xticklabels(list(abscisse_sites.values()), 
+abscisse_sites_xaxis = {key:gv.whole[val]['longname'] for (key,val) in zip(abscisse_sites.keys(), abscisse_sites.values())}
+
+for i in range(nb_subplot):
+    ax[i].set_xticks(list(abscisse_sites_xaxis.keys()))
+
+if add_wind_barbs:
+    # put sites names in antepenultimate subplot
+    ax[-2].set_xticklabels(list(abscisse_sites.values()), 
+                   rotation=0, fontsize=12)
+    # wind barbs subplot
+    ax[-1].set_yticks(range(len(wind_barbs_yticks)))
+    ax[-1].set_yticklabels(wind_barbs_yticks)
+    ax[-1].set_ylim(-1, len(wind_barbs_yticks))
+    ax[-1].set_xticklabels([])
+    ax[-1].set_xticks([])
+    ax[-1].annotate(barb_size_description[barb_size_option],
+                     xy=(0.01, 0),
+                     xycoords='axes fraction',
+                     fontsize=9
+                     )
+    
+    ax[-1].spines[[
+        'top', 'bottom', 
+#        'right', 'left'
+        ]].set_visible(False)
+    
+else:
+    ax[-1].set_xticklabels(list(abscisse_sites_xaxis.values()), 
                    rotation=0, fontsize=12)
 # x-axis with lat-lon values
 #ax.set_xticks(data1.i_sect[::10])
 #ax.set_xticklabels(abscisse_coords[::10], rotation=0, fontsize=9)
 
 
-### add secondary axe ---
-# create place for secondary axe
-plt.subplots_adjust(bottom=0.2)
+### add secondary axis ---
+# create place for secondary axis
+plt.subplots_adjust(bottom=0.25)
 
 # get index of torredembarra in abscisse_sites
 torredembarra_ind = list(abscisse_sites.values()).index('torredembarra')
@@ -401,13 +489,14 @@ def ftest(x):
 def ftest_recip(x):
     return -(x/(line['nij_step']/1000) + torredembarra_xval)
 
-# add secondary axis
+# add the secondary axis
 secax = ax[-1].secondary_xaxis(-0.25, functions=(ftest, ftest_recip))
-secax.set_xlabel('distance to the sea [km]')
+secax.set_xlabel('Distance to the sea [km]')
+
 
 ### Global options ---
-plot_title = f'{wanted_date}-{model}-{budget_type}-{var_name_bu}-{line_level}m agl'
-fig.suptitle(plot_title)
+plot_title = f'{wanted_date}-{line_level}m agl-{var_to_plot}-{var_to_plot_bu}'
+#fig.suptitle(plot_title)
 
 
 if save_plot:

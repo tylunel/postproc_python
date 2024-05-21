@@ -18,26 +18,30 @@ import os
 from metpy.plots import StationPlot
 
 ###############################################
-model = 'irr_d1'
+model = 'irrswi1_d1'
 
 domain_nb = int(model[-1])
 
-wanted_date = '20210715-0700'
+wanted_date = '20210716-2300'
 
 color_map = 'coolwarm'   # coolwarm, plasma, YlGnBu_r, ... (add _r to reverse)
                     # YlOrBr for orography
                     # RdYlGn for LAI
 
 var_name = 'THT'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR, TSWI_T_ISBA
-vmin = 285
-vmax = 310
+
+# vmin, vmax = 0, 15
+# cbar_label = 'Specific humidity [g kg$^{-1}$]'
+vmin, vmax = 290, 310
+cbar_label = 'Potential temperature [K]'
 
 # level, only useful if var 3D
 ilevel = 1  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
 ilevel_wind = 3
 
-zoom_on = 'marinada-wide'  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'marinada'  #None for no zoom, 'liaise' or 'urgell'
 
+sea_in_cyan = False
 add_winds = True
 add_smc_obs = True
 add_pgf = False
@@ -45,11 +49,18 @@ marinada_areas = False
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
 save_plot = True
+save_folder = f'./fig/map_smc_vs_model/{var_name}/'
+
+# plot_title = 'Relief'
+plot_title = '{2} July 2021 - {0}:{1}'.format(
+    str(pd.Timestamp(wanted_date).hour).zfill(2),
+    str(pd.Timestamp(wanted_date).minute).zfill(2),
+    str(pd.Timestamp(wanted_date).day).zfill(2))
 #save_folder = './figures/scalar_maps/pgd/'
 #save_folder = './figures/scalar_maps/domain{0}/{1}/{2}/'.format(
 #        domain_nb, model, var_name)
+
 if add_smc_obs:
-    save_folder = f'./fig/'
     if ilevel > 6:
         raise ValueError(f"""Height of model level and of observation stations
                          are significantly different:
@@ -86,7 +97,6 @@ ds = xr.open_dataset(filename)
 #ds1 = xr.open_dataset(
 #        gv.global_simu_folder + \
 #        '2.01_pgds_irr/PGD_400M_CovCor_v26_ivars.nc')
-
 
 # DIAGs
 ds1 = tools.subset_ds(ds, 
@@ -125,7 +135,9 @@ var2d = var2d.where(~(var2d == 999))
 fig1 = plt.figure(figsize=figsize)
 
 cmap = plt.cm.get_cmap(color_map).copy()
-#cmap.set_under('c')
+if sea_in_cyan and var_name=='ZS':
+    vmin = 0.1
+    cmap.set_under('c')
 
 # --- COLORMAP
 #plt.contourf(var2d.longitude, var2d.latitude, var2d,
@@ -138,18 +150,10 @@ plt.pcolormesh(var2d.longitude, var2d.latitude, var2d,
                vmin=vmin, vmax=vmax,
                )
 
-#plt.imshow(var2d.longitude, var2d.latitude, var2d,
-##               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
-#               cmap=color_map,
-##               levels=np.linspace(vmin, vmax, (vmax-vmin)*4+1), # fixed colorbar
-##               extend = 'both',  #highlights the min and max in edges values
-#               vmin=vmin, vmax=vmax,
-#               levels=20
-#               )
 
 #cbar = plt.colorbar(boundaries=[vmin, vmax])
 cbar = plt.colorbar()
-cbar.set_label('Potential temperature [K]')
+cbar.set_label(cbar_label)
     
 #cbar.set_clim(vmin, vmax)
 
@@ -189,7 +193,7 @@ if add_winds or add_pgf:
                  fontsize=9
                  )
 
-#%% STATION PLOT
+#%% SMC STATION PLOT
     
 if add_smc_obs:
     ax = plt.gca()
@@ -222,6 +226,9 @@ if add_smc_obs:
                         obs_t['altitude'], p0=ds1['MSLP'].mean()*100)
                 obs_t['THT'] = tools.potential_temperature_from_temperature(
                     obs_t['P_pa'], obs_t['T_kelvin'])
+                obs_t['RVT'] = tools.psy_ta_rh(
+                        obs_t['T'], obs_t['HR'])['mixing_ratio']  # in kg/kg
+                obs_t['MRV'] = obs_t['RVT']*1000    # in g/kg
 
                 # --- plot station data ---
                 if (lon_range[0] < obs['lon'] < lon_range[1] and \
@@ -239,17 +246,13 @@ if add_smc_obs:
                     # plot a scalar variable in the circle
                     ax.scatter(obs['lon'], obs['lat'],
                                s=50,
-                               color=cmap((obs_t['THT']-vmin)/(vmax-vmin)),
+                               color=cmap((obs_t[var_name]-vmin)/(vmax-vmin)),
                                edgecolors='k')
                     # add wind measurement height if different from 10m
                     if wind_height != 10:
                         ax.text(obs['lon']+0.008, obs['lat']+0.008, 
-                                 wind_height, 
+                                 wind_height,
                                  fontsize=7)
-#                    # plot a scalar variable in the circle
-#                    ax.scatter(obs['lon'], obs['lat'],
-#                                color=cmap((obs_t['THT']-vmin)/(vmax-vmin)),
-#                                edgecolors='k')
                     # state that this station was plotted
                     print(f'{filename} plotted')
             except (FileNotFoundError, ValueError, IndexError, TypeError) as e:
@@ -280,9 +283,7 @@ plt.contour(pgd.longitude.data,
             levels=0,   #+1 -> number of contour to plot 
             linestyles='solid',
             linewidths=1.,
-            colors='w'
-    #        colors=['None'],
-    #        hatches='-'
+            colors='w',
             )
 
 #France borders
@@ -319,20 +320,10 @@ plt.contour(isoalti.longitude.data,
 
 points = [
         'cendrosa',
-#        'ponts',
-          'elsplans', 
-#          'irta-corn',
-#          'lleida', 
-#          'zaragoza',
-#          'puig formigosa', 
-#          'tossal_baltasana', 
-#          'tossal_gros', 
-          'coll_lilla',
-          'serra_tallat',
-          'torredembarra',
-#          'tossal_torretes', 
-#       'moncayo', 'tres_mojones', 
-#          'guara', 'caro', 'montserrat', 'joar',
+        'elsplans',
+        'serra_miramar',
+        'serra_tallat',
+        'torredembarra',
           ]
 
 sites = {key:gv.whole[key] for key in points}
@@ -345,7 +336,7 @@ for site in sites:
                 )
     # print site name on fig:
     try:
-        sitename = sites[site]['longname']
+        sitename = sites[site]['acronym']
     except KeyError:
         sitename = site
         
@@ -382,12 +373,10 @@ if marinada_areas:
 
 
 # --- FIGURE OPTIONS and ZOOM
-    
-plot_title = wanted_date
 
 plt.title(plot_title)
-plt.xlabel('longitude')
-plt.ylabel('latitude')
+plt.xlabel('longitude [°]')
+plt.ylabel('latitude [°]')
 
 plt.ylim(lat_range)
 plt.xlim(lon_range)

@@ -36,6 +36,11 @@ save_folder = './fig/'
 plot_title = 'Domains of model'
 ##############################################
 
+cmap = plt.cm.get_cmap(color_map).copy()
+if var_name == 'ZS':
+    vmin=0.1
+    cmap.set_under('c')  # for plotting the sea in cyan
+
 if zoom_on == 'liaise':
     skip_barbs = 3 # 1/skip_barbs will be printed
     barb_length = 5.5
@@ -196,7 +201,7 @@ plt.contour(pgd.longitude.data,
             )
 
 #France borders
-sf = shapefile.Reader("TM-WORLD-BORDERS/TM_WORLD_BORDERS-0.3.sph")
+sf = shapefile.Reader("../TM-WORLD-BORDERS/TM_WORLD_BORDERS-0.3.sph")
 shapes=sf.shapes()
 france = shapes[64].points
 france_df = pd.DataFrame(france, columns=['lon', 'lat'])
@@ -216,7 +221,8 @@ points = [
           'elsplans', 
 #          'irta-corn',
           'lleida', 
-#          'zaragoza',
+          'zaragoza',
+          'barcelona',
 #          'puig formigosa', 
 #          'tossal_baltasana', 
 #          'tossal_gros', 
@@ -253,6 +259,12 @@ for site in sites:
                  sitename, 
                  fontsize=10)
 
+# add scale to map
+plt.plot([-2.59, -2.], [40.8, 40.8],  
+         color='k',
+         linewidth=2,
+         )
+plt.text(-2.5, 40.85, '50 km', fontsize=10)
 
 #%% FIGURE OPTIONS and ZOOM
 #if len(varNd.shape) == 2:

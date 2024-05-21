@@ -3,49 +3,42 @@
 @author: Tanguy LUNEL
 Creation : 07/01/2021
 
-Cf also plot_verti_profile.py
-
-example for skewT graph here:
-    https://unidata.github.io/MetPy/latest/examples/plots/Skew-T_Layout.html#sphx-glr-examples-plots-skew-t-layout-py
 """
 import numpy as np
 import tools
 import pandas as pd
 import matplotlib.pyplot as plt
-from metpy.units import units
-import metpy.calc as mpcalc
 import xarray as xr
 import global_variables as gv
 
 
 ########## Independant parameters ###############
-wanted_date = '20210716-1700'
+wanted_date = '20210721-1600'
 site = 'elsplans'  # 'cendrosa', 'elsplans', 'irta'
 
-# variable name from MNH files: 'THT', 'RVT'
-var_simu = 'THTV'
-# variable name from obs files: 'potentialTemperature', 'mixingRatio', virtualPotentialTemperature
-var_obs = 'virtualPotentialTemperature'
+# variable name from MNH files: 'THT', THTV 'RVT', 'WS'
+var_simu = 'THT'
+# variable name from obs files: 'potentialTemperature', 'mixingRatio', virtualPotentialTemperature, windSpeed
+var_obs = 'potentialTemperature'
+
 coeff_corr = 1  #to switch from obs to simu2
 
 #vmin, vmax = 288, 314  # for THT
 vmin, vmax = None, None
 
 simu_list = [
+#            'irrswi1_d1_16_10min',
             'irrswi1_d1',
-#            'irrswi1_d1_old',
-            'std_d1', 
-#            'irrlagrip30_d1'
+#            'std_d1', 
+#            'irrlagrip30_d1',
+#            'irrlagrip30_d1_old',
 #            'irr_d1',
             ]
 
 simu_only = False
 
-# Vertical path to show in simu:
-# Path in simu is the direct 1d column
-straight_profile = False
 # Path in simu is average of neighbouring grid points
-mean_profile = True
+mean_profile = False
 column_width = 3
 # Path in simu follows real RS path  #issue: fix discontinuities
 follow_rs_position = False
@@ -56,14 +49,14 @@ toplevel = 2500
 
 save_plot = True
 save_folder = f'figures/verti_profiles/{site}/{var_simu}/'
-figsize=(7, 7)
+figsize=(5, 7)
 
 ##################################################
 
-if site in ['cendrosa', 'elsplans', 'irta']:
-    lat = gv.sites[site]['lat']
-    lon = gv.sites[site]['lon']
-else:
+lat = gv.whole[site]['lat']
+lon = gv.whole[site]['lon']
+
+if site not in ['cendrosa', 'elsplans', 'irta'] and simu_only != True:
     raise ValueError('Site without radiosounding')
 
 if var_obs == 'mixingRatio':
@@ -76,25 +69,13 @@ colordict = {'irr_d2': 'g',
              'irr_d1': 'g', 
              'std_d1': 'r', 
              'irrlagrip30_d1': 'orange',
+             'irrlagrip30_d1_old': 'yellow',
              'irrswi1_d1': 'b',
+             'irrswi1_d1_16_10min': 'b',
              'irrswi1_d1_old': 'c',
              'irr_d2_old': 'g', 
              'std_d2_old': 'r', 
              'obs': 'k'}
-
-#%% OBS PARAMETERS
-#if site == 'elsplans_alt':
-#    datafolder = \
-#            '/cnrm/surface/lunelt/data_LIAISE/'+ 'elsplans' +'/radiosoundings/'
-#else:
-#    datafolder = \
-#            gv.global_data_liaise + site + '/radiosoundings/'
-#
-#filename = tools.get_obs_filename_from_date(
-#        datafolder, 
-#        wanted_date,
-#        dt_threshold=pd.Timedelta('0 days 00:45:00'),
-#        regex_date='202107\d\d.\d\d\d\d')
         
 
 #%% LOAD OBS DATASET
@@ -177,7 +158,6 @@ if obs_available:
              color=colordict['obs']
              )
 
-    
 
 ## - add wind barbs
 #wind_speed_obs = obs.windSpeed.values * units.meter_per_second
@@ -193,12 +173,10 @@ height = {}
 for model in simu_list:
     print('model: ', model)
     
-    # retrieve and open file
-    filename_simu = tools.get_simu_filepath(model, wanted_date, 
-                                            file_suffix='',  #'dg' or ''
-                                            out_suffix='.OUT',)
-    ds = xr.open_dataset(filename_simu)
-    ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'])
+    # Retrieve and open file
+    ds = tools.open_relevant_file(model, wanted_date, var_simu)
+    
+    ds = tools.flux_pt_to_mass_pt(ds)
     
     # find indices from lat,lon values 
     index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon, 
@@ -208,15 +186,22 @@ for model in simu_list:
     # keep only low layer of atmos (~ABL)
     var3d_low = var3d.where(var3d.level<toplevel, drop=True)
     
+    # get simulation file datetime
+    try:
+        simu_time = pd.Timestamp(var3d.time.values).strftime('%d_%H:%M')
+    except:
+        simu_time = pd.Timestamp(var3d.time.values[0]).strftime('%d_%H:%M')
+    
     if mean_profile:
-        var3d_column = var3d_low[
-            0, :, 
-            int(index_lat-column_width/2):int(index_lat+column_width/2), 
-            int(index_lon-column_width/2):int(index_lon+column_width/2)]
+        var3d_column = var3d_low.isel(
+            nj=np.arange(int(index_lat-column_width/2),int(index_lat+column_width/2)),
+            ni=np.arange(int(index_lon-column_width/2),int(index_lon+column_width/2))
+            ).squeeze()
         var1d_column = var3d_column.mean(dim=['nj', 'ni'])
         var1d_column_std = var3d_column.std(dim=['nj', 'ni'])
         plt.plot(var1d_column.data, var1d_column.level, 
-                 label='mean_&_stdev_{0}'.format(model), 
+#                 label=f'mean_&_stdev_{model}',
+                 label=f'mean_&_stdev_{model}_{simu_time}',
                  c=colordict[model],
                  )
         plt.fill_betweenx(var1d_column.level, 
@@ -225,13 +210,14 @@ for model in simu_list:
                           alpha=0.3, 
                           facecolor=colordict[model],
                           )
-    if straight_profile:
-        var1d_column = var3d_low[0, :, index_lat, index_lon] #1st index is time, 2nd is Z,..
+    else:  # straight profile
+        var1d_column = var3d_low.isel(nj=index_lat, ni=index_lon).squeeze()
         # SIMU PLOT
         plt.plot(var1d_column.data, var1d_column.level, 
                  ls='--', 
                  color=colordict[model], 
-                 label=model
+#                 label=model,
+                 label=f'{model}_{simu_time}',
                  )
         
     # Realistic path of radiosounding (with interpolation)
@@ -252,9 +238,6 @@ for model in simu_list:
                  color=colordict[model], 
                  label=model+'_interp'
                  )
-
-#TODO: add wind barbs
-#TODO: add CAPE and CIN ?
 
 
 #%% GRAPH ESTHETIC
@@ -279,7 +262,7 @@ try:
     plt.xlabel(var3d_low.long_name + '_[' + var3d_low.units + ']')
 except AttributeError:
     plt.xlabel(var_simu)
-plt.legend()
+plt.legend(loc='upper left')
 plt.grid()
 plt.tight_layout()
 

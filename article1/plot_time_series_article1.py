@@ -15,20 +15,20 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'cendrosa'
+site = 'elsplans'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'soil_temp_1'  # soil_temp_1, shf_1, lhf_1, ta_2, TEMP_2m, hus_2, RHO_2m
+varname_obs = 'LE_2m_WPL'  # soil_temp_1, shf_1, lhf_1, ta_2, hus_2, TEMP_2m, RHO_2m, LE_2m, H_2m
 
-varname_sim_list = ['TG2_ISBA']  # TG2_ISBA, H_ISBA, LE_ISBA, T2M_ISBA, Q2M_ISBA
-plot_title = ''  #'Soil temperature', Latent heat flux, Air temperature, Specific humidity
-ylabel = 'Temperature [°C]'  # Temperature [°C], Latent heat flux [W m$^{-2}$], 
+varname_sim_list = ['LE_ISBA']  # TG2_ISBA, H_ISBA, LE_ISBA, T2M_ISBA, Q2M_ISBA
+plot_title = 'Latent heat flux at Els Plans'  #'Soil temperature', Latent heat flux, Air temperature, Specific humidity
+ylabel = 'Latent heat flux [W m$^{-2}$]'  # Temperature [°C], Latent heat flux [W m$^{-2}$], 
 
-vmin, vmax = 10,55  # 10,55   -300,700,    15,45    0,0.017
+vmin, vmax = -300,700,  # 10,55   -300,700,    15,45    0,0.017
 
-add_seb_residue = False  # for  heat fluxes
-kelvin_to_celsius = True  # for  TG2_ISBA, T2M_ISBA
+add_seb_residue = True  # for  heat fluxes
+kelvin_to_celsius = None  # for  TG2_ISBA, T2M_ISBA
 secondary_axis = None  # 'evap' for LE
 
 
@@ -38,14 +38,14 @@ ilevel =  10  #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 figsize = (7, 7) #small for presentation: (6,6), big: (15,9), paper:(7, 7)
 plt.rcParams.update({'font.size': 11})
 
-save_plot = True
+save_plot = False
 save_folder = './fig/'
 
 models = [
-#        'irr_d2_old', 
-#        'std_d2_old',
-        'irr_d2', 
-        'std_d2', 
+        'irr_d2_old', 
+        'std_d2_old',
+        # 'irr_d2', 
+        # 'std_d2', 
 #        'std_d1',
 #        'irr_d1',
 #        'irrlagrip30_d1',
@@ -57,7 +57,6 @@ errors_computation = False
 compare_to_residue_corr = False
 
 add_irrig_time = False
-
 
 
 ######################################################
@@ -163,8 +162,10 @@ elif site == 'preixana':
     in_filenames_obs = filename_prefix + date
 elif site == 'elsplans':
     freq = '30'  # '5' min or '30'min
-    datafolder = gv.global_data_liaise + '/elsplans/mat_50m/{0}min/'.format(freq)
-    filename_prefix = 'LIAISE_'
+    # datafolder = gv.global_data_liaise + '/elsplans/mat_50m/{0}min/'.format(freq)
+    # filename_prefix = 'LIAISE_'
+    datafolder = gv.global_data_liaise + '/elsplans/mat_50m/{0}min_v4/'.format(freq)
+    filename_prefix = 'LIAISE_ELS-PLANS_UKMO_MTO-30MIN_L2_202107'
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
 #    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
@@ -186,9 +187,10 @@ if varname_obs != '':
     #    dat_to_nc = 'uib'  #To create a new netcdf file
         dat_to_nc = None   #To keep existing netcdf file
     elif site == 'elsplans':
-        out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
-        dat_to_nc = 'ukmo'
-    #    dat_to_nc = None   #To keep existing netcdf file
+        # out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
+        # dat_to_nc = 'ukmo'
+        out_filename_obs = 'LIAISE_ELS-PLANS_UKMO_MTO-30MIN_L2_202107'
+        dat_to_nc = None   #To keep existing netcdf file
     else:
         out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
         dat_to_nc = None
@@ -264,7 +266,8 @@ if varname_obs != '':
                 periods=len(obs[varname_obs]), 
                 freq='{0}T'.format(freq))
         
-        obs['time']=dati_arr_obs
+        obs['time']=dati_arr_obs + pd.Timedelta(15, 'min')
+        # obs['time'] = obs['time'] + pd.Timedelta(15, 'min')
         
         if varname_obs == 'RHO_2m':
             obs = obs.where(obs.time>pd.Timestamp('20210715T1200'), drop=True)
@@ -345,12 +348,12 @@ for  varname_sim in varname_sim_list:
     
     for model in simu_folders:
 
-        ds = tools.load_dataset(varname_sim_preproc, model)
+        ds = tools.load_series_dataset(varname_sim_preproc, model)
         
         try:
             index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
         except AttributeError:  #if the data does not have lat-lon data, merge with another that have it
-            ds = tools.load_dataset(['H_ISBA',] + varname_sim_preproc, model)
+            ds = tools.load_series_dataset(['H_ISBA',] + varname_sim_preproc, model)
             # and now, try again:
             index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
         

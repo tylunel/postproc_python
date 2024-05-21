@@ -23,16 +23,16 @@ wanted_date = '20210715-1500'
 
 site = 'cendrosa'
 
-varname_obs_prefix = 'ROOT_FRC'   #options are: soil_moisture, soil_temp
+varname_obs_prefix = 'soil_moisture'   #options are: soil_moisture, soil_temp
 
 models = [
 #        'irr_d2_old', 
 #        'std_d2_old',
 #        'irr_d2', 
 #        'std_d2', 
-#        'irr_d1', 
+        'irrswi1_d1', 
 #        'std_d1',
-        'lagrip100_d1',
+        # 'lagrip100_d1',
          ]
 
 plot_title = 'Ground profile at {0} on {1}'.format(site, wanted_date)
@@ -70,7 +70,8 @@ elif varname_obs_prefix == 'soil_temp':
     constant_obs = 273.15
     sfx_letter = 'T'
 else:
-    raise ValueError('Unknown value')
+    pass
+    # raise ValueError('Unknown value')
     
 
 #%% OBS dataset
@@ -100,7 +101,7 @@ val_simu = {}
 
 for model in simu_folders:
     datafolder = father_folder + simu_folders[model]
-    filename = tools.get_simu_filename(model, wanted_date)
+    filename = tools.get_simu_filepath(model, wanted_date)
     
     # load dataset, default datetime okay as pgd vars are all the same along time
     ds = xr.open_dataset(filename)

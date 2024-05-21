@@ -12,34 +12,34 @@ import numpy as np
 import matplotlib.pyplot as plt
 import xarray as xr
 import tools
-from windrose import WindroseAxes
-import metpy.calc as mpcalc
-from metpy.units import units
+# from windrose import WindroseAxes
+# import metpy.calc as mpcalc
+# from metpy.units import units
 import global_variables as gv
 
 ################%% Independant Parameters (TO FILL IN):
     
-site = 'C6'
-
-#domain to consider for simu files: 1 or 2
-#domain_nb = 2
+site = 'irta-corn'
 
 ilevel = 3   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
-save_plot = False 
-#save_folder = './figures/winds/'.format(domain_nb)
+save_plot = False
 save_folder = './figures/wind_series/'
 figsize = (11, 6) #small for presentation: (6,6), big: (15,9)
 
 models = [
-#        'irrswi1_d1',
-        'irrlagrip30_d1',
-        'irrlagrip30_d2',
-#        'std_d1',
-#        'irr_d2_old', 
-#        'std_d2_old',
-#        'irr_d2', 
-#        'std_d2', 
+        # 'irrlagrip30_d1_16_10min',
+        # 'irrlagrip30_d1',
+        # 'irr_d2_old', 
+        # 'std_d2_old',
+        # 'std_d2', 
+        # 'irr_d2', 
+        # 'std_d1_16_10min', 
+        # 'irr_d1',
+        # 'irrlagrip30thld07_d1',
+        # 'noirr_lai_d1',
+        # 'irrswi1_d1_16_10min',
+        'irrswi1_d1',
          ]
 
 errors_computation = False
@@ -53,24 +53,8 @@ global_simu_folder = gv.global_simu_folder
 
 date = '2021-07'
 
-colordict = {'irr_d2': 'g', 
-             'std_d2': 'r',
-             'irr_d1': 'g', 
-             'std_d1': 'r', 
-             'irrlagrip30_d1': 'y',
-             'irrlagrip30_d2': 'y',
-             'irr_d2_old': 'g', 
-             'std_d2_old': 'r', 
-             'obs': 'k'}
-styledict = {'irr_d2': '-', 
-             'std_d2': '-',
-             'irr_d1': '--', 
-             'std_d1': '--', 
-             'irrlagrip30_d1': '--',
-             'irrlagrip30_d2': '-',
-             'irr_d2_old': ':', 
-             'std_d2_old': ':', 
-             'obs': '-'}
+colordict = gv.colordict
+styledict = gv.styledict
 
 
 def plot_wind_speed(ws, dates=None, start_date=None, end_date=None, 
@@ -137,18 +121,18 @@ def plot_wind_dir(wd, dates=None, start_date=None, end_date=None,
     ax1.set_yticklabels(['0 (N)', '90 (E)', '180 (S)', '270 (W)'])
 
 
-def plot_windrose(ws, wd, start_date=None, end_date=None, fig=None, **kwargs):
-    #keep only data between  start & end:
-    if start_date is not None:
-        ws = ws[ws.time > start_date]
-        ws = ws[ws.time < end_date]
-    if end_date is not None:
-        wd = wd[wd.time > start_date]
-        wd = wd[wd.time < end_date]
+# def plot_windrose(ws, wd, start_date=None, end_date=None, fig=None, **kwargs):
+#     #keep only data between  start & end:
+#     if start_date is not None:
+#         ws = ws[ws.time > start_date]
+#         ws = ws[ws.time < end_date]
+#     if end_date is not None:
+#         wd = wd[wd.time > start_date]
+#         wd = wd[wd.time < end_date]
     
-    ax = WindroseAxes.from_ax()
-    ax.bar(wd, ws, normed=True, opening=0.8, edgecolor='white', **kwargs)
-    ax.set_legend()
+#     ax = WindroseAxes.from_ax()
+#     ax.bar(wd, ws, normed=True, opening=0.8, edgecolor='white', **kwargs)
+#     ax.set_legend()
 
 
 
@@ -169,6 +153,12 @@ elif site == 'preixana':
     varname_obs_wd = 'wd_2'
     datafolder = gv.global_data_liaise + '/preixana/30min/'
     filename_prefix = 'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
+    in_filenames_obs = filename_prefix + date
+elif site == 'ivars-lake':
+    varname_obs_ws = 'ws_2'
+    varname_obs_wd = 'wd_2'
+    datafolder = gv.global_data_liaise + '/ivars-lake/30min/'
+    filename_prefix = 'LIAISE_IVARS-ESTANY_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
 elif site == 'elsplans':
     if ilevel == 3:
@@ -203,9 +193,10 @@ if site == 'irta-corn':
     out_filename_obs = in_filenames_obs
     dat_to_nc = 'uib'
 elif site == 'elsplans':
-    out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
+#    out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
+    out_filename_obs = in_filenames_obs
     dat_to_nc='ukmo'
-elif site == 'cendrosa':
+elif site in ['cendrosa', 'preixana', 'ivars-lake']:
     out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
     dat_to_nc = None
 else:  # SMC case
@@ -213,14 +204,14 @@ else:  # SMC case
     dat_to_nc = None
     
 # Concatenate multiple days
-if site in ['cendrosa', 'elsplans', 'irta-corn']:
+if site in ['cendrosa', 'elsplans', 'ivars-lake', 'irta-corn']:
     tools.concat_obs_files(datafolder, in_filenames_obs, out_filename_obs,
                            dat_to_nc=dat_to_nc)
 
 # Load data:
 obs = xr.open_dataset(datafolder + out_filename_obs)
 
-if site not in ['cendrosa', 'elsplans', 'irta-corn']:
+if site not in ['cendrosa', 'elsplans', 'ivars-lake', 'irta-corn']:
     wind_height = int((obs['obs_wind_height'].data))
     varname_obs_ws = f'VV{wind_height}'
     varname_obs_wd = f'DV{wind_height}'
@@ -253,11 +244,11 @@ else:
     ws_obs_filtered = ws_obs  # no filtering
     dati_arr_obs = ws_obs.time
     
-ax[0].plot(dati_arr_obs, ws_obs_filtered, 
+ax[0].plot(dati_arr_obs.values, ws_obs_filtered, 
          label='obs_' + varname_obs_ws,
          color=colordict['obs'],
          linewidth=1)
-ax[1].plot(dati_arr_obs, wd_obs, 
+ax[1].plot(dati_arr_obs.values, wd_obs, 
          label='obs_' + varname_obs_wd,
          color=colordict['obs'],
          linewidth=1)
@@ -271,16 +262,14 @@ bias = {}
 obs_sorted = {}
 sim_sorted = {}
 
-#varname_sim_list = ['UT.OUT', 'VT.OUT']
-
 for model in simu_folders:
-#    if model == 'irrlagrip30_d1':
-#        varname_sim_list = ['UT.OUT', 'VT.OUT']
-#    else:
+
     varname_sim_list = ['UT', 'VT']
+    out_suffix = ''
+    file_suffix = 'dg'
     
-    ds1 = tools.load_dataset(varname_sim_list, model, 
-                             concat_if_not_existing=True)
+    ds1 = tools.load_series_dataset(varname_sim_list, model, concat_if_not_existing=True,
+                             out_suffix=out_suffix, file_suffix=file_suffix)
     
     # find indices from lat,lon values 
     index_lat, index_lon = tools.indices_of_lat_lon(ds1, lat, lon)
@@ -297,27 +286,28 @@ for model in simu_folders:
         print('WARNING! datetime array is hard coded')
         start = np.datetime64('2021-07-21T01:00')
         
-    if 'OUT' in varname_sim_list[0]:
-        dati_arr_sim = np.array([start + np.timedelta64(i*30, 'm') for i in np.arange(0, ds1['record'].shape[0])])
+    if out_suffix == '.OUT':
+        freq_simu = gv.output_freq_dict[model]
+        dati_arr_sim = np.array([start + np.timedelta64(i*freq_simu, 'm') for i in np.arange(0, ds1['time'].shape[0])])
     else:
         dati_arr_sim = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, ut_md.shape[0])])
 
     # PLOT d1
-    if len(ut_md.shape) == 5:
-        ut_1d = ut_md[:, :, ilevel, index_lat, index_lon].data #1st index is time, 2nd is ?, 3rd is Z,..
-        vt_1d = vt_md[:, :, ilevel, index_lat, index_lon].data
-    elif len(ut_md.shape) == 4:
-        ut_1d = ut_md[:, ilevel ,index_lat, index_lon].data #1st index is time, 2nd is Z,..
-        vt_1d = vt_md[:, ilevel ,index_lat, index_lon].data
+
+    if len(ut_md.shape) > 3:
+        ut_1d = ut_md.isel(ni_u=index_lon).isel(nj_u=index_lat).isel(level=ilevel)
+        vt_1d = vt_md.isel(ni_v=index_lon).isel(nj_v=index_lat).isel(level=ilevel)
     elif len(ut_md.shape) == 3:
         ut_1d = ut_md[:, index_lat, index_lon].data 
         vt_1d = vt_md[:, index_lat, index_lon].data
     
+    
     #computation of windspeed and  winddirection following ut and vt
-    ws = mpcalc.wind_speed(ut_1d * units.meter_per_second, 
-                           vt_1d * units.meter_per_second)
-    wd = mpcalc.wind_direction(ut_1d * units.meter_per_second,
-                               vt_1d * units.meter_per_second)
+    # ws = mpcalc.wind_speed(ut_1d * units.meter_per_second, 
+    #                        vt_1d * units.meter_per_second)
+    # wd = mpcalc.wind_direction(ut_1d * units.meter_per_second,
+    #                            vt_1d * units.meter_per_second)
+    ws, wd = tools.calc_ws_wd(ut_1d, vt_1d)
     
     plot_wind_speed(ws, dates=dati_arr_sim, fig=ax[0], 
                     color=colordict[model],

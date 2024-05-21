@@ -15,11 +15,11 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'cendrosa'
+site = 'irta-corn'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'ta_2'
+varname_obs = 'Q_1_1_1'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -38,7 +38,7 @@ varname_obs = 'ta_2'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim_list = ['T2M_ISBA']
+varname_sim_list = ['Q2M_ISBA']
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 # U_STAR, BOWEN
 
@@ -54,13 +54,14 @@ models = [
 #        'std_d2_old',
 #        'irr_d2', 
 #        'std_d2', 
-        'irr_d1', 
+        'irrswi1_d1', 
         'std_d1',
 #        'irrlagrip30_d1',
 #        'lagrip100_d1',
          ]
 
 stdtype = None  # 'fillbetween' or 'errorbars' or None
+hspace = 4  # error bars horizontal spacing
 errors_computation = True
 add_seb_residue = False
 ######################################################
@@ -70,24 +71,26 @@ father_folder = gv.global_simu_folder
 
 date = '2021-07'
 
-colordict = {'irr_d2': 'g', 
-             'std_d2': 'r',
-             'irr_d1': 'g', 
-             'std_d1': 'r', 
-             'irrlagrip30_d1': 'y',
-             'irr_d2_old': 'g', 
-             'std_d2_old': 'r', 
-             'obs': 'k'}
-styledict = {'irr_d2': '-', 
-             'std_d2': '-',
-             'irr_d1': '--', 
-             'std_d1': '--', 
-             'irrlagrip30_d1': '--',
-             'irr_d2_old': ':', 
-             'std_d2_old': ':', 
-             'obs': '-'}
-    
+# colordict = {'irr_d2': 'g', 
+#              'std_d2': 'r',
+#              'irr_d1': 'g', 
+#              'std_d1': 'r', 
+#              'irrlagrip30_d1': 'y',
+#              'irr_d2_old': 'g', 
+#              'std_d2_old': 'r', 
+#              'obs': 'k'}
+# styledict = {'irr_d2': '-', 
+#              'std_d2': '-',
+#              'irr_d1': '--', 
+#              'std_d1': '--', 
+#              'irrlagrip30_d1': '--',
+#              'irr_d2_old': ':', 
+#              'std_d2_old': ':', 
+#              'obs': '-'}
 
+colordict = gv.colordict
+styledict = gv.styledict
+    
 #%% Dependant Parameters
 
 # default values (can be change below)
@@ -334,9 +337,12 @@ if varname_obs != '':
                           facecolor=colordict['obs'],
                           )
     if stdtype == 'errorbar':
-        plt.errorbar(df_mean_profile['hour'], df_mean_profile['mean'], 
-                     yerr=df_mean_profile['std'], 
-                     elinewidth=0.5, capsize=2)
+        plt.errorbar(df_mean_profile['hour'][::hspace],
+                     df_mean_profile['mean'][::hspace],
+                     yerr=df_mean_profile['std'][::hspace],
+                     fmt='none',
+                     elinewidth=0.5, capsize=2,
+                     color=colordict['obs'])
         
     # add residue on graph
     if add_seb_residue:
@@ -404,6 +410,7 @@ rmse = {}
 bias = {}
 obs_sorted = {}
 sim_sorted = {}
+esthetic_shift = 0
 
 for  varname_sim in varname_sim_list:
 
@@ -416,12 +423,12 @@ for  varname_sim in varname_sim_list:
     
     for model in simu_folders:
 
-        ds = tools.load_dataset(varname_sim_preproc, model)
+        ds = tools.load_series_dataset(varname_sim_preproc, model)
         
         try:
             index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
         except AttributeError:  #if the data does not have lat-lon data, merge with another that have it
-            ds = tools.load_dataset(['H_ISBA',] + varname_sim_preproc, model)
+            ds = tools.load_series_dataset(['H_ISBA',] + varname_sim_preproc, model)
             # and now, try again:
             index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
         
@@ -495,9 +502,16 @@ for  varname_sim in varname_sim_list:
                               facecolor=colordict[model],
                               )
         if stdtype == 'errorbar':
-            plt.errorbar(df_mean_profile['hour'], df_mean_profile['mean'], 
-                         yerr=df_mean_profile['std'], 
-                         elinewidth=0.5, capsize=2)
+            # plt.errorbar(df_mean_profile['hour'], df_mean_profile['mean'], 
+            #              yerr=df_mean_profile['std'], 
+            #              elinewidth=0.5, capsize=2)
+            esthetic_shift += 0.15
+            plt.errorbar(df_mean_profile['hour'][::hspace] + esthetic_shift,
+                         df_mean_profile['mean'][::hspace],
+                         yerr=df_mean_profile['std'][::hspace],
+                         fmt='none',
+                         elinewidth=0.5, capsize=2,
+                         color=colordict[model])
             
         
         ax = plt.gca()

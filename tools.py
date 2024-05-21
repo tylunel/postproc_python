@@ -15,13 +15,14 @@ from scipy import interpolate
 import matplotlib.pyplot as plt
 import pandas as pd
 import xarray as xr
-from metpy.units import units
+# from metpy.units import units
 #import metpy.calc as mcalc
 import re
 import global_variables as gv
 #from datetime import datetime as dt
 from shapely.geometry import Point
 #from difflib import SequenceMatcher
+import warnings
 
 
 def indices_of_lat_lon(ds, lat, lon, verbose=True):
@@ -53,12 +54,8 @@ def indices_of_lat_lon(ds, lat, lon, verbose=True):
                 lat_dat = ds['latitude_v'].data
                 lon_dat = ds['longitude_v'].data
             except KeyError:
-                try:
-                    lat_dat = ds['latitude_w'].data
-                    lon_dat = ds['longitude_w'].data
-                except KeyError:
-                    raise AttributeError("""this dataset does not have 
-                                         latitude-longitude coordinates""")
+                raise AttributeError("""this dataset does not have 
+                                     latitude-longitude coordinates""")
     
     # Gross evaluation of lat, lon (because latitude lines are curved)
     distance2lat = np.abs(lat_dat - lat)
@@ -111,10 +108,12 @@ def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[],
         lon_range = prop['lon_range']
     elif zoom_on == None:
         if lat_range == []:
-            raise ValueError("Argument 'zoom_on' or lat_range & lon_range must be given")
-        else:
-            lat_range = lat_range
-            lon_range = lon_range
+            # raise ValueError("Argument 'zoom_on' or lat_range & lon_range must be given")
+            print('No subsetting done on the dataset.')
+            return ds
+        # else:
+        #     lat_range = lat_range
+        #     lon_range = lon_range
         
     nj_min, ni_min = indices_of_lat_lon(ds, 
                                         np.min(lat_range), np.min(lon_range),
@@ -142,7 +141,8 @@ def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[],
     return ds_subset.squeeze()
 
 
-def load_dataset(varname_sim_list, model, concat_if_not_existing=True):
+def load_series_dataset(varname_sim_list, model, concat_if_not_existing=True,
+                        out_suffix='', file_suffix='dg'):
     """
     Load a simulation file in netcdf format. If not already existing,
     tries to concatenate multiple instantaneous output files into a series.
@@ -157,17 +157,20 @@ def load_dataset(varname_sim_list, model, concat_if_not_existing=True):
     
     for i, varname_item in enumerate(varname_sim_list):
         # get format of file to concatenate
-        in_filenames_sim = gv.format_filename_simu_wildcards[model]
+#        in_filenames_sim = gv.format_filename_simu_wildcards[model]
+        in_filenames_sim = gv.format_filename_simu_new[model].format(
+            seg_nb='??', output_nb_3f='???', output_nb_2f='??',
+            out_suffix=out_suffix, file_suffix=file_suffix)
         gridnest_nb = in_filenames_sim[6]  # integer: 1 or 2 in my case
         # set name of concatenated output file
-        out_filename_sim = f'LIAIS.{gridnest_nb}.{varname_item}.nc'
+        out_filename_sim = f'LIAIS.{gridnest_nb}.{varname_item}{out_suffix}.nc'
         # path of file
         datafolder = global_simu_folder + gv.simu_folders[model]
         # concatenate multiple days if not already existing
         if concat_if_not_existing:
             concat_simu_files_1var(datafolder, varname_item, 
                                    in_filenames_sim, out_filename_sim)
-            
+        
         if i == 0:      # if first data, create new dataset
             ds = xr.open_dataset(datafolder + out_filename_sim)
         else:           # append data to existing dataset
@@ -175,6 +178,17 @@ def load_dataset(varname_sim_list, model, concat_if_not_existing=True):
             ds = ds.merge(ds_temp)
     
     return ds
+
+
+def load_dataset(varname_sim_list, model, concat_if_not_existing=True,
+                 out_suffix='', file_suffix='dg'):
+    warnings.warn(
+        """Deprecation warning:
+        'load_dataset' should be replaced by 'load_series_dataset'.
+        """)
+    return load_series_dataset(varname_sim_list, 
+                               model, concat_if_not_existing=True,
+                               out_suffix='', file_suffix='dg')
 
 
 def open_budget_file(filename, budget_type):
@@ -281,7 +295,8 @@ def open_budget_file(filename, budget_type):
     return ds
 
 
-def compound_budget_file(filename_bu):
+def open_multiple_budget_file(filename_bu, budget_type_list=['UU', 'VV'],
+                              wanted_datetime=None):
     """
     Create xarray.Dataset with compound budget, typically UU and VV data
     (code need adaptation in order to work with var different from UU and VV).
@@ -294,30 +309,94 @@ def compound_budget_file(filename_bu):
         xarray.Dataset
     
     """
-    # load separately the different budget files
-    ds_bu_UU = open_budget_file(filename_bu, 'UU')
-    ds_bu_VV = open_budget_file(filename_bu, 'VV')
+    budget_file_dict = {}
     
-    # ensure that dataset are of the same size:
-    ds_bu_UU = ds_bu_UU.where(ds_bu_VV.nj==ds_bu_UU.nj).where(ds_bu_VV.ni==ds_bu_UU.ni)
-    ds_bu_VV = ds_bu_VV.where(ds_bu_VV.nj==ds_bu_UU.nj).where(ds_bu_VV.ni==ds_bu_UU.ni)
+    # Load separately the different budget files
+    for bu in budget_type_list:
+        budget_file_dict[bu] = open_budget_file(filename_bu, bu)
     
-    # merge the 2 datasets in 1
-    for var_name_bu in list(ds_bu_VV.keys()):
-        ds_bu_UU = ds_bu_UU.rename({var_name_bu: f'{var_name_bu}_UU'})
-        ds_bu_VV = ds_bu_VV.rename({var_name_bu: f'{var_name_bu}_VV'})
+    # Ensure that dataset are of the same size: -> NOT NEEDED I THINK: 'join' = outer anyway for the merge step
+#    ds_bu_UU == ds_bu_UU.where(ds_bu_VV.nj==ds_bu_UU.nj).where(ds_bu_VV.ni==ds_bu_UU.ni)
+#    ds_bu_VV = ds_bu_VV.where(ds_bu_VV.nj==ds_bu_UU.nj).where(ds_bu_VV.ni==ds_bu_UU.ni)
+
+    # Change names of variable by adding the budget type
+    for bu in budget_type_list:
+        for var_name in list(budget_file_dict[bu].keys()):
+            budget_file_dict[bu] = budget_file_dict[bu].rename({var_name: f'{var_name}_{bu}'})
     
+    # Merge the datasets in 1
     # fix unsignificant differences in lat/lon coords between datasets
     # note that 1e-5=0.00001° in latitude or longitude ~= 1m
-    if np.abs(ds_bu_UU.latitude - ds_bu_VV.latitude).max() < 1e-5:
-        ds_bu_VV['latitude'] = ds_bu_UU.latitude
-    if np.abs(ds_bu_UU.longitude - ds_bu_VV.longitude).max() < 1e-5:
-        ds_bu_VV['longitude'] = ds_bu_UU.longitude
+    for i, bu in enumerate(budget_type_list):
+        if i==0:
+            ds_out = budget_file_dict[bu]
+        else:
+            if np.abs(budget_file_dict[bu].latitude - ds_out.latitude).max() < 1e-5:
+                budget_file_dict[bu]['latitude'] = ds_out.latitude
+            if np.abs(budget_file_dict[bu].longitude - ds_out.longitude).max() < 1e-5:
+                budget_file_dict[bu]['longitude'] = ds_out.longitude
+            # concatenate the datasets together
+            ds_out = ds_out.merge(budget_file_dict[bu])
     
-    # eventually merge the datasets
-    ds_bu = xr.merge([ds_bu_UU, ds_bu_VV])
+    # if a specific datetime is requested:
+    if wanted_datetime is not None:
+        hour = pd.Timestamp(wanted_datetime).hour
+        ds_out = ds_out.isel(time_budget=hour)
+        ds_out = ds_out.assign_coords({'time': pd.Timestamp(wanted_datetime)})
 
-    return ds_bu
+    return ds_out
+
+
+def compound_budget_file(filename_bu, budget_type_list=['UU', 'VV']):
+    warnings.warn(
+        """Deprecation warning:
+        'compound_budget_file' should be replaced by 'open_multiple_budget_file'.
+        """)
+    return open_multiple_budget_file(filename_bu, 
+                                     budget_type_list=['UU', 'VV'])
+
+
+def open_relevant_file(model, wanted_date, var_simu):
+    """
+    Choose the file to open depending on the variable wanted.
+    """
+    # --- Retrieve and open file
+    # Budget variables
+    if var_simu[-3:] in ['_TH',  '_RV', '_TK', '_UU', '_VV', '_WW',]:
+        filename_simu = get_simu_filepath(model, wanted_date, 
+                                          filetype='000',)
+        ds = open_multiple_budget_file(filename_simu, [var_simu[-2:],],
+                                       wanted_datetime=wanted_date)
+    elif var_simu[-3:] in ['_UV',]:
+        raise NameError('to be coded')
+        # code below could do?
+#        filename_simu = tools.get_simu_filepath(model, wanted_date, 
+#                                                filetype='000',)
+#        ds = tools.open_multiple_budget_file(filename_simu, ['UU', 'VV'])
+#        ds[f'{var_simu[:-3]}}_VAL'], ds_bu[f'{var_simu[:-3]}}_DIR'] = tools.calc_ws_wd(
+#            ds_bu[f'{var_simu[:-3]}_UU'], ds_bu[f'{var_simu[:-3]}_VV'])
+        
+    # Variable available in OUTPUT files:
+    elif var_simu in ['RVT', 'THT', 'THTV', 'WT', 'UT', 'VT', 'WS', 'TKET']:
+        output_freq = gv.output_freq_dict[model]
+        filename_simu = get_simu_filepath(model, wanted_date, 
+                                          file_suffix='',  #'dg' or ''
+                                          out_suffix='.OUT',
+                                          output_freq=output_freq)
+        ds = xr.open_dataset(filename_simu)
+        ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'])
+        if var_simu == 'WS':
+            ds = center_uvw(ds)
+            ds['WS'], _ = calc_ws_wd(ds['UT'], ds['VT'])
+    # Other variables:
+    else:
+        filename_simu = get_simu_filepath(model, wanted_date, 
+                                          file_suffix='dg',  #'dg' or ''
+                                          out_suffix='',)
+        ds = xr.open_dataset(filename_simu)
+    
+    return ds
+
 
 def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=True,
                    remove_outliers=False):
@@ -495,8 +574,10 @@ def open_ukmo_rs(datafolder, filename, add_metpy_units=False):
     obs_ukmo_xr = xr.Dataset.from_dataframe(obs_ukmo)
     # add units
     if add_metpy_units:
-        for key in units_row.index:
-            obs_ukmo_xr[key] = obs_ukmo_xr[key]*units(units_row[key])
+        raise DeprecationWarning("""metpy not used anymore in here. 
+                                 No units added.""")
+        # for key in units_row.index:
+        #     obs_ukmo_xr[key] = obs_ukmo_xr[key]*units(units_row[key])
 
     return obs_ukmo_xr
 
@@ -812,13 +893,14 @@ def get_simu_filename(*args, **kwargs):
                      """)
 
 def get_simu_filepath(model, date='20210722-1200', 
+                      filetype='synchronous',  # synchronous or diachronic (=000)
                       file_suffix='dg',  #'dg' or ''
                       out_suffix='',  #'.OUT' or ''
+                      output_freq=None,  # [min]
                       global_simu_folder=gv.global_simu_folder,
-#                      global_simu_folder='/cnrm/surface/lunelt/NO_SAVE/nc_out/'
+                      verbose=False,
                       ):
     """
-    
     Returns the whole string for filename and path. 
     Chooses the right SEG (segment) number and suffix corresponding to date
     
@@ -832,39 +914,59 @@ def get_simu_filepath(model, date='20210722-1200',
         filename: str, full path and filename
     """
     pd_date = pd.Timestamp(date)
-    day_nb = str(pd_date.day)        
-    hour_nb = str(pd_date.hour)
-    minute_nb = pd_date.minute
-    if out_suffix == '.OUT':
-        hour_nb = pd_date.hour*2
-        if minute_nb == 30:
-            hour_nb = hour_nb + 1
-        hour_nb = str(hour_nb)
-        #print('hour_nb = {0}'.format(hour_nb))
+    seg_nb = str(pd_date.day)
     
-    # format suffix with 2 digits:
-    if len(hour_nb) == 1:
-        hour_nb_2f = '0'+ hour_nb
-    elif len(hour_nb) == 2:
-        hour_nb_2f = hour_nb
-    # format suffix with 3 digits:
-    hour_nb_3f = '0'+ hour_nb_2f
-    
-    # Midnight case
-    if hour_nb_2f == "00":
-        hour_nb_2f = "24"
-        hour_nb_3f = "024"
-        day_nb = str(pd_date.day - 1) 
+    if filetype in ['synchronous', '']:
+        if output_freq is None:  # set default according to file types
+            if out_suffix == '' and file_suffix == 'dg':
+                output_freq = 60
+            elif out_suffix == '.OUT' and file_suffix == '':
+                output_freq = 30
+            else:
+                print('output_freq not defined')
         
+        if out_suffix == '' and file_suffix == 'dg' and output_freq==60:
+            output_nb = str(pd_date.hour)
+            
+        elif out_suffix == '.OUT' and file_suffix == '':
+            minute_total_day = pd_date.minute + pd_date.hour*60
+            output_nb = str(int(minute_total_day/output_freq))
+            print('output_nb = {0}'.format(output_nb))
+            
+        else:
+            raise ValueError('out_suffix and file_suffix values not consistent')
+        
+        # Reformat the output_nb with 2 and 3 digits:
+        output_nb_2f = output_nb.zfill(2)
+        output_nb_3f = output_nb.zfill(3)
+        
+            
+    elif filetype in ['diachronic', '000']:
+        output_nb_2f = str(pd_date.hour).zfill(2)
+        output_nb_3f = '000'
+        file_suffix = ''
+        out_suffix = ''
+        
+    # Midnight case
+    if output_nb_2f == "00":
+        output_nb_2f = "24"
+        output_nb_3f = "024"
+        seg_nb = str(pd_date.day - 1)
+    
+    # retrieve filename
     filename = gv.format_filename_simu_new[model].format(
-            day_nb=day_nb, hour_nb_2f=hour_nb_2f, 
-            hour_nb_3f=hour_nb_3f, file_suffix=file_suffix,
+            seg_nb=seg_nb, output_nb_2f=output_nb_2f, 
+            output_nb_3f=output_nb_3f, file_suffix=file_suffix,
             out_suffix=out_suffix)
     
     filepath = global_simu_folder + gv.simu_folders[model] + filename
     
     #check if nomenclature of filename is ok
-    check_filename_datetime(filepath)
+    if filetype in ['synchronous', '']:
+        check_filename_datetime(filepath)
+    
+    if verbose:
+        print(filepath)
     
     return filepath
 
@@ -883,28 +985,33 @@ def get_simu_filename_000(model, date='20210722-1200'):
     Returns:
         filename: str, full path and filename
     """
+    raise NameError(
+            """Function 'get_simu_filename_000()' is deprecated 
+            and should be replaced by get_simu_filepath.
+            """)
+    
     pd_date = pd.Timestamp(date)
-    day_nb = str(pd_date.day)        
-    hour_nb = str(pd_date.hour)
+    seg_nb = str(pd_date.day)        
+    output_nb = str(pd_date.hour)
     # format suffix with 2 digits:
-    if len(hour_nb) == 1:
-        hour_nb_2f = '0'+ hour_nb
-    elif len(hour_nb) == 2:
-        hour_nb_2f = hour_nb
+    if len(output_nb) == 1:
+        output_nb_2f = '0'+ output_nb
+    elif len(output_nb) == 2:
+        output_nb_2f = output_nb
 
     simu_filelist = {
         'std_d2': 'LIAIS.1.S{0}{1}.000.nc'.format(
-                day_nb, hour_nb_2f),
+                seg_nb, output_nb_2f),
         'irr_d2': 'LIAIS.1.S{0}{1}.000.nc'.format(
-                day_nb, hour_nb_2f),
+                seg_nb, output_nb_2f),
         'std_d2_old': 'LIAIS.2.SEG{0}.000.nc'.format(
-                day_nb),
+                seg_nb),
         'irr_d2_old': 'LIAIS.2.SEG{0}.000.nc'.format(
-                day_nb),
+                seg_nb),
         'irr_d1': 'LIAIS.1.SEG{0}.000.nc'.format(
-                day_nb),
+                seg_nb),
         'std_d1': 'LIAIS.1.SEG{0}.000.nc'.format(
-                day_nb)
+                seg_nb)
         }
     
     filename = gv.global_simu_folder + gv.simu_folders[model] + simu_filelist[model]
@@ -1039,19 +1146,25 @@ def concat_simu_files_1var(datafolder, varname_sim, in_filenames, out_filename):
             
     Returns: Nothing in python, but it should have created the output file
     in the datafolder if not existing before.
+    
+    # ncecat -v {1},time,latitude,longitude {2} {3}
+    ncrcat cannot be used in place of ncecat because it does not attach 
+    the values 'time' dimension to the variable of interest.
+    
     """
     
     if not os.path.exists(datafolder + out_filename):
+        print('in_filenames = ', in_filenames)
         print("creation of file: ", out_filename)
         out = os.system('''
             cd {0}
-            ncecat -v {1},time {2} {3}
+            ncecat -v {1},time,latitude,longitude {2} {3}
             '''.format(datafolder, varname_sim, 
                        in_filenames, out_filename))
         if out == 0:
-            print('Creation of file {0} successful !'.format(out_filename))
+            print('Creation of file {0} successful!'.format(out_filename))
         else:
-            print('Creation of file {0} failed !'.format(out_filename))
+            print('Creation of file {0} failed!'.format(out_filename))
     else:
         print('file {0} already exists.'.format(out_filename))
     #command 'cdo -select,name={1} {2} {3}' may work as well, but not always...
@@ -1215,27 +1328,33 @@ def center_uvw(data, data_type='wind', budget_type='UU', varname_bu='PRES'):
         data['VT'] = data['VT'].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
                 {'ni_v': 'ni', 'nj_v': 'nj'})
         # remove useless coordinates
-        data_new = data.drop(['latitude_u', 'longitude_u', 
-                              'latitude_v', 'longitude_v',
-                              'ni_u', 'nj_u', 'ni_v', 'nj_v'])
+        data_new = data.drop(['ni_u', 'nj_u', 'ni_v', 'nj_v'])
+        try:
+            data_new = data.drop(['latitude_u', 'longitude_u', 
+                                  'latitude_v', 'longitude_v',])
+        except ValueError:
+            pass
     # for components UU and VV of MNH budgets ()
     elif data_type == 'budget':
         if budget_type == 'UU':
             data[varname_bu] = data[varname_bu].interp(ni_u=data.ni.values, nj_u=data.nj.values).rename(
                 {'ni_u': 'ni', 'nj_u': 'nj'})
             # remove useless coordinates
-            data_new = data.drop(['latitude_u', 'longitude_u', 
-                                  'ni_u', 'nj_u',])
+            data_new = data.drop(['ni_u', 'nj_u', 
+                                  'latitude_u', 'longitude_u', ])
+                
         if budget_type == 'VV':
             data[varname_bu] = data[varname_bu].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
                 {'ni_v': 'ni', 'nj_v': 'nj'})
             # remove useless coordinates
-            data_new = data.drop(['latitude_v', 'longitude_v',
-                                  'ni_v', 'nj_v'])
+            data_new = data.drop(['ni_v', 'nj_v',
+                                  'latitude_v', 'longitude_v', ])
     
     # TRY loop in case no WT found in file
     try:
         data['WT'] = data['WT'].interp(level_w=data.level.values).rename(
+                {'level_w': 'level'})
+        data['ALT'] = data['ALT'].interp(level_w=data.level.values).rename(
                 {'level_w': 'level'})
         # remove useless coordinates
         data_new = data.drop(['level_w'])
@@ -1246,6 +1365,9 @@ def center_uvw(data, data_type='wind', budget_type='UU', varname_bu='PRES'):
     data_new = data_new.squeeze()
     
     return data_new
+
+
+    
 
 def interp_iso_asl(alti_asl, ds, varname, verbose=True):
     """
@@ -1933,16 +2055,15 @@ def exner_function(pressure, reference_pressure = 100000):
 
     Parameters
     ----------
-    pressure : `pint.Quantity`
-        Total atmospheric pressure
+    pressure:
+        Total atmospheric pressure [Pa]
 
-    reference_pressure : `pint.Quantity`, optional
-        The reference pressure against which to calculate the Exner function, defaults to
-        metpy.constants.P0
+    reference_pressure:
+        The reference pressure against which to calculate the Exner function, 
+        defaults to 100,000 Pa
 
     Returns
     -------
-    `pint.Quantity`
         Value of the Exner function at the given pressure
 
     See Also
@@ -1959,7 +2080,7 @@ def exner_function(pressure, reference_pressure = 100000):
     Cp_d = dry_air_spec_heat_ratio * Rd / (dry_air_spec_heat_ratio - 1)
     kappa = (Rd / Cp_d)  #'dimensionless'
     
-    return (pressure / reference_pressure)**kappa
+    return (reference_pressure / pressure)**kappa
 
 
 def temperature_from_potential_temperature(pressure, potential_temperature,
@@ -1971,28 +2092,18 @@ def temperature_from_potential_temperature(pressure, potential_temperature,
 
     Parameters
     ----------
-    pressure : `pint.Quantity`
-        Total atmospheric pressure
+    pressure:
+        Total atmospheric pressure [Pa]
 
-    potential_temperature : `pint.Quantity`
-        Potential temperature
+    potential_temperature:
+        Potential temperature [K]
 
     Returns
     -------
         Temperature corresponding to the potential temperature and pressure
 
-    See Also
-    --------
-    dry_lapse
-    potential_temperature
-
-    Notes
-    -----
-    Formula:
-    .. math:: T = \Theta (P / P_0)^\kappa
-
     """
-    return potential_temperature * exner_function(pressure, reference_pressure)
+    return potential_temperature / exner_function(pressure, reference_pressure)
 
 
 def potential_temperature_from_temperature(pressure, temperature,
@@ -2004,42 +2115,17 @@ def potential_temperature_from_temperature(pressure, temperature,
 
     Parameters
     ----------
-    pressure : `pint.Quantity`
-        Total atmospheric pressure
+    pressure:
+        Total atmospheric pressure [Pa]
 
-    temperature : `pint.Quantity`
-        Potential temperature
+    temperature:
+        Potential temperature [K]
 
     Returns
     -------
-    `pint.Quantity`
         Temperature corresponding to the potential temperature and pressure
-
-    See Also
-    --------
-    dry_lapse
-    potential_temperature
-
-    Notes
-    -----
-    Formula:
-
-    .. math:: T = \Theta (P / P_0)^\kappa
-
-    Examples
-    --------
-    >>> from metpy.units import units
-    >>> from metpy.calc import temperature_from_potential_temperature
-    >>> # potential temperature
-    >>> theta = np.array([ 286.12859679, 288.22362587]) * units.kelvin
-    >>> p = 850 * units.mbar
-    >>> T = temperature_from_potential_temperature(p, theta)
-
-    .. versionchanged:: 1.0
-       Renamed ``theta`` parameter to ``potential_temperature``
-
     """
-    return temperature / exner_function(pressure, reference_pressure)
+    return temperature * exner_function(pressure, reference_pressure)
 
 def calc_fao56_et_0(rn_MJ, t_2m, ws_2m, rh_2m, p_atm, gnd_flx=0, gamma=66):
     """
@@ -2773,18 +2859,124 @@ def diag_lowleveljet_height(ds, top_layer_agl=1000, wind_var='WS',
     return ds
 
 
-if __name__ == '__main__':
+def merge_standard_and_budget_files(ds, ds_bu, join='outer'):
+    """
+    Merges standard and budget datasets from a same simulation.
+    """
+    # Put all data in mass point coordinates
+    print("'flux_pt_to_mass_pt()' for ds")
+    ds = flux_pt_to_mass_pt(ds, verbose=False)
+    print("'flux_pt_to_mass_pt()' for ds_bu")
+    ds_bu = flux_pt_to_mass_pt(ds_bu, verbose=False)
+    
+    # Merge
+    print("Merging datasets")
+    try:
+        ds_out = ds.merge(ds_bu)
+    except xr.MergeError:
+        if np.abs(ds_bu.latitude - ds.latitude).max() < 1e-5:
+                ds_bu['latitude'] = ds.latitude
+        if np.abs(ds_bu.longitude - ds.longitude).max() < 1e-5:
+                ds_bu['longitude'] = ds.longitude
+        # Retry
+        ds_out = ds.merge(ds_bu, join=join)
+    
+    return ds_out
+    
+    
+def flux_pt_to_mass_pt(ds, verbose=True):
+    """
+    Change flux point coordinates of dataset into mass point coordinates.
+    Done through interpolation between flux points.
+    Generalization of center_uvw() function.
+    
+    parameter:
+        ds: xarray.dataset
+    """
+    for var in list(ds.keys()):
+        
+        # NOT WORKING
+#        for coord in ['nj_v', 'nj_u', 'ni_v', 'ni_u', 'level_w']:
+#            new_coord = coord[:-2]
+#            ds[var] = ds[var].interp(coords={coord:ds[new_coord].values}).rename(
+#                {coord: new_coord})
+#            if verbose:
+#                print(f"{var}: coordinates '{coord}' changed to '{new_coord}'")
+            
+        # change coordinates for 'nj_v' flux points
+        if 'nj_v' in list(ds[var].coords):
+            ds[var] = ds[var].interp(nj_v=ds.nj.values).rename(
+                {'nj_v': 'nj'})
+            if verbose:
+                print(f"{var}: coordinates 'nj_v' changed to 'nj'")
+        
+        # change coordinates for 'ni_v' flux points
+        if 'ni_v' in list(ds[var].coords):
+            ds[var] = ds[var].interp(ni_v=ds.ni.values).rename(
+                {'ni_v': 'ni'})
+            if verbose:
+                print(f"{var}: coordinates 'ni_v' changed to 'ni'")
+        
+        # change coordinates for 'ni_u' flux points
+        if 'ni_u' in list(ds[var].coords):
+            ds[var] = ds[var].interp(ni_u=ds.ni.values).rename(
+                {'ni_u': 'ni'})
+            if verbose:
+                print(f"{var}: coordinates 'ni_u' changed to 'ni'")
+        
+        # change coordinates for 'nj_u' flux points
+        if 'nj_u' in list(ds[var].coords):
+            ds[var] = ds[var].interp(nj_u=ds.nj.values).rename(
+                {'nj_u': 'nj'})
+            if verbose:
+                print(f"{var}: coordinates 'nj_u' changed to 'nj'")
+        
+        # change coordinates for '_w' flux points
+        if 'level_w' in list(ds[var].coords):
+            ds[var] = ds[var].interp(level_w=ds.level.values).rename(
+                {'level_w': 'level'})
+            if verbose:
+                print(f"{var}: coordinate 'level_w' changed to 'level'")
+    
+        # ALT coordinate badly encoded ('level_w not defnied as coords)
+        if var == 'ALT':
+            ds[var] = ds[var].interp(level_w=ds.level.values).rename(
+                {'level_w': 'level'})
+            if verbose:
+                print(f"{var}: coordinate 'level_w' changed to 'level'")
+    
+    # remove flux coordinates
+    try:
+        ds_new = ds.drop(['latitude_u', 'longitude_u', 'ni_u', 'nj_u',
+                      'latitude_v', 'longitude_v', 'ni_v', 'nj_v',
+                      'level_w'
+                      ])
+    except:
+        if verbose:
+            print("no old coordinate dropped - error during ds.drop()")
+        ds_new = ds
 
-    filename_bu = gv.global_simu_folder + gv.simu_folders['irr_d1'] + f'LIAIS.1.SEG16.000.nc'
+    return ds_new
+            
+
+if __name__ == '__main__':
+    print('yo')
+    model = 'irrswi1_d1'
+    wanted_date = '20210716-2300'
     
-    t0 = time.time()
-    ds_bu_UU = open_budget_file(filename_bu, 'UU')
-    ds_bu_VV = open_budget_file(filename_bu, 'VV')
-    t1 = time.time()
-    print(t1 - t0)
+    filepath = get_simu_filepath(
+            model, wanted_date, file_suffix='dg',out_suffix='')
+    ds = xr.open_dataset(filepath)
     
-    ds_bu = compound_budget_file(filename_bu, var_name_bu='PRES')
-    ds_bu_hour = ds_bu.isel(time_budget=18)
-    t2 = time.time()
-    print(t2 - t1)
+    filepath_bu = get_simu_filepath(
+            model, wanted_date, filetype='000')
+    ds_bu = open_multiple_budget_file(
+            filepath_bu, 
+            budget_type_list=['UU', 'VV', 'TH'],
+            wanted_datetime=wanted_date)
+#    
+#    ds_out = flux_pt_to_mass_pt(ds, verbose=True)
+    ds_out = merge_standard_and_budget_files(ds, ds_bu, join='inner')
+    
+
 

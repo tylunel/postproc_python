@@ -21,10 +21,10 @@ import os
 model = 'irrswi1_d1'
 domain_nb = 1
 
-ilevel = 3   #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
+ilevel = 53   #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
 
 # Datetime
-wanted_date = '20210716-1200'
+wanted_date = '20210716-2300'
 
 speed_plane = 'horiz'  # 'horiz': horizontal normal wind, 'verti' for W
 
@@ -33,13 +33,13 @@ if speed_plane == 'verti':
     vmin_cbar = -vmax_cbar
     cmap_name = 'seismic'
 elif speed_plane == 'horiz':
-    vmax_cbar = 15
+    vmax_cbar = 30
     vmin_cbar = 0
     cmap_name = 'BuPu'
 
-zoom_on = 'marinada'  #None for no zoom, 'urgell', 'liaise'
+zoom_on = None  #None for no zoom, 'urgell', 'liaise'
 
-add_smc_obs = True
+add_smc_obs = False
 
 if add_smc_obs:
     alpha = 0.4
@@ -53,7 +53,7 @@ else:
 save_plot = True
 save_folder = f'./figures/winds/{model}/{speed_plane}/{ilevel}/zoom_{zoom_on}/'
 
-barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
+barb_size_option = 'standard'  # 'weak_winds' or 'standard'
 
 ###########################################
 
@@ -75,7 +75,7 @@ figsize = prop['figsize']
 # OR: #locals().update(gv.zoom_domain_prop[zoom_on])
 
 # for paper: hard-coded:
-skip_barbs = 3
+# skip_barbs = 3
 #barb_length = 5.5
 #barb_size_option = 'weak_winds'
 
@@ -322,10 +322,10 @@ plot_title = '{4} wind at {0}m on {1} for simu {2} zoomed on {3}'.format(
 plt.title(plot_title)
 
 
-if zoom_on is None:
-    plt.ylim([ws_layer.latitude.min(), ws_layer.latitude.max()])
-    plt.xlim([ws_layer.longitude.min(), ws_layer.longitude.max()])
-else:
+if zoom_on is not None:
+    # plt.ylim([ws_layer.latitude.min(), ws_layer.latitude.max()])
+    # plt.xlim([ws_layer.longitude.min(), ws_layer.longitude.max()])
+# else:
     plt.ylim(lat_range)
     plt.xlim(lon_range)
 

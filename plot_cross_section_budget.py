@@ -22,10 +22,10 @@ from shapely.geometry import Point, LineString
 ########## Independant parameters ###############
 
 # Simulation to show: 'irr' or 'std'
-model = 'irr_d1'
+model = 'irrswi1_d1'
 
 # Datetime
-wanted_date = '20210722-2300'
+wanted_date = '20210716-2300'
 
 budget_type = 'UV'
 
@@ -36,7 +36,7 @@ var_name_bu_list_dict = {  # includes only physical and most significant terms
         'VV': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
         'UU': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
         'WW': ['VTURB', 'GRAV', 'PRES', 'ADV',],
-        'PROJ': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],  #is projection of UU an VV in transect
+        'PROJ': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],  #is combination of UU an VV
         'UV': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],  #eq. to PROJ
         }
 
@@ -76,12 +76,28 @@ else:
     vmin = None
     vmax = None
 
-
 vmax = scale_val * 2
 vmin = -vmax
 
 norm_cm=mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 #norm_cm=mpl.colors.LogNorm(vmin=vmin, vmax=vmax)  # for TKE
+
+# for contours
+minmax_dict = {
+    'DIV': {'vmin': -0.0015, 'vmax': 0.0015, 'colormap':'coolwarm'},
+    'WS': {'vmin': 1, 'vmax': 10, 'colormap':'BuPu'},
+    'THT': {'vmin': 306, 'vmax': 314,'colormap':'OrRd'},
+    'THTV': {'vmin': 290, 'vmax': 312, 'colormap':'OrRd'},
+    'TKET': {'vmin': 0.05, 'vmax': 3, 'colormap':'OrRd'},
+    'RVT': {'vmin': 0, 'vmax': 0.02, 'colormap':'OrRd'},
+    'WT': {'vmin': -1.5, 'vmax': 1.5, 'colormap':'coolwarm'},
+    'MSLP3D': {'vmin': None, 'vmax': None, 'colormap':'coolwarm'},
+    None: {'vmin': None, 'vmax': None, 'colormap':'coolwarm'},
+    }
+
+vmin_contour = minmax_dict[varname_contourmap]['vmin']
+vmax_contour = minmax_dict[varname_contourmap]['vmax']
+
 
 
 # Surface variable to show below the section
@@ -97,7 +113,7 @@ alti_type = 'asl'
 toplevel = 1500
 
 # where to place the cross section
-nb_points_beyond = 4
+nb_points_beyond = 0
 site_start = 'cendrosa'
 site_end = 'torredembarra'
 
@@ -140,7 +156,7 @@ hour = pd.Timestamp(wanted_date).hour
 filename_bu = gv.global_simu_folder + gv.simu_folders[model] + f'LIAIS.1.SEG{day}.000.nc'
 
 if budget_type in ['PROJ', 'UV']:
-    ds_bu = tools.compound_budget_file(filename_bu).isel(time_budget=hour)
+    ds_bu = tools.open_multiple_budget_file(filename_bu).isel(time_budget=hour)
     ds_bu[f'{var_name_bu}_VAL'], ds_bu[f'{var_name_bu}_DIR'] = tools.calc_ws_wd(
             ds_bu[f'{var_name_bu}_UU'], ds_bu[f'{var_name_bu}_VV'])
 else:
@@ -168,7 +184,7 @@ data_redsub = tools.subset_ds(data_reduced,
                               nb_indices_exterior=nb_points_beyond+2)
 
 data = data_redsub
-#data = ds
+
 
 if budget_type in ['PROJ', 'UV']:
     data_bu = ds_bu[[f'{var_name_bu}_VAL', f'{var_name_bu}_DIR',
@@ -176,6 +192,7 @@ if budget_type in ['PROJ', 'UV']:
 else:
     data_bu = ds_bu[[var_name_bu,]]
     
+
 
 
 #get total maximum height of relief on domain
@@ -399,8 +416,8 @@ else:
     cont = ax[0].contour(Xmesh,
                          alti,
                          data2.T,
-                         levels=np.arange(290, 320, 1),
-                         cmap='viridis'  #viridis is default
+                         levels=np.linspace(vmin_contour, vmax_contour, vmax_contour-vmin_contour+1),
+                         cmap='copper_r'  #viridis_r, copper_r
                          )
     ax[0].clabel(cont, cont.levels, inline=True, fontsize=10)
 
@@ -448,14 +465,14 @@ elif vector_visu == 'verti_proj':     # 2.2  winds - verti and projected wind
     
     Q = ax[0].quiver(
             #Note that X & alti have dimensions reversed
-            Xmesh[::skip_barbs_y, ::skip_barbs_x], 
-            alti[::skip_barbs_y, ::skip_barbs_x], 
+            Xmesh[::skip_barbs_y, ::skip_barbs_x],
+            alti[::skip_barbs_y, ::skip_barbs_x],
             #Here dimensions are in the proper order
-            compo_horiz[::skip_barbs_x, ::skip_barbs_y].T, 
-            compo_verti[::skip_barbs_x, ::skip_barbs_y].T, 
+            compo_horiz[::skip_barbs_x, ::skip_barbs_y].T,
+            compo_verti[::skip_barbs_x, ::skip_barbs_y].T,
             pivot='middle',
             scale=150/arrow_size,  # arrows scale, if higher, smaller arrows
-            alpha=0.3,
+            alpha=0.4,
             )
     #add arrow scale in top-right corner
     vector_max = abs(compo_horiz[::skip_barbs_x, ::skip_barbs_y]).max()
@@ -541,7 +558,9 @@ if subplot_type == 'distance':
     fig.delaxes(ax[1])
     
     # get index of torredembarra in abscisse_sites
+#    torredembarra_ind = list(abscisse_sites.values()).index('coma_ruga')
     torredembarra_ind = list(abscisse_sites.values()).index('torredembarra')
+
     # get corresponding abscisse for torredembarra
     torredembarra_xval = list(abscisse_sites.keys())[torredembarra_ind]
     

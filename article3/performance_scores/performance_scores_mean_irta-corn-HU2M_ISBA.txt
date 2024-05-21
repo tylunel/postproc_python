@@ -1,0 +1,5 @@
+--irta-corn-HU2M_ISBA
+Bias:
+{'irrswi1_d1': 0.033, 'noirr_lai_d1': -0.0793}
+RMSE:
+{'irrswi1_d1': 0.0975, 'noirr_lai_d1': 0.121}

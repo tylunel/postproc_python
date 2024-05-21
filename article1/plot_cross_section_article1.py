@@ -20,6 +20,7 @@ import matplotlib as mpl
 
 # Simulation to show: 'irr' or 'std'
 model = 'std_d2_old'
+# std_d2_old used in paper
 
 # Datetime
 wanted_date = '20210722-1200'
@@ -80,17 +81,14 @@ nb_points_beyond = 10
 site_start = 'cendrosa'
 site_end = 'elsplans'
 
-
 # Arrow/barbs esthetics:
 skip_barbs_x = 2
 skip_barbs_y = 10    #if 1: 1barb/10m, if 5: 1barb/50m, etc
 arrow_size = 1.2  #works for arrow and barbs
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
-uib_adapt = False
-
 # Save the figure
-figsize = (12,7)
+figsize = (12,5.5)  # was (12,7) in v1, (12,6) in v2 to fit 3 figures
 save_plot = True
 save_folder = './fig/'
 
@@ -222,6 +220,8 @@ section_ds = xr.concat(section, dim="i_sect")
 # create figure
 fig, ax = plt.subplots(2, figsize=figsize,
                        gridspec_kw={'height_ratios': [20, 1]})
+plt.subplots_adjust(top=0.95)
+plt.subplots_adjust(bottom=0.09)
 
 ## --- Subplot of section, i.e. the main plot ----
 #get maximum height of relief in cross-section
@@ -332,7 +332,7 @@ elif wind_visu == 'verti_proj':     # 2.2  winds - verti and projected wind
             )
     #add arrow scale in top-right corner
     u_max = abs(section_ds['WPROJ'][::skip_barbs_x, ::skip_barbs_y]).max()
-    ax[0].quiverkey(Q, 0.8, 0.9, 
+    ax[0].quiverkey(Q, 0.8, 0.96, 
                     U=u_max, 
                     label=str((np.round(u_max, decimals=1)).data) + ' $m.s^{-1}$', 
                     labelpos='E',

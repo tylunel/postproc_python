@@ -1,0 +1,5 @@
+--irta-corn-WS
+Bias:
+{'irrswi1_d1': 0.539, 'noirr_lai_d1': 1.14}
+RMSE:
+{'irrswi1_d1': 0.917, 'noirr_lai_d1': 1.53}

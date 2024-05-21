@@ -12,9 +12,9 @@ import numpy as np
 import xarray as xr
 import tools
 import metpy.calc as mcalc
-from metpy.units import units
 import global_variables as gv
 import matplotlib as mpl
+from shapely.geometry import Point, LineString
 
 ########## Independant parameters ###############
 
@@ -22,23 +22,60 @@ import matplotlib as mpl
 model = 'irrswi1_d1'
 
 # Datetime
-wanted_date = '20210717-2300'
+wanted_date = '20210716-1900'
 
 varname_colormap = 'WS'
 varname_contourmap = 'THTV'
 
+# Surface variable to show below the section
+subplot_type = 'distance'
+# only useful if subplot_type=='surface_var' (ex: WG2_ISBA, H, LE, etc)
+surf_var = 'LE_ISBA'   
+surf_var_label = 'LE_ISBA'
+vmin_surf_var, vmax_surf_var = -100, 500
+
+# Set type of wind representation: 'verti_proj' or 'horiz'
+wind_visu = 'verti_proj'
+
+# altitude ASL or height AGL: 'asl' or 'agl'
+alti_type = 'asl'
+# maximum level (height AGL) to plot
+toplevel = 1500
+
+# where to place the cross section
+nb_points_beyond = 5
+site_start = 'cendrosa'
+site_end = 'torredembarra'
+
+# sites different from start and end, to project on the x-axis
+# sites_to_project = ['elsplans', 'serra_tallat', 'coll_lilla']  
+sites_to_project = []  
+
+# Arrow/barbs esthetics:
+skip_barbs_x = 2
+skip_barbs_y = 10    #if 1: 1barb/10m, if 5: 1barb/50m, etc
+arrow_size = 1.2  #works for arrow and barbs
+barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
+
+# Save the figure
+figsize = (12,7)
+save_plot = True
+save_folder = f'./figures/cross_sections/{model}/section_{site_start}_{site_end}/{wind_visu}/{varname_colormap}_{varname_contourmap}/'
+
+plt.rcParams.update({'font.size': 11})
+###########################################
+
 minmax_dict = {
     'DIV': {'vmin': -0.0015, 'vmax': 0.0015, 'colormap':'coolwarm'},
-    'WS': {'vmin': 1, 'vmax': 10, 'colormap':'BuPu'},
+    'WS': {'vmin': 1, 'vmax': 12, 'colormap':'BuPu'},
     'THT': {'vmin': 306, 'vmax': 314,'colormap':'OrRd'},
-    'THTV': {'vmin': 300, 'vmax': 312, 'colormap':'OrRd'},
+    'THTV': {'vmin': 292, 'vmax': 312, 'colormap':'OrRd'},
     'TKET': {'vmin': 0.05, 'vmax': 3, 'colormap':'OrRd'},
     'RVT': {'vmin': 0, 'vmax': 0.02, 'colormap':'OrRd'},
     'WT': {'vmin': -1.5, 'vmax': 1.5, 'colormap':'coolwarm'},
     'MSLP3D': {'vmin': None, 'vmax': None, 'colormap':'coolwarm'},
     None: {'vmin': None, 'vmax': None, 'colormap':'coolwarm'},
     }
-
 
 vmin = minmax_dict[varname_colormap]['vmin']
 vmax = minmax_dict[varname_colormap]['vmax']
@@ -50,123 +87,28 @@ vmin_contour = minmax_dict[varname_contourmap]['vmin']
 vmax_contour = minmax_dict[varname_contourmap]['vmax']
 #vmin_contour, vmax_contour = None, None
 
-# Surface variable to show below the section
-subplot_type = 'distance'
-surf_var = 'LE_ISBA'   # WG2_ISBA, H, LE
-surf_var_label = 'LE_ISBA'
-vmin_surf_var, vmax_surf_var = -100, 500
-
-# Set type of wind representation: 'verti_proj' or 'horiz'
-wind_visu = 'verti_proj'
-
-# altitude ASL or height AGL: 'asl' or 'agl'
-alti_type = 'asl'
-# maximum level (height AGL) to plot
-toplevel = 2000
-
-# where to place the cross section
-nb_points_beyond = 5
-site_start = 'cendrosa'
-site_end = 'torredembarra'
-
-
-# Arrow/barbs esthetics:
-skip_barbs_x = 2
-skip_barbs_y = 10    #if 1: 1barb/10m, if 5: 1barb/50m, etc
-arrow_size = 1.2  #works for arrow and barbs
-barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
-
-uib_adapt = False
-
-# Save the figure
-figsize = (12,7)
-save_plot = True
-save_folder = f'./figures/cross_sections/{model}/section_{site_start}_{site_end}/{wind_visu}/{varname_colormap}_{varname_contourmap}/'
-
-plt.rcParams.update({'font.size': 11})
-###########################################
-#domain to consider: 1 or 2
-domain_nb = int(model[-1])
-
 barb_size_increments = gv.barb_size_increments
 barb_size_description = gv.barb_size_description
 
+# Filename to open
+filename = tools.get_simu_filepath(model, wanted_date,
+                                   file_suffix='dg', 
+                                   out_suffix='')
+# OR:
+#filename = '/home/lunelt/Data/temp_outputs/LIAIS.1.SEG03.009.nc'
 
-# ----------- from MARIA ANTONIA ------------
-if uib_adapt:
-#    filename = '/cnrm/surface/lunelt/FROM_MARIAANTONIA/MSB21.3.12H18.002_BIS.cdf'
-    filename = '/home/lunelt/Data/MSB21.3.12H18.002_BIS.cdf'
-    
-    #load file
-    ds = xr.open_dataset(filename)
-    
-    # ------- Modify the dataset to have same structure than direct netcdf MNH output
-    # remove the '--PROC1' part of variable names
-    vardict = {}
-    for var in ds.variables:
-        print(var)
-        if '--PROC1' in str(var):
-            newvar = var.replace('--PROC1', '')
-            vardict[var] = newvar
-        
-    ds = ds.rename(vardict)
-    ds = ds.rename({'DIMX': 'ni', 'DIMY': 'nj', 'DIMZ': 'level'})    
-    
-    # IMPORTANT:
-    # Put the real values here
-    lon_min, lon_max = 2.5, 3.5   # min and max longitude values of the domain
-    lat_min, lat_max = 39, 40.15
-    level_min, level_max = 0, 10000
-    # create the level AGL range. This is just an example with a square stretching.
-    level_array = (np.linspace(np.sqrt(level_min), 
-                              np.sqrt(level_max), 
-                              len(ds.level)))**2
-   # ---------------------------------------
-    ds['level'] = level_array
-                               
-    lon_grid, lat_grid = np.meshgrid(np.linspace(lon_min, lon_max, len(ds.ni)), 
-                                     np.linspace(lat_min, lat_max, len(ds.nj)))
-    
-#    ds = ds.assign_coords({'longitude': np.linspace(lon_min, lon_max, len(ds.ni))})
-    ds = ds.assign_coords({
-        'longitude': xr.DataArray(
-            lon_grid,
-            dims=['nj', 'ni']),
-        'latitude': xr.DataArray(
-            lon_grid,
-            dims=['nj', 'ni']),
-    })
-    
-    # ------- Parameters for choosing where to do the cross-section -----
-#    end = (39.8, 3.25)
-#    start = (39.65, 3.0)
-    start = (39.1, 2.6)  # starting point for cross section
-    end = (40, 3.4)   # ending point for cross section
-    site_start = str(start)
-    site_end = str(end)
-    
-    vmin, vmax = None, None
-    vmin_contour, vmax_contour = None, None
-    vmin_surf_var, vmax_surf_var = None, None
-    
-    # Check order of start and end sites
-    if start[1] > end[1]:
-        raise ValueError("site_start must be west of site_end")
-    
-else:
-    filename = tools.get_simu_filepath(model, wanted_date,
-                                       file_suffix='dg', 
-                                       out_suffix='')
-#    filename = '/home/lunelt/Data/temp_outputs/LIAIS.1.SEG03.009.nc'
-    ds = xr.open_dataset(filename)
-    
-    end = (gv.whole[site_end]['lat'], gv.whole[site_end]['lon'])
-    start = (gv.whole[site_start]['lat'], gv.whole[site_start]['lon'])
+ds = xr.open_dataset(filename)
 
-    # Check order of start and end sites
-    if gv.whole[site_start]['lon'] > gv.whole[site_end]['lon']:
-        raise ValueError("site_start must be west of site_end")
+# Coordinates of starting and ending points of the cross-section:
+end = (gv.whole[site_end]['lat'], gv.whole[site_end]['lon'])
+start = (gv.whole[site_start]['lat'], gv.whole[site_start]['lon'])
+# OR:
+# end = (44,1)
+# start = (43,1.5)
 
+# Check order of start and end sites
+if gv.whole[site_start]['lon'] > gv.whole[site_end]['lon']:
+    raise ValueError("site_start must be west of site_end")
 
 
 # pre-processing of data
@@ -184,7 +126,7 @@ ds_subcen['THTV'] = ds_subcen['THT']*(1 + 0.61*ds_subcen['RVT'] - (ds_subcen['MR
 ds_subcen['MSLP3D'] = tools.calc_mslp(ds)
 
 
-data_reduced = ds_subcen[['UT', 'VT', 'WT', 'ZS',
+data_reduced = ds_subcen[['UT', 'VT', 'WT', 'ZS', 'ALT',
 #                   'TEMP', 'PRES', 'HBLTOP',
 #                   'DENS', 'DIV', 'WS', 'WD',
                varname_colormap, varname_contourmap, surf_var]]
@@ -209,20 +151,6 @@ else:
     
 data['WPROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'], 
                                        data.level, angle)
-#data['WPROJ_OPPOSITE'] = - data['WPROJ']
-#
-#data = tools.diag_lowleveljet_height(data, 
-#                                     wind_var='WPROJ_OPPOSITE', 
-#                                     new_height_var='HLOWJET_WPROJ',
-#                                     upper_bound=0.9)
-#data = tools.diag_lowleveljet_height(data,
-#                                     wind_var='WS', 
-#                                     new_height_var='HLOWJET_NOSE',
-#                                     upper_bound=0.70)
-#data = tools.diag_lowleveljet_height(data,
-#                                     wind_var='WS', 
-#                                     new_height_var='HLOWJET_MAX',
-#                                     upper_bound=1)
 
 #%% INTERPOLATION
 
@@ -287,16 +215,16 @@ Xmesh = xr.DataArray(X, dims=['level', 'i_sect'])
 #create alti mesh (eq. to Y)
 if alti_type == 'asl': 
     #compute altitude ASL from height AGL, and transpose (eq. Y)
-    alti = section_ds.ZS[:, 0] + section_ds.level
+    alti = section_ds['ALT']
     alti = alti.T
     #for plot
-    ylabel = 'altitude ASL [m]'
-elif alti_type == 'agl':
+    ylabel = 'altitude a.s.l. [m]'
+elif alti_type == 'agl':  # TO CORRECT for strectched grid with var 'ALT'
     #create grid mesh (eq. Y)
     alti = np.meshgrid(section_ds.i_sect, section_ds.level)[1]
     alti = xr.DataArray(alti, dims=['level', 'i_sect'])
     #for plot
-    ylabel = 'height AGL [m]'
+    ylabel = 'height a.g.l. [m]'
     
 
 ### 1.1. Color map (pcolor or contourf)
@@ -311,8 +239,8 @@ data1 = section_ds[varname_colormap]
 if None in [vmin, vmax]:
     levels = 10
 else:
-    levels=np.linspace(vmin, vmax, 10)
-#    levels=np.linspace(vmin, vmax, vmax-vmin+1),  # to have 1 unit per color variation
+    levels = np.linspace(vmin, vmax, 10)
+    levels = np.linspace(vmin, vmax, vmax-vmin+1)  # to have 1 unit per color variation
     
 cm = ax[0].contourf(Xmesh,
                     alti,
@@ -343,9 +271,12 @@ else:
     cont = ax[0].contour(Xmesh,
                          alti,
                          data2.T,
-                         cmap='viridis_r',  #viridis is default,
+                         cmap='copper_r',  #viridis_r, copper_r
+#                         colors='r',
 #                         levels=np.arange(vmin_contour, vmax_contour),
-                         levels=np.linspace(vmin_contour, vmax_contour, vmax_contour-vmin_contour+1),
+                         levels=np.linspace(vmin_contour, 
+                                            vmax_contour, 
+                                            vmax_contour-vmin_contour+1),
 #                         vmin=vmin, vmax=vmax,  # for adaptative colormap
                          )
     ax[0].clabel(cont, cont.levels, inline=True, fontsize=13)
@@ -380,6 +311,7 @@ elif wind_visu == 'verti_proj':     # 2.2  winds - verti and projected wind
             section_ds['WT'][::skip_barbs_x, ::skip_barbs_y].T, 
             pivot='middle',
             scale=150/arrow_size,  # arrows scale, if higher, smaller arrows
+            alpha=0.4,
             )
     # Add arrow scale in top-right corner
     u_max = abs(section_ds['WPROJ'][::skip_barbs_x, ::skip_barbs_y]).max()
@@ -389,11 +321,27 @@ elif wind_visu == 'verti_proj':     # 2.2  winds - verti and projected wind
                     labelpos='E',
                     coordinates='figure')
 
+# add sites that are between the two defining sites 'start' and 'end'
+for site_inter in sites_to_project:
+    coords_site_inter = (gv.whole[site_inter]['lat'], gv.whole[site_inter]['lon'])
+    
+    point_site_inter = Point(coords_site_inter)
+    line_cross_section = LineString([start, end])
+    dist = line_cross_section.project(point_site_inter)
+    coords_site_inter_proj = list(line_cross_section.interpolate(dist).coords)[0]
+    
+    fraction_lon_point_inter = (coords_site_inter_proj[1] - start[1]) / (end[1] - start[1])
+    # in term of abscisse
+    list_abscisses_sites = list(abscisse_sites.keys())
+    diff_abscisses = list_abscisses_sites[1] - list_abscisses_sites[0]
+    abscisse_inter = fraction_lon_point_inter * diff_abscisses + list_abscisses_sites[0]
+    # add to the dict
+    abscisse_sites[abscisse_inter] = site_inter 
 
 # x-axis with sites names
 ax[0].set_xticks(list(abscisse_sites.keys()))
 ax[0].set_xticklabels(list(abscisse_sites.values()), 
-                       rotation=0, fontsize=12)
+                   rotation=0, fontsize=12)
 #ax[0].set_xticklabels(['La Cendrosa', 'Els Plans'], 
 #                       rotation=0, fontsize=12)
 # x-axis with lat-lon values

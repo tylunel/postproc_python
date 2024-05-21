@@ -1,0 +1,5 @@
+--irta-corn-T2M_ISBA
+Bias filt:
+{'irrswi1_d1': 0.187, 'noirr_lai_d1': 0.851}
+RMSE filt:
+{'irrswi1_d1': 0.872, 'noirr_lai_d1': 1.9}

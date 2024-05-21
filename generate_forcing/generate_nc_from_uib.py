@@ -13,27 +13,28 @@ import tools
 import pandas as pd
 from datetime import datetime as dt
 from datetime import timedelta
-import numpy.ma as ma
 
 ############################
 
 ## Data path
 data_path = '/cnrm/surface/lunelt/data_LIAISE/irta-corn/seb/'
 
-fn = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
+fn_in = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
 #fn = 'eddypro_LACENDROSA_Alfalfa_CNRM_30min_full_output.csv'
+fn_out = 'FORCING_irta-corn_obs_1.7m.nc'
 
-ds = nc.Dataset(data_path + fn, 
+ds = nc.Dataset(data_path + fn_in, 
                     mode='r')
 
-ncdf_new = nc.Dataset(data_path + 'FORCING_irta-corn.nc', 
+ncdf_new = nc.Dataset(data_path + fn_out,
                       mode='w')
+
+data_in_time_step = 600
+data_out_time_step = 1800
 
 plot_data = False
 
 ################################
-frc_time_step = 1800
-
 #cendrosa data - used here because trouble at sfx run with other homemade time series...
 fn = '/cnrm/surface/lunelt/for_tanguy/in_out_generate_nc/CAT_2021-07LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_.nc'
 cendrosa = nc.Dataset(fn)
@@ -44,7 +45,7 @@ array_time = cendrosa['time'][:]
 i_start = 243  #242 to be on 20221-07-01 T 01:00
 #i_end = 4449
 i_end = len(array_time)*3 + i_start
-i_step = 3
+i_step = int(data_out_time_step/data_in_time_step)
 
 filelength = len(ds['time'][i_start:i_end:i_step])
 
@@ -76,7 +77,7 @@ ncdf_new["time"][:] = array_time + 1625097600.  # July 1
 #%% 0D Variables
 forc_var = ncdf_new.createVariable('FRC_TIME_STP', np.float32, ())
 forc_var.long_name = 'Forcing_Time_Step'
-ncdf_new["FRC_TIME_STP"][0] = frc_time_step
+ncdf_new["FRC_TIME_STP"][0] = data_out_time_step
 
 lon_var = ncdf_new.createVariable('LON', np.float32, ('Number_of_points'))
 lon_var.long_name = 'Longitude'
@@ -98,7 +99,7 @@ ncdf_new["ZREF"][0] = 2. # height of T and HUM
 UREF_var = ncdf_new.createVariable('UREF', np.float32, ('Number_of_points'))
 UREF_var.long_name = 'Reference_Height_for_Wind' # Height of wind 
 UREF_var.units = 'm'  
-ncdf_new["UREF"][0] = 2. # we also have one at 10m
+ncdf_new["UREF"][0] = 1.7 # we also have one at 10m
 
 #%% 1D variables
 Tair_var = ncdf_new.createVariable('Tair', np.float32, ('time','Number_of_points'))
@@ -156,7 +157,7 @@ rainf_var.units = 'Kg/m2/s'
 #ncdf_new["Rainf"][:,0] = ds['LW_IN'][i_start:i_end:i_step]*0
 # Cendrosa data:
 rain = []
-for val in np.array(cendrosa['rain_cumul'])/frc_time_step:
+for val in np.array(cendrosa['rain_cumul'])/data_out_time_step:
     if np.isnan(val):
         rain.append(0)
     else:
@@ -194,7 +195,7 @@ ncdf_new.close()
 #%% Plot Data to check consistency
 
 if plot_data:
-    ncdf_new = nc.Dataset(data_path + 'FORCING_irta-corn.nc', 'r') #uncomment to consult 
+    ncdf_new = nc.Dataset(data_path + fn_out, 'r') #uncomment to consult 
     
     for key in ['Qair',
 #                'PSurf',"DIR_SWdown", "SCA_SWdown", 'Tair', 

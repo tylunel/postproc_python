@@ -1,0 +1,5 @@
+--cendrosa-T2M_ISBA
+Bias filt:
+{'irrswi1_d1': 0.159, 'noirr_lai_d1': 0.935}
+RMSE filt:
+{'irrswi1_d1': 0.655, 'noirr_lai_d1': 2.03}

@@ -14,6 +14,7 @@ import metpy.calc as mcalc
 from metpy.units import units
 import global_variables as gv
 import pandas as pd
+import pickle
 
 ########## Independant parameters ###############
 
@@ -21,10 +22,10 @@ import pandas as pd
 models = [
 #        'irr_d1',
 #        'irrswi1_d1_old',
-#        'irrswi1_d1',
-        'irrlagrip30_d2',
+        'irrswi1_d1',
+#        'irrlagrip30_d2',
         'irrlagrip30_d1',
-#        'std_d1',
+        'std_d1',
         ]
 #domain to consider: 1 or 2
 domain_nb = 1
@@ -50,7 +51,7 @@ date_list = [
 #        '20210718', 
 #        '20210719', 
 #        '20210720', 
-#        '20210721',
+        '20210721',
 #        '20210722',
         ]
 # altitude ASL or height AGL: 'asl' or 'agl'
@@ -79,6 +80,9 @@ for date in date_list:
     for var in var_list:
         res_dict[date][var] = {}
         res_dict[date]['section'] = {}
+
+use_of_pickle = 'save'  # 'save' or 'import'
+pickle_filename = 'marinada_timing_res_dict_16-21_d1_3models.pickle'
 
 save_plot = True
 save_folder = f'figures/marinada_front/'
@@ -117,197 +121,199 @@ if gv.whole[site_start]['lon'] > gv.whole[site_end]['lon']:
 
 #%% PROCESS DATA TO FIND MAX CONVERGENCE
 
-for model in models:
-    print('-----------------------')
-    print(model)
-    print('-----------------------')
+if use_of_pickle != 'import':
     
-    res_filt_dict[model] = {}
-    for date in date_list:
-        freq='1H'  #'1H', 30T, 10T
-        datetime_range = pd.date_range(pd.Timestamp(f'{date}-0700'), 
-                                       pd.Timestamp(f'{date}-2300'), 
-                                       freq=freq,
-                                       )
-        for datime in datetime_range:
-            # compute date and time
-    #        datime = pd.Timestamp(date) + pd.Timedelta(hour, 'h')
-            print(datime)
-            
-            # FIND and LOAD corresponding file
-            filename = tools.get_simu_filepath(model, datime, 
-                                               file_suffix='dg', 
-                                               out_suffix='')
-            print(filename)
-            ds = xr.open_dataset(filename)
-            
-            # pre-processing of data
-            ds_sub = tools.subset_ds(ds, 
-                              lat_range = [start[0], end[0]], 
-                              lon_range = [start[1], end[1]],
-                              nb_indices_exterior=5)    
-            ds_subcen = tools.center_uvw(ds_sub)
-            
-            # Computation of other diagnostic variable
-            ds_subcen['DIV'] = mcalc.divergence(ds_subcen['UT'], ds_subcen['VT'])
-            ds_subcen['WS'], ds_subcen['WD'] = tools.calc_ws_wd(ds_subcen['UT'], ds_subcen['VT'])
-            
-            data_subcenred = ds_subcen[['THT', 'RVT', 'UT', 'VT', 'WT', 
-    #                                   'ZS',
-    #                                   'TEMP', 'PRES', 
-    #                                   'DENS', 
-                                       'DIV',
-                                       'WS', 'WD',
-    #                                   surf_var
-                                       ]]
-            data = data_subcenred
-            
-            
-            #%% CREATE SECTION LINE
-            
-            line = tools.line_coords(data, start, end, 
-                                     nb_indices_exterior=nb_points_beyond,
-                                     verbose=False)
-            ni_range = line['ni_range']
-            nj_range = line['nj_range']
-            slope = line['slope']
-            
-            # Compute projection of horiz winds into the line
-            if slope == 'vertical':
-                angle = np.pi/2
-            else:
-                angle = np.arctan(slope)  
-            data['WPROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'], 
-                                                   data.level, angle)
-            
-            #%% INTERPOLATION
-            
-            section = []
-            abscisse_coords = []
-            abscisse_sites = {}
-            
-            #get total maximum height of relief on domain
-    #        max_ZS = data['ZS'].max()
-            max_ZS = 2500
-            if alti_type == 'asl':
-                level_range = np.arange(10, toplevel+max_ZS, 10)
-            else:
-                level_range = np.arange(10, toplevel, 10)
+    for model in models:
+        print('-----------------------')
+        print(model)
+        print('-----------------------')
+        
+        res_filt_dict[model] = {}
+        for date in date_list:
+            freq='1H'  #'1H', 30T, 10T
+            datetime_range = pd.date_range(pd.Timestamp(f'{date}-0700'), 
+                                           pd.Timestamp(f'{date}-2300'), 
+                                           freq=freq,
+                                           )
+            for datime in datetime_range:
+                # compute date and time
+        #        datime = pd.Timestamp(date) + pd.Timedelta(hour, 'h')
+                print(datime)
                 
-        #    print('section interpolation on {0} points (~1sec/pt)'.format(len(ni_range)))
-            for i, ni in enumerate(ni_range):
-                nj=nj_range[i]
-                #interpolation of all variables on ni_range
-                profile = data.interp(ni=ni, 
-                                      nj=nj, 
-                                      level=level_range).expand_dims({'i_sect':[i]})
-                section.append(profile)
+                # FIND and LOAD corresponding file
+                filename = tools.get_simu_filepath(model, datime, 
+                                                   file_suffix='dg', 
+                                                   out_suffix='')
+                print(filename)
+                ds = xr.open_dataset(filename)
                 
-                #store values of lat-lon for the horiz axis
-                lat = np.round(profile.latitude.values, decimals=3)
-                lon = np.round(profile.longitude.values, decimals=3)
-                latlon = str(lat) + '\n' + str(lon)
-                abscisse_coords.append(latlon)
+                # pre-processing of data
+                ds_sub = tools.subset_ds(ds, 
+                                  lat_range = [start[0], end[0]], 
+                                  lon_range = [start[1], end[1]],
+                                  nb_indices_exterior=5)    
+                ds_subcen = tools.center_uvw(ds_sub)
                 
-                #Store values of i and name of site in dict for horiz axis
+                # Computation of other diagnostic variable
+                ds_subcen['DIV'] = mcalc.divergence(ds_subcen['UT'], ds_subcen['VT'])
+                ds_subcen['WS'], ds_subcen['WD'] = tools.calc_ws_wd(ds_subcen['UT'], ds_subcen['VT'])
+                
+                data_subcenred = ds_subcen[['THT', 'RVT', 'UT', 'VT', 'WT', 
+        #                                   'ZS',
+        #                                   'TEMP', 'PRES', 
+        #                                   'DENS', 
+                                           'DIV',
+                                           'WS', 'WD',
+        #                                   surf_var
+                                           ]]
+                data = data_subcenred
+                
+                
+                #%% CREATE SECTION LINE
+                
+                line = tools.line_coords(data, start, end, 
+                                         nb_indices_exterior=nb_points_beyond,
+                                         verbose=False)
+                ni_range = line['ni_range']
+                nj_range = line['nj_range']
+                slope = line['slope']
+                
+                # Compute projection of horiz winds into the line
                 if slope == 'vertical':
-                    if nj == line['nj_start']:
-                        abscisse_sites[i] = site_start
-                    elif nj == line['nj_end']:
-                        abscisse_sites[i] = site_end
+                    angle = np.pi/2
                 else:
-                    if ni == line['ni_start']:
-                        abscisse_sites[i] = site_start
-                    elif ni == line['ni_end']:
-                        abscisse_sites[i] = site_end
-            
-            #concatenation of all profile in order to create the 2D section dataset
-            section_ds = xr.concat(section, dim="i_sect")
-            
-            # DIAG in section:
-            section_ds['RVT_GRAD_HORIZ'] = (section_ds['RVT'].dims,  # dims
-                                            np.gradient(section_ds['RVT'], axis=0)  # data
-                                            )
-            section_ds['WPROJ_GRAD_HORIZ'] = (section_ds['WPROJ'].dims,  # dims
-                                            np.gradient(section_ds['WPROJ'], axis=0)  # data
-                                            )
-            
-            # get location of minimum for DIV - Marinada front:
-            # look at given level (4 => 50m agl)
-            section_ds_ilevel = section_ds.isel(level=4)
-            res_dict[date]['section'][datime] = section_ds
-            
-            # keep pts where wind dir is toward inland
-            eastwind_pts = section_ds_ilevel.where(section_ds_ilevel['WPROJ']<0,
-                                                   drop=False)
-            # keep the point where convergence is the biggest
-            location_min = eastwind_pts.where(
-                    section_ds_ilevel['DIV'] == eastwind_pts['DIV'].min(), 
-                    drop=True)
-            
-            # retrieve data
-            for var in var_list:
-                if len(location_min[var]) == 0:
-                    res_dict[date][var][datime] = np.nan
+                    angle = np.arctan(slope)  
+                data['WPROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'], 
+                                                       data.level, angle)
+                
+                #%% INTERPOLATION
+                
+                section = []
+                abscisse_coords = []
+                abscisse_sites = {}
+                
+                #get total maximum height of relief on domain
+        #        max_ZS = data['ZS'].max()
+                max_ZS = 2500
+                if alti_type == 'asl':
+                    level_range = np.arange(10, toplevel+max_ZS, 10)
                 else:
-                    res_dict[date][var][datime] = float(location_min[var])
+                    level_range = np.arange(10, toplevel, 10)
+                    
+            #    print('section interpolation on {0} points (~1sec/pt)'.format(len(ni_range)))
+                for i, ni in enumerate(ni_range):
+                    nj=nj_range[i]
+                    #interpolation of all variables on ni_range
+                    profile = data.interp(ni=ni, 
+                                          nj=nj, 
+                                          level=level_range).expand_dims({'i_sect':[i]})
+                    section.append(profile)
+                    
+                    #store values of lat-lon for the horiz axis
+                    lat = np.round(profile.latitude.values, decimals=3)
+                    lon = np.round(profile.longitude.values, decimals=3)
+                    latlon = str(lat) + '\n' + str(lon)
+                    abscisse_coords.append(latlon)
+                    
+                    #Store values of i and name of site in dict for horiz axis
+                    if slope == 'vertical':
+                        if nj == line['nj_start']:
+                            abscisse_sites[i] = site_start
+                        elif nj == line['nj_end']:
+                            abscisse_sites[i] = site_end
+                    else:
+                        if ni == line['ni_start']:
+                            abscisse_sites[i] = site_start
+                        elif ni == line['ni_end']:
+                            abscisse_sites[i] = site_end
+                
+                #concatenation of all profile in order to create the 2D section dataset
+                section_ds = xr.concat(section, dim="i_sect")
+                
+                # DIAG in section:
+                section_ds['RVT_GRAD_HORIZ'] = (section_ds['RVT'].dims,  # dims
+                                                np.gradient(section_ds['RVT'], axis=0)  # data
+                                                )
+                section_ds['WPROJ_GRAD_HORIZ'] = (section_ds['WPROJ'].dims,  # dims
+                                                np.gradient(section_ds['WPROJ'], axis=0)  # data
+                                                )
+                
+                # get location of minimum for DIV - Marinada front:
+                # look at given level (4 => 50m agl)
+                section_ds_ilevel = section_ds.isel(level=4)
+                res_dict[date]['section'][datime] = section_ds
+                
+                # keep pts where wind dir is toward inland
+                eastwind_pts = section_ds_ilevel.where(section_ds_ilevel['WPROJ']<0,
+                                                       drop=False)
+                # keep the point where convergence is the biggest
+                location_min = eastwind_pts.where(
+                        section_ds_ilevel['DIV'] == eastwind_pts['DIV'].min(), 
+                        drop=True)
+                
+                # retrieve data
+                for var in var_list:
+                    if len(location_min[var]) == 0:
+                        res_dict[date][var][datime] = np.nan
+                    else:
+                        res_dict[date][var][datime] = float(location_min[var])
+            
         
-    
-        df = pd.DataFrame(res_dict[date])
-        
-        # add some DIAGs
-        coast_index = len(section_ds.i_sect) - nb_points_beyond
-        df['dist_coast']=abs((df['i_sect']-coast_index)*line['nij_step'])/1000  # in km
-        df['time'] = [datime.time() for datime in df.index]
-        
-        # FILTERING
-        df_filt = df[df['DIV'] < -0.0005]
-        
-        # --- filter to keep a constantly progressing front ---
-    #    while not df_filt.i_sect.is_monotonic_decreasing:
-#        df_filt_monotonic = pd.DataFrame()
-#        for i in range(len(df_filt.index)):
-#            if i == 0:
-#                pass
-#            else:
-#                i_sect_diff = df_filt.iloc[i-1].i_sect - df_filt.iloc[i].i_sect
-#    #            print(i_sect_diff)
-#                if i_sect_diff > 0:
-#                    df_filt_monotonic = df_filt_monotonic.append(df_filt.iloc[i])
-    #                df_filt_monotonic = pd.concat([df_filt_monotonic, df_filt.iloc[i]])
-    #                df_filt.iloc[i]['DIV'] = 0
-    #                print(df_filt_monotonic)
-        # remove values
-    #    df_filt = df_filt[df_filt['DIV'] == 0]
-        
-        # store filtered df
-#        res_filt_dict[model][date] = df_filt_monotonic
-        res_filt_dict[model][date] = df_filt
+            df = pd.DataFrame(res_dict[date])
+            
+            # add some DIAGs
+            coast_index = len(section_ds.i_sect) - nb_points_beyond
+            df['dist_coast']=abs((df['i_sect']-coast_index)*line['nij_step'])/1000  # in km
+            df['time'] = [datime.time() for datime in df.index]
+            
+            # FILTERING
+            df_filt = df[df['DIV'] < -0.0005]
+            
+            # --- filter to keep a constantly progressing front ---
+        #    while not df_filt.i_sect.is_monotonic_decreasing:
+    #        df_filt_monotonic = pd.DataFrame()
+    #        for i in range(len(df_filt.index)):
+    #            if i == 0:
+    #                pass
+    #            else:
+    #                i_sect_diff = df_filt.iloc[i-1].i_sect - df_filt.iloc[i].i_sect
+    #    #            print(i_sect_diff)
+    #                if i_sect_diff > 0:
+    #                    df_filt_monotonic = df_filt_monotonic.append(df_filt.iloc[i])
+        #                df_filt_monotonic = pd.concat([df_filt_monotonic, df_filt.iloc[i]])
+        #                df_filt.iloc[i]['DIV'] = 0
+        #                print(df_filt_monotonic)
+            # remove values
+        #    df_filt = df_filt[df_filt['DIV'] == 0]
+            
+            # store filtered df
+    #        res_filt_dict[model][date] = df_filt_monotonic
+            res_filt_dict[model][date] = df_filt
 
 
 #%% PICKLE - LOAD or SAVE
-import pickle
 
-## SAVE
-filehandler = open(f'{save_folder}/marinada_timing_res_dict_d1d2.pickle', 'wb')
-pickle.dump(res_filt_dict, filehandler)
-filehandler.close()
-
-# LOAD
-#filehandler = open(f'{save_folder}/marinada_timing_res_dict.pickle', 'rb')
-#res_filt_dict = pickle.load(filehandler)
-#filehandler.close()
-
-date_list = [
-#        '20210715', 
-        '20210716', 
-#        '20210717', 
-#        '20210718', 
-#        '20210719', 
-#        '20210720', 
-        '20210721',
-#        '20210722',
-        ]
+if use_of_pickle == 'save':
+    ## SAVE the result dictionnary
+    filehandler = open(f'{save_folder}/{pickle_filename}', 'wb')
+    pickle.dump(res_filt_dict, filehandler)
+    filehandler.close()
+elif use_of_pickle== 'import':
+    ## LOAD the result dict
+    filehandler = open(f'{save_folder}/{pickle_filename}', 'rb')
+    res_filt_dict = pickle.load(filehandler)
+    filehandler.close()
+    
+    date_list = [
+    #        '20210715', 
+            '20210716', 
+    #        '20210717', 
+    #        '20210718', 
+    #        '20210719', 
+    #        '20210720', 
+            '20210721',
+    #        '20210722',
+            ]
 
 #%% PLOT PROGRESSION of marinada
 plt.figure(figsize=(7,7))

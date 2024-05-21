@@ -20,10 +20,10 @@ import global_variables as gv
 
 ########## Independant parameters ###############
 wanted_date = '20210722-1200'
-site = 'elsplans'  # 'cendrosa', 'elsplans', 'irta'
+site = 'cendrosa'  # 'cendrosa', 'elsplans', 'irta'
 
 # variable name from MNH files: 'THT', 'RVT'
-var_simu = 'MRV'
+var_simu = 'THT'
 
 if var_simu == 'THT':
     vmin, vmax = 306, 314.5
@@ -59,7 +59,7 @@ follow_rs_position = False
 # highest level AGL plotted
 toplevel = 2500
 
-save_plot = True
+save_plot = False
 save_folder = '/home/lunelt/Documents/redaction/article1_irrigation_breeze/fig/'
 figsize=(4.5, 7)
 plt.rcParams.update({'font.size': 11})
@@ -281,6 +281,7 @@ figname = f"{var_simu_longname} profile over {gv.sites[site]['longname']}"
 
 plt.title(plot_title)
 plt.xlim([vmin, vmax])
+plt.ylim([0, toplevel])
 plt.ylabel('height AGL [m]')
 plt.xlabel(var_simu_longname + ' [' + var3d_low.units + ']')
 plt.legend()

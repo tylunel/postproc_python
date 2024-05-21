@@ -1,0 +1,5 @@
+--cendrosa-WS
+Bias filt:
+{'irrswi1_d1': -0.0185, 'noirr_lai_d1': 0.293}
+RMSE filt:
+{'irrswi1_d1': 0.148, 'noirr_lai_d1': 0.613}

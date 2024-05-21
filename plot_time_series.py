@@ -15,11 +15,11 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'cendrosa'
+site = 'irta-corn'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'hus_2'
+varname_obs = ''
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -32,36 +32,35 @@ varname_obs = 'hus_2'
 # PR10, PR20, PR40_subsoil (=vol water content), SWI10, SWI40_subsoil
 # LE_2m(_WPL) and H_2m also available by calculation
 # -- For IRTA-corn
-#LE, H, FC_mass, WS, WD, Ux,
+#LE, H, FC_mass, WS, WD, Ux, NETRAD
 #VWC_40cm_Avg: Average volumetric water content at 35 cm (m3/m3) 
 #T_20cm_Avg (_Std for standard deviation)
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim_list = ['RVT']
+varname_sim_list = ['T2M_ISBA']
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 # U_STAR, BOWEN
 
 vmin, vmax = None, None
 
 #If varname_sim is 3D:
-ilevel =  1  #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
+ilevel =  10  #0 is Halo, 1->2m, 2->6.12m, 3->10.49m, 10 -> 50m
 
-figsize = (7, 7) #small for presentation: (6,6), big: (15,9), paper:(7, 7)
+figsize = (6, 2.5) #small for presentation: (6,6), big: (15,9), paper:(7, 7)
 plt.rcParams.update({'font.size': 11})
 
 save_plot = True
-save_folder = './figures/time_series/{0}/domain2/'.format(site)
+save_folder = './figures/time_series/{0}/'.format(site)
+save_folder = 'article3/fig/time_series/{0}/'.format(site)
 
 models = [
-#        'irr_d2_old', 
-#        'std_d2_old',
-#        'irr_d2', 
-#        'std_d2', 
-        'std_d1',
-        'irr_d1',
-#        'irrlagrip30_d1',
-#        'irrswi1_d1',
+        # 'std_d1',
+        'noirr_lai_d1',
+        # 'irrlagrip30_d1',
+        # 'irrlagrip30thld07_d1',
+        'irrswi1_d1',
+        # 'irr_d1',
          ]
 
 remove_alfalfa_growth = False
@@ -78,6 +77,9 @@ if 'irrlagrip30_d1' in models and errors_computation:
     print("""Warning: computation of errors will be run on all of july for
           'irrlagrip30_d1' - bug to fix in code""")
 
+xmin = pd.Timestamp('20210715T00')
+xmax = pd.Timestamp('20210716T00')
+
 ######################################################
 
 simu_folders = {key:gv.simu_folders[key] for key in models}
@@ -85,23 +87,9 @@ father_folder = gv.global_simu_folder
 
 date = '2021-07'
 
-colordict = {'irr_d2': 'g', 
-             'std_d2': 'r',
-             'irr_d1': 'g', 
-             'std_d1': 'r', 
-             'irrlagrip30_d1': 'y',
-             'irr_d2_old': 'g', 
-             'std_d2_old': 'r', 
-             'obs': 'k'}
-styledict = {'irr_d2': '-', 
-             'std_d2': '-',
-             'irr_d1': '--', 
-             'std_d1': '--', 
-             'irrlagrip30_d1': '--',
-             'irr_d2_old': ':', 
-             'std_d2_old': ':', 
-             'obs': '-'}
-    
+colordict = gv.colordict
+styledict = gv.styledict
+
 
 #%% Dependant Parameters
 
@@ -150,6 +138,9 @@ elif varname_obs in ['ta_1', 'ta_2', 'ta_3', 'ta_4', 'ta_5', 'TEMP_2m',
 elif varname_obs in ['hus_1', 'hus_2', 'hus_3', 'hus_4', 'hus_5', 'RHO_2m']:
     ylabel = 'specific humidity [kg/kg]'
     coeff_obs = 0.001
+elif varname_obs in ['RH_1_1_1',]:
+    ylabel = 'Relative humidity [%]'
+    coeff_obs = 0.01
 elif varname_obs in ['FC_mass']:
     ylabel = 'CO2 flux in kg/m2/s'
     coeff_obs = 0.000001
@@ -189,9 +180,9 @@ elif site == 'elsplans':
 elif site in ['irta-corn', 'irta-corn-real',]:
     datafolder = gv.global_data_liaise + '/irta-corn/seb/'
     in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
-else:
-    print('Warning: Site without observation')
-    varname_obs = ''
+else:  # SMC
+    freq = '30'
+    datafolder = gv.global_data_liaise + '/SMC/ALL_stations_july/' 
     
 lat = gv.whole[site]['lat']
 lon = gv.whole[site]['lon']
@@ -207,8 +198,11 @@ if varname_obs != '':
         out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
         dat_to_nc = 'ukmo'
     #    dat_to_nc = None   #To keep existing netcdf file
-    else:
+    elif site == 'cendrosa':
         out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
+        dat_to_nc = None
+    else:  # SMC case
+        out_filename_obs = f'{site}.nc'
         dat_to_nc = None
         
     # CONCATENATE multiple days
@@ -218,11 +212,26 @@ if varname_obs != '':
     obs = xr.open_dataset(datafolder + out_filename_obs)
     
     # DIAG - process other variables:
-    if site in ['preixana', 'cendrosa']:
+    if site in ['preixana']:
         # net radiation
         obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
         # bowen ratio -  diff from bowen_ratio_1
-        obs['bowen'] = obs['shf_1'] / obs['lhf_1']
+        obs['bowen'] = (obs['shf'] / obs['lhf']).clip(min=-0.5, max=10)
+        # obs['bowen'] = np.clip(obs['bowen'], -0.5, 10)
+        obs['SEB_RESIDUE'] = obs['rn']-obs['lhf']-obs['shf']-obs['soil_heat_flux']
+        obs['EVAP_FRAC'] = obs['lhf'] / (obs['lhf'] + obs['shf'])
+        obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
+        for i in [1,2,3]:
+            obs['swi_{0}'.format(i)] = tools.calc_swi(
+                    obs['soil_moisture_{0}'.format(i)],
+                    gv.wilt_pt[site][i],
+                    gv.field_capa[site][i],) 
+    elif site in ['cendrosa']:
+        # net radiation
+        obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
+        obs['albedo'] = obs['swup']/obs['swd']
+        # bowen ratio -  diff from bowen_ratio_1
+        obs['bowen'] = (obs['shf_1'] / obs['lhf_1']).clip(min=-0.5, max=10)
         obs['SEB_RESIDUE'] = obs['rn']-obs['lhf_1']-obs['shf_1']-obs['soil_heat_flux']
         obs['EVAP_FRAC'] = obs['lhf_1'] / (obs['lhf_1'] + obs['shf_1'])
         obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
@@ -288,19 +297,27 @@ if varname_obs != '':
             obs = obs.where(obs.time>pd.Timestamp('20210715T1200'), drop=True)
         
         # filter outliers (turn into NaN)
-        obs_var_filtered = obs[varname_obs].where(
+        if varname_obs == 'RAIN_subsoil':
+            obs_var_filtered = obs[varname_obs].where(
+                obs[varname_obs] < 10, 
+                np.nan)
+        else:
+            obs_var_filtered = obs[varname_obs].where(
                 (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
                 np.nan)
-        if varname_obs == 'RAIN_subsoil':
-            obs_var_filtered = obs[varname_obs]
+        # if varname_obs == 'RAIN_subsoil':
+        #     obs_var_filtered = obs[varname_obs]
         obs_var_corr = (obs_var_filtered+offset_obs)*coeff_obs
         plt.plot(obs_var_corr.time, obs_var_corr, 
                  label='obs_'+varname_obs,
                  color=colordict['obs'])
     else:
-        if remove_alfalfa_growth:
-            if varname_obs in ['lhf_1', 'shf_1'] and site == 'cendrosa':  # because of growth of alfalfa
-                obs = obs.where(obs.time>pd.Timestamp('20210721T0100'), drop=True)
+        if remove_alfalfa_growth and site == 'cendrosa':  # because of growth of alfalfa
+            obs = obs.where(obs.time>pd.Timestamp('20210721T0100'), drop=True)
+        
+        # to remove intense rainfall
+        if varname_obs == 'rain_cumul':
+            obs = obs.where(obs.time<pd.Timestamp('20210725T0100'), drop=True)
         
         if site == 'irta-corn':
             obs = obs.where(~obs.time.isnull(), drop=True)
@@ -354,39 +371,57 @@ sim_sorted = {}
 
 for  varname_sim in varname_sim_list:
 
+    out_suffix = ''
+    file_suffix = 'dg'
+    
     if varname_sim == 'U_STAR':
         varname_sim_preproc = ['FMU_ISBA', 'FMV_ISBA']
     elif varname_sim == 'BOWEN':
         varname_sim_preproc = ['H_ISBA', 'LE_ISBA']
+    elif varname_sim in ['WS', 'WD']:
+        varname_sim_preproc = ['UT', 'VT']
+        # out_suffix = '.OUT'
+        # file_suffix = ''
     else:
         varname_sim_preproc = [varname_sim,]
     
     for model in simu_folders:
 
-        ds = tools.load_dataset(varname_sim_preproc, model)
+        ds = tools.load_series_dataset(varname_sim_preproc, model,
+                                       out_suffix=out_suffix,
+                                       file_suffix=file_suffix)
         
         try:
             index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
         except AttributeError:  #if the data does not have lat-lon data, merge with another that have it
-            ds = tools.load_dataset(['H_ISBA',] + varname_sim_preproc, model)
+            ds = tools.load_series_dataset(['H_ISBA',] + varname_sim_preproc, model)
             # and now, try again:
             index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
         
         # Compute other diag variables
         if varname_sim == 'U_STAR':
-            ds['U_STAR'] = tools.calc_u_star_sim(ds)
+            ds['U_STAR'] = tools.calc_u_star_sim(ds['FMU_ISBA'], ds['FMV_ISBA'])
         elif varname_sim == 'BOWEN':
             ds['BOWEN'] = tools.calc_bowen_sim(ds)
+        elif varname_sim in ['WS', 'WD']:
+            ds = ds.isel(level=ilevel)
+            print(ds)
+            print('centering UT and VT...')
+            ds = tools.center_uvw(ds)
+            print('computing WS and WD...')
+            ds['WS'], ds['WD'] = tools.calc_ws_wd(ds['UT'], ds['VT'])
         
         # Set time abscisse axis
         try:
             start = ds.time.data[0]
         except AttributeError:
+            print('WARNING: time array is hardcoded')
             start = np.datetime64('2021-07-21T01:00')
         
         dati_arr_sim = np.array([start + np.timedelta64(i, 'h') for i in np.arange(0, ds[varname_sim].shape[0])])
 
-        ds = ds.squeeze()  # new: may induce bugs ??
+        ds = ds.squeeze()
+        
         ds['record'] = dati_arr_sim
         ds = ds.drop_vars(['time'])
         ds = ds.rename({'record': 'time'})
@@ -404,12 +439,13 @@ for  varname_sim in varname_sim_list:
         if kelvin_to_celsius:
             var_md = var_md - 273.15
         
-        if len(var_md.shape) == 5:
-            var_1d = var_md[:, :, ilevel, index_lat, index_lon].data #1st index is time, 2nd is ?, 3rd is Z,..
-        elif len(var_md.shape) == 4:
-            var_1d = var_md[:, ilevel, index_lat, index_lon].data #1st index is time, 2nd is Z,..
-        elif len(var_md.shape) == 3:
-            var_1d = var_md[:, index_lat, index_lon].data
+        # if len(var_md.shape) == 5:
+        #     var_1d = var_md[:, :, ilevel, index_lat, index_lon].data  #1st index is time, 2nd is ?, 3rd is Z,..
+        # elif len(var_md.shape) == 4:
+        #     var_1d = var_md[:, ilevel, index_lat, index_lon].data  #1st index is time, 2nd is Z,..
+        # elif len(var_md.shape) == 3:
+        #     var_1d = var_md[:, index_lat, index_lon].data
+        var_1d = var_md.isel(nj=index_lat, ni=index_lon)
         
         # PLOT
         plt.plot(ds.time, var_1d, 
@@ -479,8 +515,16 @@ ax = plt.gca()
 ax.set_ylabel(ylabel)
 ax.set_ylim([vmin, vmax])
 
-ax.set_xlim([np.min(dati_arr_sim), 
-             (np.max(dati_arr_sim) - pd.Timedelta(1, 'h'))])
+
+if xmin is None:
+    try:
+        xmin = np.min(dati_arr_sim)
+        xmax = np.max(dati_arr_sim)  - pd.Timedelta(1, 'h')
+    except:
+        xmin = None
+        xmax = None
+
+ax.set_xlim([xmin, xmax])
 ax.set_xlabel('time UTC')
 
 # add grey zones for night

@@ -23,7 +23,7 @@ model = 'irrswi1_d1'
 
 domain_nb = int(model[-1])
 
-wanted_date = '20210716-1300'
+wanted_date = '20210716-1100'
 
 color_map = 'YlOrBr'    # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
 
@@ -34,7 +34,7 @@ vmax = 1500
 # level, only useful if var 3D
 #ilevel = 24  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
 ilevel_low = 10
-ilevel_high = 30
+ilevel_high = 35
 
 
 zoom_on = 'marinada'  #None for no zoom, 'liaise' or 'urgell'

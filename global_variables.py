@@ -24,12 +24,18 @@ simu_folders = {
         'std_d2_old_old': '1.11_std_d1d2_21-24/',
         'irr_d1': '2.15_irr_d1_15-30/',
         'std_d1': '1.15_std_d1_15-30/',
+        'std_d1_16_10min': '1.16_std_d1_16_refining/',
 #        'lagrip100_d1': '5.15_lagrip100_d1_15-30/',  #param had issue
-        'irrlagrip30_d1': '7.15_irrlagrip30_d1_15-30/',
+        'irrlagrip30_d1_old': '7.15_irrlagrip30_d1_15-30/',  # sst not consistent with others models
+        'irrlagrip30_d1': '7.19_irrlagrip30_d1_sst_corr/',
+        'irrlagrip30_d1_16_10min': '7.16_irrlagrip30_d1_16_refining/',
         'irrlagrip30_d2': '7.17_irrlagrip30_d2_16-18/',
         'irrswi1_d1_old': '8.15_irrswi1_d1_15-30_old/',  # swi =1 at beginning, decreases then
         'irrswi1_d1': '8.16_irrswi1_d1_15-30_bugfix/',  # swi =1 at beginning, decreases then
+        'irrswi1_d1_16_10min': '8.17_irrswi1_d1_16_refining/',
 #        'irrlagrip30_d1': '7.20_irrlagrip30_d1_1-30/',
+        'noirr_lai_d1': '3.01_noirr_lai_d1_15-30/',
+        'irrlagrip30thld07_d1': '6.01_irrlagrip30thld07_d1_15-30/',
         'temp': '',
          }
 
@@ -44,30 +50,89 @@ format_filename_simu_wildcards = {
         'std_d1':     'LIAIS.1.SEG??.0??dg.nc',
 #        'lagrip100_d1': 'LIAIS.1.SEG??.0??.nc',
         'irrlagrip30_d1': 'LIAIS.1.SEG??.0??dg.nc',
+        'irrlagrip30_d1_16_10min': 'LIAIS.1.SEG??.0??dg.nc',
+        'irrlagrip30_d1_old': 'LIAIS.1.SEG??.0??dg.nc',
         'irrswi1_d1': 'LIAIS.1.SEG??.0??dg.nc',
+        'irrswi1_d1_16_10min': 'LIAIS.1.SEG??.0??.nc',
         'irrswi1_d1_old': 'LIAIS.1.SEG??.0??dg.nc',
         'irrlagrip30_d2': 'LIAIS.1.S????.001dg.nc',
         }
 format_filename_simu = format_filename_simu_wildcards
 
 format_filename_simu_new = {  
-        'std_d2': 'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
-        'irr_d2': 'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
-        'std_d2_old': 'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
-        'irr_d2_old': 'LIAIS.1.S{day_nb}{hour_nb_2f}.001{file_suffix}.nc',
-        'std_d2_old_old': 'LIAIS.2.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
-        'irr_d2_old_old': 'LIAIS.2.SEG{day_nb}.{hour_nb_3f}{file_suffix}.nc',
-        'irr_d1': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
-        'std_d1': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
-        'irrlagrip30_d1': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
-        'irrlagrip30_d2': 'LIAIS.1.S{day_nb}{hour_nb_2f}{out_suffix}.001{file_suffix}.nc',
-        'irrswi1_d1': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
-        'irrswi1_d1_old': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
-        'lagrip100_d1': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
-        'temp': 'LIAIS.1.SEG{day_nb}{out_suffix}.{hour_nb_3f}{file_suffix}.nc',
+        'std_d2': 'LIAIS.1.S{seg_nb}{output_nb_2f}.001{file_suffix}.nc',
+        'irr_d2': 'LIAIS.1.S{seg_nb}{output_nb_2f}.001{file_suffix}.nc',
+        'std_d2_old': 'LIAIS.1.S{seg_nb}{output_nb_2f}.001{file_suffix}.nc',
+        'irr_d2_old': 'LIAIS.1.S{seg_nb}{output_nb_2f}.001{file_suffix}.nc',
+        'std_d2_old_old': 'LIAIS.2.SEG{seg_nb}.{output_nb_3f}{file_suffix}.nc',
+        'irr_d2_old_old': 'LIAIS.2.SEG{seg_nb}.{output_nb_3f}{file_suffix}.nc',
+        'irr_d1': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'std_d1': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'std_d1_16_10min': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'irrlagrip30_d1': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'irrlagrip30_d1_16_10min': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'irrlagrip30_d1_old': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'irrlagrip30_d2': 'LIAIS.1.S{seg_nb}{output_nb_2f}{out_suffix}.001{file_suffix}.nc',
+        'irrswi1_d1': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'irrswi1_d1_16_10min': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'irrswi1_d1_old': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'lagrip100_d1': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'noirr_lai_d1': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'irrlagrip30thld07_d1': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'temp': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
         }
-# Apply .format() after corresponding string works!
-# ex: format_filename_simu_new['std_d2'].format(day_nb=22, hour_nb_2f=12, hour_nb_2f='012', file_suffix='dg')
+# Apply .format() after corresponding string
+# ex: format_filename_simu_new['std_d2'].format(seg_nb=22, output_nb_2f=12, output_nb_2f='012', file_suffix='dg')
+
+# format_filename_simu_wildcards = {key:val.format(seg_nb='??', output_nb_2f='??', output_nb_2f='012', file_suffix='dg') if ...}
+
+longnamedict = {
+    'irrswi1_d1': 'FC_IRR',
+    'irrswi1_d1_16_10min': 'FC_IRR',
+    'std_d1':  'NOIRR',
+    'noirr_lai_d1':  'NOIRR',
+    'irrlagrip30_d1': 'THOLD_IRR',
+    }
+
+colordict = {'irr_d2': 'g', 
+             'std_d2': 'r',
+             'irr_d1': 'g', 
+             'std_d1': 'r',
+             'std_d1_16_10min': 'r',
+             'irrswi1_d1': 'b',
+             'irrswi1_d1_16_10min': 'b',
+             'irrlagrip30_d1': 'orange',
+             'irrlagrip30_d1_16_10min': 'orange',
+             'irr_d2_old': 'g', 
+             'std_d2_old': 'r',
+             'noirr_lai_d1': 'orange',
+             'irrlagrip30thld07_d1': 'y',
+             'obs': 'k'}
+styledict = {'irr_d2': '-', 
+             'std_d2': '-',
+             'irr_d1': '--', 
+             'std_d1': '--',
+             'std_d1_16_10min': '--',
+             'irrswi1_d1': '--',
+             'irrswi1_d1_16_10min': '--',
+             'irrlagrip30_d1': '--',
+             'irrlagrip30_d1_16_10min': '--',
+             'irr_d2_old': ':', 
+             'std_d2_old': ':',
+             'noirr_lai_d1': '--',
+             'irrlagrip30thld07_d1': '--',
+             'obs': '-'}
+
+
+output_freq_dict = {
+        'irrswi1_d1': 30,
+        'irrswi1_d1_16_10min': 10,
+        'std_d1': 30,
+        'std_d1_16_10min': 10,
+        'irrlagrip30_d1': 30,
+        'irrlagrip30_d1_16_10min': 10,
+        'irrlagrip30_d1_old': 30,
+        }
 
 sites = {'cendrosa': {
 #                'lat': 41.6925905,  # precise real coordinates
@@ -95,7 +160,8 @@ sites = {'cendrosa': {
          'irta-corn': {
                      'lat': 41.619079, # real position, but is not in 100% irr zone in model irr_d1
                      'lon': 0.875333,
-                     'alt': 245}, # real position, but is not in 100% irr zone in model
+                     'alt': 245,
+                     'longname': 'IRTA corn field'},
          'irta': {  # =irta-corn
                      'lat': 41.619079, 
                      'lon': 0.875333,
@@ -118,13 +184,18 @@ towns = {'arbeca': {'lat': 41.54236,
                        'lon': 1.2456},
          'tarrega': {'lat': 41.6502,
                      'lon': 1.1389},
-         'barcelona': {'lat': 41.4025,
-                       'lon': 1.1870},
+         'barcelona': {'lat': 41.3715,
+                       'lon': 2.1759,
+                       'longname': 'Barcelona'},
+         'bilbao': {'lat': 43.2665,
+                    'lon': -2.9313,
+                    'longname': 'Bilbao'},
          'lleida': {'lat': 41.6186,
                     'lon': 0.6257,
                     'longname': 'Lleida'},
          'zaragoza': {'lat': 41.6547,
-                      'lon': -0.8784},
+                      'lon': -0.8784,
+                      'longname': 'Zaragoza'},
          'torredembarra': {'lat': 41.145077,
                            'lon': 1.4073809,
                            'longname': 'Torredembarra',
@@ -152,9 +223,11 @@ towns = {'arbeca': {'lat': 41.54236,
                      'lon': 1.04594},
          'conesa': {'lat': 41.51996,
                 'lon': 1.29126},
-         'calafell': {'lat': 41.19005,
+         'calafell': {'lat': 41.170,  # a bit lower but cleaner for plt figure
+                      # 'lat': 41.19005,
 #                      'lon': 1.57218},  # real value, but issue with budget
-                      'lon': 1.49},  # modified value
+                      'lon': 1.49,  # modified value, max value that works in irrswi1
+                      },  
          'santa_coloma': {'lat': 41.53407,
                           'lon': 1.38441},
         'pi_sol': {'lat': 41.302951,
@@ -169,6 +242,9 @@ towns = {'arbeca': {'lat': 41.54236,
          'linyola': {'lat': 41.710657,
                      'lon': 0.903243,
                      'alt': 254},
+        'coma_ruga': {'lat': 41.1776,
+                      'lon': 1.49,
+                      'alt': 0}
 #         '__': {'lat': ,
 #                'lon': },
               }
@@ -201,6 +277,10 @@ mountains = {'tossal_baltasana': {'lat': 41.3275,
                             'lon': 1.22014,
                             'longname': 'Coll de Lilla',
                             'acronym': 'C.d.L.'},
+             'serra_miramar': {'lat': 41.3571,  # nearly equal to coll_lilla
+                            'lon': 1.2250,
+                            'longname': 'Serra de Miramar',
+                            'acronym': 'S.d.M.'},
              'puig_pelat': {'lat': 41.26571,
                             'lon': 1.05502},
             'tossal_purunyo': {'lat': 41.30137,

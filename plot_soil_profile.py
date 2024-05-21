@@ -19,11 +19,11 @@ import global_variables as gv
 
 
 ##########################################
-wanted_date = '20210715-1500'
+wanted_date = '20210714-0100'
 
-site = 'cendrosa'
+site = 'irta-corn'
 
-varname_obs_prefix = 'soil_moisture'   #options are: soil_moisture, soil_temp
+varname_obs_prefix = 'soil_temp'   #options are: soil_moisture, soil_temp
 
 models = [
 #        'irr_d2_old', 
@@ -31,8 +31,8 @@ models = [
 #        'irr_d2', 
 #        'std_d2', 
 #        'irr_d1', 
-#        'std_d1',
-        'lagrip100_d1',
+        'std_d1',
+        # 'lagrip100_d1',
          ]
 
 plot_title = 'Ground profile at {0} on {1}'.format(site, wanted_date)
@@ -100,7 +100,7 @@ val_simu = {}
 
 for model in simu_folders:
     datafolder = father_folder + simu_folders[model]
-    filename = tools.get_simu_filename(model, wanted_date)
+    filename = tools.get_simu_filepath(model, wanted_date)
     
     # load dataset, default datetime okay as pgd vars are all the same along time
     ds = xr.open_dataset(filename)

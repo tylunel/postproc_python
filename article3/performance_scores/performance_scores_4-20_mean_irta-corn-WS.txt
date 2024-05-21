@@ -1,0 +1,5 @@
+--irta-corn-WS
+Bias filt:
+{'irrswi1_d1': 0.13, 'noirr_lai_d1': 0.406}
+RMSE filt:
+{'irrswi1_d1': 0.234, 'noirr_lai_d1': 0.727}

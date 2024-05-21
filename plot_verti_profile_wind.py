@@ -3,7 +3,9 @@
 @author: Tanguy LUNEL
 Creation : 07/01/2021
 
-Plot vertical profile from LIDAR and RADAR data
+Plot vertical profile for vectors
+if only wind speed or wind direction needed, check out plot_verti_profile_scalar.py
+
 """
 #import os
 import numpy as np
@@ -22,10 +24,10 @@ site = 'elsplans'
 
 if site == 'elsplans':
     source_obs_list = [
-        'uhf', 
 #        'lidar', 
         'mast', 
-        'radiosondes'
+        'radiosondes',
+        'uhf', 
         ]
 elif site in ['cendrosa', 'linyola']:
     source_obs_list = [

@@ -20,34 +20,36 @@ import os
 from metpy.plots import StationPlot
 
 ###############################################
-model = 'irrswi1_d1'
+model = 'irrlagrip30_d1'
 
 domain_nb = 1
 
-wanted_date = '20210716-1200'
+wanted_date = '20210714-1200'
 
-color_map = 'YlOrBr'   # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
+color_map = 'coolwarm'   # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
                     # YlOrBr for orography
                     # RdYlGn, YlGn for LAI
                     # coolwarm_r for SWI
 
-var_name = 'ZS'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR, TSWI_T_ISBA, SWI3_ISBA
-vmin = 0
-vmax = 1500
+var_name = 'SWI3_ISBA'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR, TSWI_T_ISBA, SWI3_ISBA
+vmin = -0.2
+vmax = 1.2
 
 # level, only useful if var 3D
 ilevel = 1  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
 ilevel_wind = 3
 
-zoom_on = 'marinada'  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'd2'  #None for no zoom, 'liaise' or 'urgell'
 
 add_winds = False
 add_smc_obs = False
 add_pgf = False
-marinada_areas = True
+marinada_areas = False
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
 isoalti_list = [600,]
+obs_circle_size = 50
+cbar_loc = 'right'  # 'left', 'right', 'top', 'bottom'
 
 save_plot = True
 #save_folder = './figures/scalar_maps/pgd/'
@@ -75,7 +77,6 @@ lon_range = prop['lon_range']
 figsize = prop['figsize']
 # OR: #locals().update(gv.zoom_domain_prop[zoom_on])
 
-cbar_loc='bottom'
 if cbar_loc == 'bottom':
     figsize = (figsize[0]-2, figsize[1]+1)
     cbar_frac = 0.05
@@ -292,6 +293,9 @@ if add_smc_obs:
                         obs_t['altitude'], p0=ds1['MSLP'].mean()*100)
                 obs_t['THT'] = tools.potential_temperature_from_temperature(
                     obs_t['P_pa'], obs_t['T_kelvin'])
+                obs_t['RVT'] = tools.psy_ta_rh(
+                        obs_t['T'], obs_t['HR'])['mixing_ratio']  # in kg/kg
+                obs_t['MRV'] = obs_t['RVT']*1000    # in g/kg
 
                 # --- plot station data ---
                 if (lon_range[0] < obs['lon'] < lon_range[1] and \
@@ -308,17 +312,17 @@ if add_smc_obs:
                            )
                     # plot a scalar variable in the circle
                     ax.scatter(obs['lon'], obs['lat'],
-                                color=cmap((obs_t['THT']-vmin)/(vmax-vmin)),
-                                edgecolors='k')
+                                color=cmap((obs_t[var_name]-vmin)/(vmax-vmin)),
+                                edgecolors='k', s=obs_circle_size)
                     # add wind measurement height if different from 10m
                     if wind_height != 10:
                         ax.text(obs['lon']+0.008, obs['lat']-0.016, 
                                  wind_height, 
                                  fontsize=7)
-                    # plot a scalar variable in the circle
-                    ax.scatter(obs['lon'], obs['lat'],
-                                color=cmap((obs_t['THT']-vmin)/(vmax-vmin)),
-                                edgecolors='k')
+#                    # plot a scalar variable in the circle
+#                    ax.scatter(obs['lon'], obs['lat'],
+#                                color=cmap((obs_t[var_name]-vmin)/(vmax-vmin)),
+#                                edgecolors='k')
                     # state that this station was plotted
                     print(f'{filename} plotted')
             except (FileNotFoundError, ValueError, IndexError, TypeError) as e:
@@ -355,6 +359,8 @@ if add_smc_obs:
             obs_t['UT'], obs_t['VT'] = tools.calc_u_v(
                     obs_t[f'UTOT_10m'], obs_t[f'DIR_10m'])
             obs_t['T_kelvin'] = obs_t['TEMP_2m'] + 273.15
+            obs_t['MRV'] = obs_t['RHO_2m']      # in g/kg
+            obs_t['RVT'] = obs_t['MRV']/1000    # in kg/kg
             
         elif site == 'cendrosa':
             freq = 30
@@ -372,6 +378,8 @@ if add_smc_obs:
             obs_t['UT'], obs_t['VT'] = tools.calc_u_v(
                     obs_t[f'ws_2'], obs_t[f'wd_2'])
             obs_t['T_kelvin'] = obs_t['ta_2'] + 273.15
+            obs_t['MRV'] = obs_t['hus_2']      # in g/kg
+            obs_t['RVT'] = obs_t['MRV']/1000    # in kg/kg
 
         obs_t['P_pa'] = tools.height_to_pressure_std(
                 gv.sites[site]['alt'], p0=ds1['MSLP'].mean()*100)
@@ -390,8 +398,8 @@ if add_smc_obs:
                )
         # plot a scalar variable in the circle
         ax.scatter(gv.sites[site]['lon'], gv.sites[site]['lat'],
-                    color=cmap((obs_t['THT']-vmin)/(vmax-vmin)),
-                    edgecolors='k')
+                    color=cmap((obs_t[var_name]-vmin)/(vmax-vmin)),
+                    edgecolors='k', s=obs_circle_size)
         # state that this station was plotted
         print(f'{site} plotted')
     
@@ -497,7 +505,7 @@ for site in sites:
                     )
     # print site name on fig:
     try:
-        sitename = sites[site]['longname']  # 'acronym', 'longname'
+        sitename = sites[site]['acronym']  # 'acronym', 'longname'
     except KeyError:
         sitename = site
         

@@ -18,19 +18,13 @@ import global_variables as gv
     
 site = 'irta-corn'
 
-varname_sim = 'SWI5_ISBA'
-varname_obs = 'swi_3'
+varname_sim = 'LE'
+varname_obs = 'LE'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
 # from données lentes: 1->0.2m, 2->2m, 3->10m, 4->25m, 5->50m
 # from eddy covariance measures: 1->3m, 2->25m, 3->50m
-# -- For UKMO (elsplans):
-# TEMP, RHO (=hus), WQ, WT, UTOT, DIR, ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
-# RAIN, PRES, ST01 (=soil_temp), SWDN ... followed by _2m, _10mB, _25m, _50m, _rad, _subsoil
-# ST01, ST04, ST10, ST17, ST35_subsoil with number being depth in cm
-# PR10, PR20, PR40_subsoil (=vol water content), SWI10, SWI40_subsoil
-# LE_2m(_WPL) and H_2m also available by calculation
 # -- For IRTA-corn
 #LE, H, FC_mass, WS, WD, Ux,
 #VWC_40cm_Avg: Average volumetric water content at 35 cm (m3/m3) 
@@ -38,35 +32,38 @@ varname_obs = 'swi_3'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-
-add_irrig_time = False
-figsize = (8, 6) #small for presentation: (6,6), big: (15,9)
+figsize = (6, 6) #small for presentation: (6,6), big: (15,9)
 save_plot = False
 save_folder = './figures/time_series_sfx/{0}/compa_irr_param/'.format(site)
 
+forcing_file = 'obs'
+cphoto = 'AST'
+
 models = [
-        'IRRLAGRIP30', 
-        'IRRLAGRIP100',
-        'IRRSWI10_SUP',
-        'IRRSWI08',
-#        'IRRSWI07',
-        'IRRSWI06',
-        'IRRSWI05',
-        'IRRSWI03',
-#        'IRRSWI01',
-        'NOIRRIG',
+        # 'IRRLAGRIP30',
+        # 'IRRSWI12',
+        'IRRSWI10',
+        # 'IRRSWI08',
+        # 'IRRSWI07',
+        # 'IRRSWI06',
+        # 'IRRSWI05',
+        # 'IRRSWI04',
+        # 'IRRSWI02',
+        # 'IRRSWI00',
+        # 'NOIRRIG',
          ]
 
-#models_idnumber = {'irr_d1': '2.15',
-#                   'std_d1': '1.15',
-#                   }
+errors_computation = True
+remove_alfalfa_growth = True
+add_fao56_et = False
+add_seb_residue = True
+error_on_residue = True
+add_irrig_time = True
+time_shift_correction = 30  # in minutes
 
-errors_computation = False
 if varname_obs == '':
     errors_computation = False
 
-add_fao56_et = False
-add_seb_residue = False
 ######################################################
 
 #simu_folders = {key:gv.simu_folders[key] for key in models}
@@ -74,50 +71,36 @@ add_seb_residue = False
 
 date = '2021-07'
 
-#colordict = {'irr_d2': 'g', 
-#             'std_d2': 'r',
-#             'irr_d1': 'g', 
-#             'std_d1': 'r',
-#             'obs': 'k'}
-styledict = {
-        'IRRLAGRIP30': 'g-.', 
-        'IRRLAGRIP100': 'g:',
-        'IRRSWI10_SUP': 'b--',
-        'IRRSWI08': 'b--',
-        'IRRSWI07': 'b--',
-        'IRRSWI06': 'b--',
-        'IRRSWI05': 'b--',
-        'IRRSWI03': 'b--',
-        'IRRSWI01': 'b--',
-        'NOIRRIG': 'r:',
-        'obs': 'k',
-        }
-
 colordict = {
         'IRRLAGRIP30': '#008000ff',  #std green
         'IRRLAGRIP100': '#73d216ff',
-        'IRRSWI10_SUP': '#0000ffff',  # std blue
+        'IRRSWI12': '#0000ffff',  # std blue
+        'IRRSWI10': '#1000ffff',
         'IRRSWI08': '#204a87ff',
         'IRRSWI07': '#284a87ff',
         'IRRSWI06': '#3465a4ff',
         'IRRSWI05': '#729fcfff',
-        'IRRSWI03': '#929fcfff',
-        'IRRSWI01': '#b29fcfff',
+        'IRRSWI04': '#929fcfff',
+        'IRRSWI02': '#b29fcfff',
+        'IRRSWI00': '#b29fcfff',
         'NOIRRIG': 'r',
         'obs': 'k',
         'IRRSWI10_LAI30_Z001': 'b',
         'IRRSWI10_LAI30_Z003': 'b',
         }
 linedict = {
-        'IRRLAGRIP30': '-.',  #std green
+        'IRRLAGRIP30': '-.',
         'IRRLAGRIP100': '-.',
-        'IRRSWI10_SUP': '--',  # std blue
-        'IRRSWI08': '--',
+        'IRRSWI12': '-.',
+        'IRRSWI10': '--',
+        'IRRSWI08': '-.',
         'IRRSWI07': '--',
-        'IRRSWI06': '--',
+        'IRRSWI06': '-.',
         'IRRSWI05': '--',
+        'IRRSWI04': '--',
         'IRRSWI03': '--',
-        'IRRSWI01': '--',
+        'IRRSWI02': '-.',
+        'IRRSWI00': '--',
         'NOIRRIG': ':',
         'obs': '-',
         'IRRSWI10_LAI30_Z001': '--',
@@ -201,8 +184,10 @@ obs = xr.open_dataset(datafolder + out_filename_obs)
 if site in ['preixana', 'cendrosa']:
     # net radiation
     obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
+    obs['SEB_RESIDUE'] = obs['rn']-obs['lhf_1']-obs['shf_1']-obs['soil_heat_flux']
     # bowen ratio -  diff from bowen_ratio_1
     obs['bowen'] = obs['shf_1'] / obs['lhf_1']
+    obs['EVAP_FRAC'] = obs['lhf_1'] / (obs['lhf_1'] + obs['shf_1'])
     # potential evapotranspiration
     obs['lhf_0_fao56'] = tools.calc_fao56_et_0(
         obs['rn'], 
@@ -237,9 +222,6 @@ elif site == 'irta-corn':
     obs['U_STAR'] = np.sqrt(obs['TAU']/obs['air_density'])
     obs['SEB_RESIDUE'] = obs['NETRAD']-obs['LE']-obs['H']-obs['G_plate_1_1_1']
     obs['EVAP_FRAC'] = obs['LE'] / (obs['LE'] + obs['H'])
-    EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
-    EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
-    obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
 elif site == 'elsplans':
     ## Flux calculations
     obs['H_2m'] = obs['WT_2m']*1200  # =Cp_air * rho_air
@@ -254,7 +236,7 @@ elif site == 'elsplans':
                 obs['PR{0}_subsoil'.format(i)]*0.01,  #conversion from % to decimal
                 gv.wilt_pt[site][i],
                 gv.field_capa[site][i],)
-    
+
 # PLOT:
 fig = plt.figure(figsize=figsize)
 
@@ -275,6 +257,8 @@ if varname_obs != '':
                  label='obs_'+varname_obs,
                  color=colordict['obs'])
     else:
+        if remove_alfalfa_growth and site == 'cendrosa':  # because of growth of alfalfa
+            obs = obs.where(obs.time>pd.Timestamp('20210721T0100'), drop=True)
         # filter outliers (turn into NaN)
         obs_var_filtered = obs[varname_obs].where(
                 (obs[varname_obs]-obs[varname_obs].mean()) < (4*obs[varname_obs].std()), 
@@ -289,12 +273,16 @@ if varname_obs != '':
                 linewidth=1)
             
         if add_seb_residue:
+            # get EVAP_FARC_between 0 and 1
+            EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
+            EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
+            obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
             
             obs_uncertainty = obs['SEB_RESIDUE'].data
             
-            if varname_obs=='LE':
+            if varname_obs in ['LE', 'lhf_1']:
                 obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*obs['EVAP_FRAC_FILTERED'].data
-            elif varname_obs=='H':
+            elif varname_obs in ['H', 'shf_1']:
                 obs_residue_corr = obs_var_corr + obs['SEB_RESIDUE']*(1-obs['EVAP_FRAC_FILTERED'].data)
             else:
                 raise ValueError('add_seb_residue available only on LE and H')
@@ -329,13 +317,18 @@ sim_sorted = {}
 
 
 for model in models:
-    datafolder = ('/cnrm/surface/lunelt/NO_SAVE/sfx_out/{0}/comp_irrig_param_forc_obs/{1}/'.format(site, model))
+    datafolder = (
+        '/cnrm/surface/lunelt/NO_SAVE/sfx_out/' + \
+        'et_overestimation/{0}/forcing_{1}_{2}/{3}/'.format(
+            site, forcing_file, cphoto, model))
 #    datafolder = folder + 'forcing_{0}/'.format(models_idnumber[model])
     
-#    ds = xr.open_dataset(datafolder + 'SURF_ATM_DIAGNOSTICS.OUT.nc')
-    ds = xr.open_dataset(datafolder + 'ISBA_DIAGNOSTICS.OUT.nc',
-                         decode_times=False)
+    ds = xr.open_dataset(datafolder + 'SURF_ATM_DIAGNOSTICS.OUT.nc')
+    # ds = xr.open_dataset(datafolder + 'ISBA_DIAGNOSTICS.OUT.nc',
+    #                      decode_times=False)
     ds['time'] = xr.open_dataset(datafolder + 'SURF_ATM_DIAGNOSTICS.OUT.nc').time
+    if time_shift_correction not in [None, 0]:
+        ds['time'] = ds['time'] - pd.Timedelta(time_shift_correction, 'm')
     
     # Compute other diag variables
     if varname_sim == 'U_STAR':
@@ -344,7 +337,7 @@ for model in models:
         ds['BOWEN'] = tools.calc_bowen_sim(ds)
     elif add_fao56_et:
         ds_forcing = xr.open_dataset(datafolder + 'FORCING_{0}_{1}.nc'.format(
-                site, models_idnumber[model]))
+                site, forcing_file))
         ds_forcing['REHU'] = tools.rel_humidity(
                 ds_forcing['Qair'], 
                 ds_forcing['Tair']-273.15,
@@ -394,8 +387,11 @@ for model in models:
 #        time_window = ds.time[:][(day-1)*int(24/timestep) : (day)*int(24/timestep)]
         
         for i, date in enumerate(time_window):
-#            val = obs_residue_corr.where(obs.time == date, drop=True).data
-            val = obs_var_corr.where(obs.time == date, drop=True).data
+            if error_on_residue:
+                val = obs_residue_corr.where(obs.time == date, drop=True).data
+            else:
+                val = obs_var_corr.where(obs.time == date, drop=True).data
+                
             if len(val) == 0:
                 pass
             if len(val) == 1:

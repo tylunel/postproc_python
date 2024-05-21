@@ -12,6 +12,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import tools
 import xarray as xr
+import global_variables as gv
 
 
 #%% Parameters -----------------------------
@@ -19,7 +20,7 @@ dati = pd.Timestamp('2021-07-23 22:30')
 irr_dati_pre = pd.Timestamp('2021-07-23 22:30')
 irr_dati_post = pd.Timestamp('2021-07-24 02:30')
 
-site = 'irta-corn'
+site = 'cendrosa'
 
 varname_obs_prefix = 'soil_moisture'   #options are: soil_moisture, soil_temp
 
@@ -28,14 +29,13 @@ simu_folders = {
 #        'std': '1.11_ECOII_2021_ecmwf_22-27'
          }
 
-plot_title = 'Soil moisture profile before and after irrigation at {0}'.format(site)
 
 save_plot = True
 save_folder = './figures/soil_moisture/'
 
 #%% Automatic variable assignation:
 if varname_obs_prefix == 'soil_moisture':
-    xlabel = 'volumetric soil water content [m3/m3]'
+    xlabel = 'Volumetric soil water content [m$^{3}$ m$^{-3}$]'
     constant_obs = 0
     sfx_letter = 'W'    #in surfex, corresponding variables will start by this
 elif varname_obs_prefix == 'soil_temp':
@@ -137,9 +137,10 @@ ax.set_xlim([0, 0.6])
 ax.set_ylim([-0.5, 0])
 
 ax.set_xlabel(xlabel)
-ax.set_ylabel('depth (m)')
+ax.set_ylabel('Depth [m]')
 
-plt.title(plot_title)
+# plot_title = 'Soil moisture profile before and after irrigation at {0}'.format(site)
+
 #
 #for key in val_simu:
 #    plt.plot(val_simu[key], sim_depth, marker='+', 
@@ -149,16 +150,22 @@ irr_dati_pre = pd.Timestamp(irr_dati_pre)
 irr_dati_post = pd.Timestamp(irr_dati_post)
 
 plt.plot(obs_arr_start, obs_depth, marker='x', 
-         label='obs_d{0}h{1}m{2}'.format(irr_dati_pre.day, irr_dati_pre.hour,
-                     irr_dati_pre.minute),
+         # label='obs_d{0}h{1}m{2}'.format(irr_dati_pre.day, irr_dati_pre.hour,
+         #             irr_dati_pre.minute),
+         label='obs_{0}:{1}'.format(
+             str(irr_dati_pre.hour).zfill(2),
+             str(irr_dati_pre.minute).zfill(2)),
          color='k',
          linestyle=':')
 plt.plot(obs_arr_end, obs_depth, marker='x', 
-         label='obs_d{0}h{1}m{2}'.format(irr_dati_post.day, irr_dati_post.hour,
-                     irr_dati_post.minute),
+         label='obs_{0}:{1}'.format(
+             str(irr_dati_post.hour).zfill(2),
+             str(irr_dati_post.minute).zfill(2)),
          color='k',
          linestyle='--')
 
+plot_title = gv.sites[site]['longname'] + f' on {irr_dati_pre.day} July 2021' 
+plt.title(plot_title)
 plt.legend()
 plt.grid()
 plt.show()
@@ -196,10 +203,7 @@ plt.show()
 
 #%% Save figure
 
+save_title = plot_title
 if save_plot:
-    filename = (plot_title)
-    filename = filename.replace('=', '').replace('(', '').replace(')', '')
-    filename = filename.replace(' ', '_').replace(',', '').replace('.', '_')
-    filename = filename.replace('/', 'over')
-    plt.savefig(save_folder+filename)
+    tools.save_figure(save_title, save_folder)
 

@@ -1,0 +1,5 @@
+--cendrosa-HU2M_ISBA
+Bias:
+{'irrswi1_d1': -0.0777, 'noirr_lai_d1': -0.22}
+RMSE:
+{'irrswi1_d1': 0.123, 'noirr_lai_d1': 0.239}
