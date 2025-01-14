@@ -216,6 +216,8 @@ Xmesh = xr.DataArray(X, dims=['level', 'i_sect'])
 if alti_type == 'asl': 
     #compute altitude ASL from height AGL, and transpose (eq. Y)
     alti = section_ds['ALT']
+    #old: (issue)
+    #alti = section_ds.ZS[:, 0] + section_ds.level
     alti = alti.T
     #for plot
     ylabel = 'altitude a.s.l. [m]'

@@ -15,11 +15,11 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'irta-corn'
+site = 'C6'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = ''
+varname_obs = 'T'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -37,6 +37,8 @@ varname_obs = ''
 #T_20cm_Avg (_Std for standard deviation)
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
+# -- for SMC --
+# T
 
 varname_sim_list = ['T2M_ISBA']
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
@@ -50,9 +52,9 @@ ilevel =  10  #0 is Halo, 1->2m, 2->6.12m, 3->10.49m, 10 -> 50m
 figsize = (6, 2.5) #small for presentation: (6,6), big: (15,9), paper:(7, 7)
 plt.rcParams.update({'font.size': 11})
 
-save_plot = True
+save_plot = False
 save_folder = './figures/time_series/{0}/'.format(site)
-save_folder = 'article3/fig/time_series/{0}/'.format(site)
+# save_folder = 'article3/fig/time_series/{0}/'.format(site)
 
 models = [
         # 'std_d1',
@@ -69,9 +71,9 @@ compare_to_residue_corr = False
 
 add_seb_residue = False
 
-add_irrig_time = False
+add_irrig_time = True
 
-kelvin_to_celsius = False
+kelvin_to_celsius = True
 
 if 'irrlagrip30_d1' in models and errors_computation:
     print("""Warning: computation of errors will be run on all of july for
@@ -183,6 +185,10 @@ elif site in ['irta-corn', 'irta-corn-real',]:
 else:  # SMC
     freq = '30'
     datafolder = gv.global_data_liaise + '/SMC/ALL_stations_july/' 
+    in_filenames_obs = f'{site}.nc'
+    if add_irrig_time:
+        print('add_irrig_time turned to False (absence of data at SMC stations')
+        add_irrig_time = False
     
 lat = gv.whole[site]['lat']
 lon = gv.whole[site]['lon']
@@ -202,7 +208,7 @@ if varname_obs != '':
         out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
         dat_to_nc = None
     else:  # SMC case
-        out_filename_obs = f'{site}.nc'
+        out_filename_obs = in_filenames_obs
         dat_to_nc = None
         
     # CONCATENATE multiple days
@@ -277,6 +283,10 @@ if varname_obs != '':
                     obs['PR{0}_subsoil'.format(i)]*0.01,  #conversion from % to decimal
                     gv.wilt_pt[site][i],
                     gv.field_capa[site][i],)
+    else:  # SMC stations
+        obs['datetime'] = [pd.Timestamp(str((elt.data))) for elt in obs['datetime']]
+        obs = obs.rename({'datetime': 'time'})
+
         
 #%% OBS PLOT:
 fig = plt.figure(figsize=figsize)
@@ -330,9 +340,10 @@ if varname_obs != '':
         obs_var_corr = ((obs[varname_obs]+offset_obs)*coeff_obs)
     
         # plot
-        plt.plot(obs_var_corr.time, obs_var_corr, 
-                 label='obs_'+varname_obs,
-                 color=colordict['obs'])
+        plt.plot(
+            obs_var_corr.time, obs_var_corr, 
+            label='obs_'+varname_obs,
+            color=colordict['obs'])
 #        obs_var_corr.plot(label='obs_'+varname_obs,
 #                          color=colordict['obs'],
 #                          linewidth=1)
@@ -482,12 +493,13 @@ for  varname_sim in varname_sim_list:
 if add_irrig_time and varname_obs != '':
     if site == 'irta-corn':
         sm_var = obs['VWC_40cm_Avg']
-    if site == 'cendrosa':
+    elif site == 'cendrosa':
         sm_var = obs['soil_moisture_3']
-    if site == 'preixana':
+    elif site == 'preixana':
         sm_var = None  # not irrigated, but could represent rain
-    if site == 'elsplans':
+    elif site == 'elsplans':
         sm_var = None  # not irrigated, but could represent rain
+        
     dati_list = tools.get_irrig_time(sm_var)
     plt.vlines(dati_list, 
                ymin=obs_var_corr.min().data, 

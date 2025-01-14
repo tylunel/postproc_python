@@ -1,5 +1,3 @@
---cendrosa-T2M_ISBA
-Bias:
-{'irrswi1_d1': 1.2, 'noirr_lai_d1': 3.85}
-RMSE:
-{'irrswi1_d1': 1.66, 'noirr_lai_d1': 4.03}
+--cendrosa-T2M_ISBA 
+Bias_{global} & 1.2 & 3.85 \\
+RMSE_{global} & 1.66 & 4.03 \\

@@ -11,7 +11,7 @@ import os
 import copy
 import time
 import numpy as np
-from scipy import interpolate
+from scipy import interpolate, integrate, stats
 import matplotlib.pyplot as plt
 import pandas as pd
 import xarray as xr
@@ -23,123 +23,14 @@ import global_variables as gv
 from shapely.geometry import Point
 #from difflib import SequenceMatcher
 import warnings
+import epygram
+
+# from dask import compute
+# from dask.delayed import delayed
+# import dask
 
 
-def indices_of_lat_lon(ds, lat, lon, verbose=True):
-    """ 
-    Find indices corresponding to latitude and longitude values
-    for a given file.
-    
-    ds: xarray.DataSet
-        Dataset containing fields of netcdf file
-    lat: float, 
-        Latitude
-    lon: float,
-        Longitude
-    
-    Return:
-        tuple [index_lat, index_lon]
-    
-    """
-    # Get latitude and longitude data
-    try:
-        lat_dat = ds['latitude'].data
-        lon_dat = ds['longitude'].data
-    except KeyError:
-        try:
-            lat_dat = ds['latitude_u'].data
-            lon_dat = ds['longitude_u'].data
-        except KeyError:
-            try:
-                lat_dat = ds['latitude_v'].data
-                lon_dat = ds['longitude_v'].data
-            except KeyError:
-                raise AttributeError("""this dataset does not have 
-                                     latitude-longitude coordinates""")
-    
-    # Gross evaluation of lat, lon (because latitude lines are curved)
-    distance2lat = np.abs(lat_dat - lat)
-    index_lat = np.argwhere(distance2lat <= np.nanmin(distance2lat))[0,0]
-    
-    distance2lon = np.abs(lon_dat - lon)
-    index_lon = np.argwhere(distance2lon <= np.nanmin(distance2lon))[0,1]
-    
-#    print("Before refinement : index_lat={0}, index_lon={1}".format(
-#            index_lat, index_lon))
-    
-    # refine as long as optimum not reached
-    opti_reached = False
-    n = 0  #count of iteration
-    while opti_reached is False:
-        if (np.abs(lon_dat[index_lat, index_lon] - lon) > \
-            np.abs(lon_dat[index_lat, index_lon+1] - lon) ):
-            index_lon = index_lon+1
-        elif (np.abs(lon_dat[index_lat, index_lon] - lon) > \
-            np.abs(lon_dat[index_lat, index_lon-1] - lon) ):
-            index_lon = index_lon-1
-        elif (np.abs(lat_dat[index_lat, index_lon] - lat) > \
-            np.abs(lat_dat[index_lat+1, index_lon] - lat) ):
-            index_lat = index_lat+1
-        elif (np.abs(lat_dat[index_lat, index_lon] - lat) > \
-            np.abs(lat_dat[index_lat-1, index_lon] - lat) ):
-            index_lat = index_lat-1
-        elif n > 20:
-            raise ValueError("""loop does not converge, 
-                             check manually for indices.""")
-        else:
-            opti_reached = True
-    if verbose:
-        print("For lat={0}, lon={1} : index_lat={2}, index_lon={3}".format(
-            lat, lon, index_lat, index_lon))
-    
-    return index_lat, index_lon
-
-
-def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[],
-              nb_indices_exterior=0):
-    """
-    Extract a subset of a domain.
-    
-    """
-    
-    if zoom_on != None:
-        prop = gv.zoom_domain_prop[zoom_on]
-        lat_range = prop['lat_range']
-        lon_range = prop['lon_range']
-    elif zoom_on == None:
-        if lat_range == []:
-            # raise ValueError("Argument 'zoom_on' or lat_range & lon_range must be given")
-            print('No subsetting done on the dataset.')
-            return ds
-        # else:
-        #     lat_range = lat_range
-        #     lon_range = lon_range
-        
-    nj_min, ni_min = indices_of_lat_lon(ds, 
-                                        np.min(lat_range), np.min(lon_range),
-                                        verbose=False)
-    nj_max, ni_max = indices_of_lat_lon(ds, 
-                                        np.max(lat_range), np.max(lon_range),
-                                        verbose=False)
-    
-    nj_min -= nb_indices_exterior
-    ni_min -= nb_indices_exterior
-    nj_max += nb_indices_exterior
-    ni_max += nb_indices_exterior
-    
-#    # if need to be more flexible to coordinates: TODO
-#    latitude_X = [key for key in list(ds.coords) if 'ni' in key][0]
-#    lastletters = latitude_X[-2::]
-#    if lastletters == '_u':
-#            ds_subset = ds.isel(ni_u=np.arange(ni_min, ni_max), 
-#                                nj_u=np.arange(nj_min, nj_max))
-#    elif lastletters == 'de':
-        
-    ds_subset = ds.isel(ni=np.arange(ni_min, ni_max), 
-                        nj=np.arange(nj_min, nj_max))
-    
-    return ds_subset.squeeze()
-
+#%% Load MNH/SFX/AROME files
 
 def load_series_dataset(varname_sim_list, model, concat_if_not_existing=True,
                         out_suffix='', file_suffix='dg'):
@@ -379,10 +270,16 @@ def open_relevant_file(model, wanted_date, var_simu):
     # Variable available in OUTPUT files:
     elif var_simu in ['RVT', 'THT', 'THTV', 'WT', 'UT', 'VT', 'WS', 'TKET']:
         output_freq = gv.output_freq_dict[model]
-        filename_simu = get_simu_filepath(model, wanted_date, 
-                                          file_suffix='',  #'dg' or ''
-                                          out_suffix='.OUT',
-                                          output_freq=output_freq)
+        try:
+            filename_simu = get_simu_filepath(model, wanted_date, 
+                                              file_suffix='',  #'dg' or ''
+                                              out_suffix='.OUT',
+                                              output_freq=output_freq)
+        except FileNotFoundError:
+            filename_simu = get_simu_filepath(model, wanted_date, 
+                                              file_suffix='dg',  #'dg' or ''
+                                              out_suffix='',)
+            
         ds = xr.open_dataset(filename_simu)
         ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'])
         if var_simu == 'WS':
@@ -398,6 +295,340 @@ def open_relevant_file(model, wanted_date, var_simu):
     return ds
 
 
+def get_simu_filepath_old(model, date='20210722-1200', 
+                      filetype='synchronous',  # synchronous or diachronic (=000)
+                      file_suffix='dg',  #'dg' or ''
+                      out_suffix='',  #'.OUT' or ''
+                      output_freq=None,  # [min]
+                      global_simu_folder=gv.global_simu_folder,
+                      verbose=False,
+                      ):
+    """
+    Returns the whole string for filename and path. 
+    Chooses the right SEG (segment) number and suffix corresponding to date
+    
+    Parameters:
+        model: str, 
+            'irr_d2' or 'std_d1'
+        wanted_date: str with format accepted by pd.Timestamp ('20210722-1200')
+            or pd.Timestamp
+    
+    Returns:
+        filename: str, full path and filename
+    """
+    pd_date = pd.Timestamp(date)
+    seg_nb = str(pd_date.day)
+    
+    if filetype in ['synchronous', '']:
+        if output_freq is None:  # set default according to file types
+            if out_suffix == '' and file_suffix == 'dg':
+                output_freq = 60
+            elif out_suffix == '.OUT' and file_suffix == '':
+                output_freq = 30
+            else:
+                print('output_freq not defined')
+        
+        if out_suffix == '' and file_suffix == 'dg' and output_freq==60:
+            output_nb = str(pd_date.hour)
+            
+        elif out_suffix == '.OUT' and file_suffix == '':
+            minute_total_day = pd_date.minute + pd_date.hour*60
+            output_nb = str(int(minute_total_day/output_freq))
+            print('output_nb = {0}'.format(output_nb))
+            
+        else:
+            raise ValueError('out_suffix and file_suffix values not consistent')
+        
+        # Reformat the output_nb with 2 and 3 digits:
+        output_nb_2f = output_nb.zfill(2)
+        output_nb_3f = output_nb.zfill(3)
+        
+    elif filetype in ['diachronic', '000']:
+        output_nb_2f = str(pd_date.hour).zfill(2)
+        output_nb_3f = '000'
+        file_suffix = ''
+        out_suffix = ''
+        
+    # Midnight case
+    if output_nb_2f == "00":
+        output_nb_2f = "24"
+        output_nb_3f = "024"
+        seg_nb = str(pd_date.day - 1)
+    
+    # retrieve filename
+    filename = gv.format_filename_simu[model].format(
+            seg_nb=seg_nb, 
+            output_nb_2f=output_nb_2f, 
+            output_nb_3f=output_nb_3f, 
+            file_suffix=file_suffix,
+            out_suffix=out_suffix)
+    
+    filepath = global_simu_folder + gv.simu_folders[model] + filename
+    
+    #check if nomenclature of filename is ok
+    if filetype in ['synchronous', '']:
+        check_filename_datetime(filepath)
+    
+    if verbose:
+        print(filepath)
+    
+    return filepath
+
+
+def get_simu_filepath(
+        model, wanted_date='20210722-1200', 
+        output_type='backup',  # backup, output or diachronic (=000)
+        global_simu_folder=gv.global_simu_folder,
+        verbose=False,
+        ):
+    """
+    Returns the whole string for filename and path. 
+    Chooses the right SEG (segment) number and suffix corresponding to date
+    
+    Parameters:
+        model: str, 
+            'irr_d2' or 'std_d1'
+        wanted_date: str with format accepted by pd.Timestamp ('20210722-1200')
+            or pd.Timestamp
+    
+    Returns:
+        filename: str, full path and filename
+    """
+    pd_date = pd.Timestamp(wanted_date)
+    seg_nb = str(pd_date.day)
+    
+    name_rules = gv.filename_simu_name_rules[model][output_type]
+    
+    # Suffixes
+    out_suffix = name_rules['out_suffix']
+    file_suffix = name_rules['file_suffix']
+    # SEG number
+    if name_rules['seg_nb'] == '01':
+        seg_nb = name_rules['seg_nb']
+    # Output number
+    if name_rules['output_nb'] == 'HH':
+        output_nb = pd_date.strftime('%H')
+    elif name_rules['output_nb'] == 'Hx6':
+        output_freq = 10
+        minute_total_day = pd_date.minute + pd_date.hour*60
+        output_nb = str(int(minute_total_day/output_freq))
+    
+    # Midnight case
+    if output_nb == "00":
+        output_nb = "24"
+    
+    # Reformat the output_nb with 2 and 3 digits:
+    output_nb_2f = output_nb.zfill(2)
+    output_nb_3f = output_nb.zfill(3)
+    
+    # retrieve filename
+    filename = gv.format_filename_simu[model].format(
+            seg_nb=seg_nb, 
+            output_nb_2f=output_nb_2f, 
+            output_nb_3f=output_nb_3f, 
+            file_suffix=file_suffix,
+            out_suffix=out_suffix)
+    
+    filepath = global_simu_folder + gv.simu_folders[model] + filename
+    
+    #check if nomenclature of filename is ok
+    if output_type in ['backup', 'output']:
+        check_filename_datetime(filepath, wanted_date)
+    
+    if verbose:
+        print(filepath)
+    
+    return filepath
+
+
+def extract_profile_arome(site, wanted_date, varname,  
+                          max_height=3000, 
+                          folder_path='/home/lunelt/Data/analysis/',
+                          file_prefix='arome.AN.',
+                          # save_to_pickle=True,
+                          # save_folder_pickle='/home/lunelt/Data/data_NEMO/arome_profiles/',
+                          verbose=True):
+    """
+    Parameters
+    ----------
+    site : string
+        name of site above to perform the extraction. 
+        Must be in global_variables
+    wanted_date : string with format YYYYMMDD.HH
+        ex: 20230725.00
+    varname : string
+        must be in [tke, t, u, v, q, ws, wd]
+    max_height : TYPE, optional
+        DESCRIPTION. The default is 3000.
+    folder_path : TYPE, optional
+        DESCRIPTION. The default is '/home/lunelt/Data/analysis/'.
+    file_prefix : TYPE, optional
+        DESCRIPTION. The default is 'arome.AN.'.
+
+    Returns
+    -------
+    verti_profiles: dict of dict, first key is the varname(s),
+        second are the heights as keys
+
+    """
+    
+    try:
+        # Convert the input string to a pandas timestamp
+        timestamp = pd.to_datetime(wanted_date)
+        # Format the timestamp to the desired format
+        formatted_date = timestamp.strftime('%Y%m%d.%H')
+    except Exception as e:
+        raise ValueError(f"Invalid input wanted_date: {wanted_date}. Error: {e}")
+    
+    epygram.init_env()
+
+    lon = gv.whole[site]['lon']
+    lat = gv.whole[site]['lat']
+    
+    filename = f'{file_prefix}{formatted_date}'
+
+    file = epygram.formats.resource(filename=f'{folder_path}/{filename}',
+                                    openmode='r')
+    
+    temp_res = {}
+    verti_profile = {}
+    verti_profiles = {}
+
+    if verbose:
+        print('processing of level nb:')
+        
+    # if varname in ['ws', 'wd', 'wind']:
+    #     for level, height in gv.level_height_AROME_mean.items():
+    #         if height > max_height:
+    #             pass
+    #         else:
+    #             if verbose:
+    #                 print(level)
+    #             # u component
+    #             u = file.find_fields_in_resource(f'shortName:u, level:{level}')
+    #             field_u = file.readfields(u[0])[0]
+    #             pt_u = float(field_u.extract_point(lat=lat, lon=lon).data)
+    #             # v component
+    #             v = file.find_fields_in_resource(f'shortName:v, level:{level}')
+    #             field_v = file.readfields(v[0])[0]
+    #             pt_v = float(field_v.extract_point(lat=lat, lon=lon).data)
+    #             # ws,wd computation
+    #             temp_res['ws'], temp_res['wd'] = calc_ws_wd(pt_u, pt_v)
+    #             if varname == 'wind':
+    #                 verti_profile[height] = temp_res['ws'], temp_res['wd']
+    #             else:
+    #                 verti_profile[height] = temp_res[varname]
+    #     if varname == 'wind':
+    #         # Initialize two new dictionaries
+    #         dict_ws = {}
+    #         dict_wd = {}
+    #         # Loop through the original dictionary
+    #         for altitude, values in verti_profile.items():
+    #             dict_ws[altitude] = values[0]  # First value of the tuple
+    #             dict_wd[altitude] = values[1]
+    #         verti_profiles['ws'] = dict_ws
+    #         verti_profiles['wd'] = dict_wd
+    #     else:
+    #         verti_profiles[varname] = verti_profile
+    # else:     
+    for level, height in gv.level_height_AROME_mean.items():
+        if height > max_height:
+            pass
+        else:
+            if verbose:
+                print(level)
+            fid = file.find_fields_in_resource(f'shortName:{varname}, level:{level}')
+            field = file.readfields(fid[0])[0]
+            verti_profile[height] = float(field.extract_point(lat=lat, lon=lon).data)
+    
+    verti_profiles[varname] = verti_profile
+    
+    # if save_to_pickle:
+    #     # -- Save profile to pickle
+    #     formatted_date = wanted_date.strftime('%Y%m%d.%H')
+    #     filename_pickle = f"verti_profile_arome_{site}_{formatted_date}"
+        
+    #     # Format pd.DataFrame:
+    #     df = pd.DataFrame(verti_profile)
+    #     df.to_pickle(f'{save_folder_pickle}/{filename_pickle}.pickle')
+        
+    return verti_profiles
+
+
+def extract_profile_arome_parallel(site, wanted_date, varname,  
+    max_height=3000, folder_path='/home/lunelt/Data/analysis/',
+    file_prefix='arome.AN.'):
+    """
+    Not working yet, need to fix issue with Dask
+    
+    Parameters
+    ----------
+    site : string
+        name of site above to perform the extraction. 
+        Must be in global_variables
+    wanted_date : string with format YYYYMMDD.HH
+        ex: 20230725.00
+    varname : string
+        must be in [tke, t, u, v, q, ws, wd]
+    max_height : TYPE, optional
+        DESCRIPTION. The default is 3000.
+    folder_path : TYPE, optional
+        DESCRIPTION. The default is '/home/lunelt/Data/analysis/'.
+    file_prefix : TYPE, optional
+        DESCRIPTION. The default is 'arome.AN.'.
+
+    Returns
+    -------
+    dict verti_profile with height as keys
+
+    """
+    try:
+        # Convert the input string to a pandas timestamp
+        timestamp = pd.to_datetime(wanted_date)
+        # Format the timestamp to the desired format
+        formatted_date = timestamp.strftime('%Y%m%d.%H')
+    except Exception as e:
+        raise ValueError(f"Invalid input wanted_date: {wanted_date}. Error: {e}")
+    
+    epygram.init_env()
+
+    lon = gv.sites[site]['lon']
+    lat = gv.sites[site]['lat']
+    
+    filename = f'{file_prefix}{wanted_date}'
+
+    file = epygram.formats.resource(filename=f'{folder_path}/{filename}',
+                                    openmode='r')
+    
+    # Create a dictionary to hold the delayed tasks
+    verti_profile_tasks = {}
+    
+    # Iterate through the levels and heights in parallel using Dask's delayed
+    for level, height in gv.level_height_AROME_mean.items():
+        if height > max_height:
+            continue
+    
+        @delayed
+        def process_level(level, height):
+            print(level)
+            fid = file.find_fields_in_resource(f'shortName:{varname}, level:{level}')
+            field = file.readfields(fid[0])[0]
+            return height, float(field.extract_point(lat=lat, lon=lon).data)
+    
+        verti_profile_tasks[level] = process_level(level, height)
+    
+    # Compute all delayed tasks in parallel
+    results = compute(*verti_profile_tasks.values(), scheduler='threads')
+    
+    # Assemble the results into the final dictionary
+    verti_profile = {height: value for height, value in results}
+    
+    return verti_profile
+
+
+
+
+#%% Load OBS data
 def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=True,
                    remove_outliers=False):
     """
@@ -765,33 +996,151 @@ def open_uib_seb(QC_threshold = 9, create_netcdf=True):
                      engine='netcdf4')
     
     return ds
-    
 
-def moving_average(arr, window_size = 3):
-    """computes a moving average on the array given"""
-    i = 0
-    moving_averages = []
-    # if windows_size in odd
-    window_side = int((window_size - 1)/2)
-    for i in range(len(arr)):
-        if i < window_side or i >= (len(arr) - window_side):
-            moving_averages.append(arr[i])
-#        elif i >= len(arr) - window_side:
-        else:
-            # Calculate the average of current window
-            window_average = round(np.sum(arr[i-window_side:i+1+window_side]) / window_size, 2)
-            # append
-            moving_averages.append(window_average)
-        i += 1
-      
-    return np.array(moving_averages)
-
-def nearest(items, pivot):
-    """ 
-    Returns nearest element and corresponding index 
+def extract_profile_lidar(wanted_date, site='planier',
+                                folder_path=gv.global_data_nemo):
     """
-    dist = [abs(elt - pivot) for elt in items]
-    return items[np.argmin(dist)], np.argmin(dist)
+    Functions that extract a vertical profile from lidar data under csv.
+
+    Parameters
+    ----------
+    wanted_date : string that can be interpreted by pd.Timestamp
+        DESCRIPTION.
+    site: string
+        DESCRIPTION
+    folder_path: string
+        DESCRIPTION
+
+    Returns
+    -------
+    lidar_data_dict : dict
+        DESCRIPTION.
+
+    """
+    
+    if site not in ['planier']:
+        print('No lidar data available for this site')
+        return None
+    
+    lidar_filepath_dict = {
+        'ws': f'{folder_path}/{site}/30-min/wind_speed.csv',
+        'wd': f'{folder_path}/{site}/30-min/wind_direction.csv',
+        'tke_along': f'{folder_path}/{site}/30-min/TKE_along_wind_standard_method.csv',
+        'tke_cross': f'{folder_path}/{site}/30-min/TKE_cross_wind_standard_method.csv',
+        'tke_verti': f'{folder_path}/{site}/30-min/TKE_vertical_wind_standard_method.csv',
+        }
+
+    lidar_data_list = ['ws', 'wd', 'tke_along', 'tke_cross', 'tke_verti']
+    lidar_data_dict = {}
+    
+    # find nearest date:
+    data_temp = pd.read_csv(lidar_filepath_dict[lidar_data_list[0]], 
+                            sep='\t')
+    datetime_list = data_temp.time
+    nearest_date, i = nearest(pd.DatetimeIndex(datetime_list), pd.Timestamp(wanted_date))
+    print('nearest date found is ', nearest_date)
+    
+    for var in lidar_data_list:
+        data_temp = pd.read_csv(lidar_filepath_dict[var], 
+                                sep='\t')
+        data_temp.columns = ['time', 60, 80, 100, 120, 140, 
+                      160, 180, 200, 220, 240]
+        data_temp.index = pd.DatetimeIndex(data_temp.time)
+        data_temp = data_temp.drop(columns=['time'])
+        data_temp_wanted_date = data_temp.loc[pd.Timestamp(nearest_date)]
+        lidar_data_dict[var] = data_temp_wanted_date
+
+    # add 3d TKE:
+    lidar_data_dict['tke'] = lidar_data_dict['tke_along'] + \
+        lidar_data_dict['tke_cross'] + lidar_data_dict['tke_verti']
+    
+    return lidar_data_dict
+
+
+def extract_profile_rs_mf(site, wanted_date,
+                          max_height=3000, 
+                          folder_path='/home/lunelt/Data/data_NEMO/rs/',
+                          filename='DALTI2024000515169.csv'):
+    """
+    Function that return the radiosounding for the given site
+    
+    Parameters
+    ----------
+    site : string
+        DESCRIPTION.
+    wanted_date : string that can be interpreted by pd.Timestamp
+        DESCRIPTION.
+    max_height : float, optional
+        DESCRIPTION. The default is 3000.
+    folder_path : string, optional
+        DESCRIPTION. The default is global_data_nemo.
+    filename : TYPE, optional
+        DESCRIPTION. The default is 'DALTI2024000515169.csv'.
+
+    Returns
+    -------
+    pd.Dataframe with available vars
+
+    """
+    try:
+        # Convert the input string to a pandas timestamp
+        timestamp = pd.to_datetime(wanted_date)
+        # Format the timestamp to the desired format
+        formatted_date = timestamp.strftime('%Y%m%d%H%M')
+    except Exception as e:
+        raise ValueError(f"Invalid input wanted_date: {wanted_date}. Error: {e}")
+    
+    ## check site is available or go fetch the closest rs
+    if site not in ['nimes']:
+        print('No radiosounding data available for this site')
+        return None
+    
+    ## load radiosounding file
+    
+    datelist = []
+    rs_dict = {}
+    
+    with open(f'{folder_path}/{filename}') as file:
+        counterline = 0
+        newdate = True  # first line contain a date
+        
+        for line in file:
+            # print(line)
+            counterline += 1
+            if newdate:
+                newdate = False
+                currentdate = line.split(sep=';')[1]
+                datelist.append(currentdate)
+                firstline_of_rs = counterline
+            if line in ['\n', '\r\n']:
+                newdate = True
+                if currentdate[-4::] in ['0600', '1800']:
+                    pass
+                else:
+                    try:
+                        rs_dict[currentdate] = pd.read_csv(
+                            f'{folder_path}/{filename}',
+                            sep=';', 
+                            names=gv.dict_rs_mf_metadata.keys(),
+                            skiprows = firstline_of_rs, 
+                            nrows = counterline-1-firstline_of_rs)
+                    except pd.errors.EmptyDataError:
+                        pass
+    
+    ## subset data (date and lowest part of rs)
+    rs = rs_dict[formatted_date]
+    rs_low = rs.where(rs['ALTI']<max_height).dropna(how='all')
+    
+    ## diagnostic data 
+    rs_low['theta'] = potential_temperature_from_temperature(
+        rs['P']*100, rs['T']+273.15)
+    rs_low['theta_v'] = rs_low['theta']*(1 + 0.61*rs_low['RV'])
+    
+    return rs_low
+
+
+
+
 
 def get_obs_filename_from_date(datafolder, wanted_date='20210722-1200', 
                        dt_threshold=pd.Timedelta('0 days 01:30:00'),
@@ -843,182 +1192,270 @@ def get_obs_filename_from_date(datafolder, wanted_date='20210722-1200',
     
     return filename
 
-def get_simu_filename_old(model, date='20210722-1200', domain=2,
-                      file_suffix='001dg'):
-    """
-    Returns the whole string for filename and path. 
-    Chooses the right SEG (segment) number corresponding to date
-    
-    Parameters:
-        model: str, 
-            'irr' or 'std'
-        wanted_date: str, with format accepted by pd.Timestamp,
-            ex: '20210722-1200'
-        domain: int,
-            domain number in case of grid nesting.
-            ex: domain 1 is the biggest, domain 2 smaller, etc
-    
-    Returns:
-        filename: str, full path and filename
-    """
-    pd_date = pd.Timestamp(date)
-    seg_nb = (pd_date - pd.Timestamp('20210721-0000')).components.hours +\
-        (pd_date - pd.Timestamp('20210721-0000')).components.days*24        
-    seg_nb_str = str(seg_nb)
-    # add 0 before if SEG01 - SEG09
-    if len(seg_nb_str) == 1:
-        seg_nb_str = '0'+ seg_nb_str
-        
-    print("SEG number must be SEG{0}".format(seg_nb_str))
 
-    father_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
-    simu_filelist = {
-        'std': '1.11_ECOII_2021_ecmwf_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
-                domain, seg_nb_str, file_suffix),
-        'irr': '2.13_irr_2021_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
-                domain, seg_nb_str, file_suffix),
-#        'irr_d2': '2.13_irr_2021_22-27/LIAIS.{0}.SEG{1}.{2}.nc'.format(
-#                domain, seg_nb_str, file_suffix),
-#        'irr_d1': '2.14_irr_15-30/LIAIS.{0}.SEG{1}.{2}.nc'.format(
-#                domain, seg_nb_str, file_suffix)
-        }
-    
-    filename = father_folder + simu_filelist[model]
-    return filename
 
-def get_simu_filename(*args, **kwargs):
-    raise ValueError("""
-                     Deprecated function get_simu_filename().
-                     Use get_simu_filepath() instead.
-                     """)
+#%% Misc
 
-def get_simu_filepath(model, date='20210722-1200', 
-                      filetype='synchronous',  # synchronous or diachronic (=000)
-                      file_suffix='dg',  #'dg' or ''
-                      out_suffix='',  #'.OUT' or ''
-                      output_freq=None,  # [min]
-                      global_simu_folder=gv.global_simu_folder,
-                      verbose=False,
-                      ):
+def distance_from_lat_lon(lat_lon_1, lat_lon_2):
     """
-    Returns the whole string for filename and path. 
-    Chooses the right SEG (segment) number and suffix corresponding to date
-    
-    Parameters:
-        model: str, 
-            'irr_d2' or 'std_d1'
-        wanted_date: str with format accepted by pd.Timestamp ('20210722-1200')
-            or pd.Timestamp
-    
-    Returns:
-        filename: str, full path and filename
+    compute distance in km between 2 pts given their coordinates in degrees
     """
-    pd_date = pd.Timestamp(date)
-    seg_nb = str(pd_date.day)
+    lat1_rad = np.radians(lat_lon_1[0])
+    lon1_rad = np.radians(lat_lon_1[1])
+    lat2_rad = np.radians(lat_lon_2[0])
+    lon2_rad = np.radians(lat_lon_2[1])
+    radius_earth = 6371.01  #km
     
-    if filetype in ['synchronous', '']:
-        if output_freq is None:  # set default according to file types
-            if out_suffix == '' and file_suffix == 'dg':
-                output_freq = 60
-            elif out_suffix == '.OUT' and file_suffix == '':
-                output_freq = 30
+    dist = radius_earth * np.arccos(
+            np.sin(lat1_rad)*np.sin(lat2_rad) + np.cos(lat1_rad)*np.cos(lat2_rad)*np.cos(lon1_rad - lon2_rad))
+    
+    return dist
+
+
+def compute_errors(y_ref, y_to_eval, x_ref=None, x_to_eval=None,
+                   method='direct'):
+    """
+    Computes the errors of an output compared to a reference.
+
+    Parameters
+    ----------
+    y_ref : TYPE
+        DESCRIPTION.
+    y_to_eval : TYPE
+        DESCRIPTION.
+    x_ref : TYPE, optional
+        DESCRIPTION. The default is None.
+    x_to_eval : TYPE, optional
+        DESCRIPTION. The default is None.
+    method : TYPE, optional
+        DESCRIPTION. The default is 'direct'.
+
+    Returns
+    -------
+    errors: dict
+
+    """ 
+    
+    errors = {}
+    
+    if method in ['interp', 'direct']:
+        if method == 'interp':
+            if (x_ref is None) or (x_to_eval is None):
+                raise NameError('x-ref and x_to_eval cannot be None')
             else:
-                print('output_freq not defined')
+                y_to_eval = np.interp(x_ref, x_to_eval, y_to_eval)
         
-        if out_suffix == '' and file_suffix == 'dg' and output_freq==60:
-            output_nb = str(pd_date.hour)
-            
-        elif out_suffix == '.OUT' and file_suffix == '':
-            minute_total_day = pd_date.minute + pd_date.hour*60
-            output_nb = str(int(minute_total_day/output_freq))
-            print('output_nb = {0}'.format(output_nb))
-            
+        # compute bias and rmse, and keep values with 3 significant figures
+        diff = np.array(y_to_eval) - np.array(y_ref)
+        errors['bias'] = float('%.3g' % np.nanmean(diff))
+        errors['rmse'] = float('%.3g' % np.sqrt(np.nanmean(diff**2)))
+    
+    elif method == 'integral':
+        print('Not ready yet')
+
+        xrange_intersec = intersec_of_intervals(x_ref, x_to_eval)
+        
+        x_ref_new = np.array(x_ref).clip(xrange_intersec[0], xrange_intersec[1])
+        x_ref_new = np.append(xrange_intersec[0], x_ref_new, xrange_intersec[1])
+        
+        y_to_eval = np.interp(x_ref_new, x_to_eval, y_to_eval)
+        y_ref = np.interp(x_ref_new, x_to_eval, y_to_eval)
+                
+        integral_ref = integrate.cumtrapz(y_ref, x=x_ref)[-1]
+        integral_to_eval = integrate.cumtrapz(y_to_eval, x=x_to_eval)[-1]
+        
+        errors['bias'] = (integral_ref - integral_to_eval) / (xrange_intersec[1] - xrange_intersec[0])
+
+    return errors
+
+
+def moving_average(arr, window_size = 3):
+    """computes a moving average on the array given"""
+    i = 0
+    moving_averages = []
+    # if windows_size in odd
+    window_side = int((window_size - 1)/2)
+    for i in range(len(arr)):
+        if i < window_side or i >= (len(arr) - window_side):
+            moving_averages.append(arr[i])
+#        elif i >= len(arr) - window_side:
         else:
-            raise ValueError('out_suffix and file_suffix values not consistent')
-        
-        # Reformat the output_nb with 2 and 3 digits:
-        output_nb_2f = output_nb.zfill(2)
-        output_nb_3f = output_nb.zfill(3)
-        
-            
-    elif filetype in ['diachronic', '000']:
-        output_nb_2f = str(pd_date.hour).zfill(2)
-        output_nb_3f = '000'
-        file_suffix = ''
-        out_suffix = ''
-        
-    # Midnight case
-    if output_nb_2f == "00":
-        output_nb_2f = "24"
-        output_nb_3f = "024"
-        seg_nb = str(pd_date.day - 1)
-    
-    # retrieve filename
-    filename = gv.format_filename_simu_new[model].format(
-            seg_nb=seg_nb, output_nb_2f=output_nb_2f, 
-            output_nb_3f=output_nb_3f, file_suffix=file_suffix,
-            out_suffix=out_suffix)
-    
-    filepath = global_simu_folder + gv.simu_folders[model] + filename
-    
-    #check if nomenclature of filename is ok
-    if filetype in ['synchronous', '']:
-        check_filename_datetime(filepath)
-    
-    if verbose:
-        print(filepath)
-    
-    return filepath
+            # Calculate the average of current window
+            window_average = round(np.sum(arr[i-window_side:i+1+window_side]) / window_size, 2)
+            # append
+            moving_averages.append(window_average)
+        i += 1
+      
+    return np.array(moving_averages)
 
-
-def get_simu_filename_000(model, date='20210722-1200'):
-    """
-    Returns the whole string for filename and path. 
-    Chooses the right SEG (segment) number and suffix corresponding to date
+def nearest(items, pivot):
+    """ 
+    Returns nearest element and corresponding index 
     
     Parameters:
-        model: str, 
-            'irr_d2' or 'std_d1'
-        wanted_date: str, with format accepted by pd.Timestamp,
-            ex: '20210722-1200'
+        items: iterable
+        pivot: the target value
     
     Returns:
-        filename: str, full path and filename
+        tuple containing:
+            1. The nearest value in items
+            2. The index for this value in items
+            
     """
-    raise NameError(
-            """Function 'get_simu_filename_000()' is deprecated 
-            and should be replaced by get_simu_filepath.
-            """)
+    # compute a list of distance between each item and the pivot
+    dist = [abs(elt - pivot) for elt in items]
     
-    pd_date = pd.Timestamp(date)
-    seg_nb = str(pd_date.day)        
-    output_nb = str(pd_date.hour)
-    # format suffix with 2 digits:
-    if len(output_nb) == 1:
-        output_nb_2f = '0'+ output_nb
-    elif len(output_nb) == 2:
-        output_nb_2f = output_nb
+    return items[np.argmin(dist)], np.argmin(dist)
 
-    simu_filelist = {
-        'std_d2': 'LIAIS.1.S{0}{1}.000.nc'.format(
-                seg_nb, output_nb_2f),
-        'irr_d2': 'LIAIS.1.S{0}{1}.000.nc'.format(
-                seg_nb, output_nb_2f),
-        'std_d2_old': 'LIAIS.2.SEG{0}.000.nc'.format(
-                seg_nb),
-        'irr_d2_old': 'LIAIS.2.SEG{0}.000.nc'.format(
-                seg_nb),
-        'irr_d1': 'LIAIS.1.SEG{0}.000.nc'.format(
-                seg_nb),
-        'std_d1': 'LIAIS.1.SEG{0}.000.nc'.format(
-                seg_nb)
-        }
-    
-    filename = gv.global_simu_folder + gv.simu_folders[model] + simu_filelist[model]
-    
-    return filename
 
-def check_filename_datetime(filepath, fix=False):
+def intersec_of_intervals(interval1, interval2):
+    """
+    Find the intersection between two intervals
+    
+    Parameters:
+        interval1: list of float,
+            if len(interval1)>2, only the first and last values are considered
+        interval2: list of float,
+            if len(interval2)>2, only the first and last values are considered
+    
+    Returns:
+        intersec: list of two values (min and max)
+        
+    """
+    
+    intersec = []
+    if (interval1[0] > interval2[-1] or interval1[-1] < interval2[0]):
+        return None    
+    else:
+        intersec.append(max(interval1[0], interval2[0]))
+        intersec.append(min(interval1[-1], interval2[-1]))
+ 
+    return intersec
+
+#%% Manipulation of NetCDF files
+
+def concat_obs_files(datafolder, in_filenames, out_filename, 
+                     dat_to_nc=None, overwrite=False):
+    """
+    Check if file already exists. If not create it by concatenating files
+    that correspond to "in_filenames*". It uses shell script, and the command
+    'ncrcat' for it.
+    
+    Parameters:
+        datafolder: 
+            str, absolute path
+        in_filenames: 
+            str, common partial name of files to be concatenated.
+            Used with wildcard "*" in the shell script run.
+        out_filename:
+            str, name of output file
+        dat_to_nc: 
+            str 'uib' or 'ukmo' or None, 
+            convert .dat files into .nc files prior to concatenation
+            
+    Returns: Nothing in python, but it should have created the output file
+    in the datafolder if not existing before.        
+    """
+    
+    if not os.path.exists(datafolder + out_filename) or overwrite:
+        # CREATE netCDF file from .dat
+        if dat_to_nc == 'ukmo':
+            fnames = os.listdir(datafolder)
+            for f in fnames:
+                if '.dat' not in f:
+                    pass
+                else:
+                    open_ukmo_mast(datafolder, f, 
+                                   create_netcdf=True, remove_modi=True)
+        elif dat_to_nc == 'uib':
+            open_uib_seb(create_netcdf=True)
+    
+    # CONCATENATE
+        print("creation of file: ", out_filename)
+        out = os.system('''
+            cd {0}
+            ncrcat {1}*.nc -o {2}
+            '''.format(datafolder, in_filenames, out_filename))
+        if out == 0:
+            print('Creation of file {0} successful !'.format(out_filename))
+        else:
+            print('Creation of file {0} failed !'.format(out_filename))
+
+
+def concat_simu_files_1var(datafolder, varname_sim, in_filenames, out_filename):
+    """
+    Check if file already exists. If not create it by concatenating files
+    that correspond to "in_filenames". "in_filenames" must contain wildcards
+    like * in order to gather more than one file. It concatenates the values
+    for only one or few variables in varname_sim in order to get a reasonable
+    siez for the output file.
+    It then uses shell script, and the command 'ncecat' to concatenate.
+    
+    Parameters:
+        datafolder: 
+            str, absolute path
+        varname_sim:
+            str, variable name that will be concatenated over the files
+            ex: 'T2M', 'UT,VT'
+        in_filenames: 
+            str, common partial name of files to be concatenated 
+            with wildcard (?, *, ...)
+        out_filename:
+            str, name of output file
+            
+    Returns: Nothing in python, but it should have created the output file
+    in the datafolder if not existing before.
+    
+    # ncecat -v {1},time,latitude,longitude {2} {3}
+    ncrcat cannot be used in place of ncecat because it does not attach 
+    the values 'time' dimension to the variable of interest.
+    
+    """
+    
+    if not os.path.exists(datafolder + out_filename):
+        print('in_filenames = ', in_filenames)
+        print("creation of file: ", out_filename)
+        out = os.system('''
+            cd {0}
+            ncecat -v {1},time,latitude,longitude {2} {3}
+            '''.format(datafolder, varname_sim, 
+                       in_filenames, out_filename))
+        if out == 0:
+            print('Creation of file {0} successful!'.format(out_filename))
+        else:
+            print('Creation of file {0} failed!'.format(out_filename))
+    else:
+        print('file {0} already exists.'.format(out_filename))
+    #command 'cdo -select,name={1} {2} {3}' may work as well, but not always...
+    
+    
+#%% Manipulation of MNH/SFX files
+
+def check_filename_datetime(filepath, wanted_date, error_processing='warning',
+                            verbose=False):
+    """
+    Check that filename segment number is day and suffix number is hour
+    """
+    ds = xr.open_dataset(filepath)
+    datetime_file = pd.Timestamp(ds.time.data[0])
+    
+    datetime_correspondance = (datetime_file == pd.Timestamp(wanted_date))
+    
+    if not datetime_correspondance:
+        if verbose:
+            print(f'Datetime of file is: {datetime_file}')
+            print(f'Wanted datetime is: {pd.Timestamp(wanted_date)}')
+    
+        if error_processing == 'warning':
+            print('Wanted datetime and effective datetime do not match')
+        else:
+            raise ValueError(
+                'Wanted datetime and effective datetime do not match')
+    
+    return datetime_correspondance
+        
+
+def check_filename_datetime_old(filepath, fix=False):
     """
     Check that filename segment number is day and suffix number is hour
     """
@@ -1073,662 +1510,15 @@ def check_filename_datetime(filepath, fix=False):
 #            raise NameError('the time in simu file do not match filename suffix')
     
     return True
-    
-    
 
-def concat_obs_files(datafolder, in_filenames, out_filename, 
-                     dat_to_nc=None, overwrite=False):
-    """
-    Check if file already exists. If not create it by concatenating files
-    that correspond to "in_filenames*". It uses shell script, and the command
-    'ncrcat' for it.
-    
-    Parameters:
-        datafolder: 
-            str, absolute path
-        in_filenames: 
-            str, common partial name of files to be concatenated.
-            Used with wildcard "*" in the shell script run.
-        out_filename:
-            str, name of output file
-        dat_to_nc: 
-            str 'uib' or 'ukmo' or None, 
-            convert .dat files into .nc files prior to concatenation
-            
-    Returns: Nothing in python, but it should have created the output file
-    in the datafolder if not existing before.        
-    """
-    
-    if not os.path.exists(datafolder + out_filename) or overwrite:
-        # CREATE netCDF file from .dat
-        if dat_to_nc == 'ukmo':
-            fnames = os.listdir(datafolder)
-            for f in fnames:
-                if '.dat' not in f:
-                    pass
-                else:
-                    open_ukmo_mast(datafolder, f, 
-                                   create_netcdf=True, remove_modi=True)
-        elif dat_to_nc == 'uib':
-            open_uib_seb(create_netcdf=True)
-    
-    # CONCATENATE
-        print("creation of file: ", out_filename)
-        out = os.system('''
-            cd {0}
-            ncrcat {1}*.nc -o {2}
-            '''.format(datafolder, in_filenames, out_filename))
-        if out == 0:
-            print('Creation of file {0} successful !'.format(out_filename))
-        else:
-            print('Creation of file {0} failed !'.format(out_filename))
 
-def concat_simu_files_1var(datafolder, varname_sim, in_filenames, out_filename):
+def check_folder_filenames(folder='/cnrm/surface/lunelt/NO_SAVE/nc_out/1.11_std_2021_21-24/'):
     """
-    Check if file already exists. If not create it by concatenating files
-    that correspond to "in_filenames". "in_filenames" must contain wildcards
-    like * in order to gather more than one file. It concatenates the values
-    for only one or few variables in varname_sim in order to get a reasonable
-    siez for the output file.
-    It then uses shell script, and the command 'ncecat' to concatenate.
-    
-    Parameters:
-        datafolder: 
-            str, absolute path
-        varname_sim:
-            str, variable name that will be concatenated over the files
-            ex: 'T2M', 'UT,VT'
-        in_filenames: 
-            str, common partial name of files to be concatenated 
-            with wildcard (?, *, ...)
-        out_filename:
-            str, name of output file
-            
-    Returns: Nothing in python, but it should have created the output file
-    in the datafolder if not existing before.
-    
-    # ncecat -v {1},time,latitude,longitude {2} {3}
-    ncrcat cannot be used in place of ncecat because it does not attach 
-    the values 'time' dimension to the variable of interest.
+    Check that the naming of the netcdf output is consistent 
+    with its internal datetime.
     
     """
     
-    if not os.path.exists(datafolder + out_filename):
-        print('in_filenames = ', in_filenames)
-        print("creation of file: ", out_filename)
-        out = os.system('''
-            cd {0}
-            ncecat -v {1},time,latitude,longitude {2} {3}
-            '''.format(datafolder, varname_sim, 
-                       in_filenames, out_filename))
-        if out == 0:
-            print('Creation of file {0} successful!'.format(out_filename))
-        else:
-            print('Creation of file {0} failed!'.format(out_filename))
-    else:
-        print('file {0} already exists.'.format(out_filename))
-    #command 'cdo -select,name={1} {2} {3}' may work as well, but not always...
-
-
-def get_irrig_time(soil_moist, stdev_threshold=5):
-    """
-    soil_moist: xarray Dataarray,
-        Variable representing soil moisture of other variable 
-        strongly dependant on irrigation. Must have 'time' as coordinate.
-    """
-    # if soil_moist is None (not irrigated site for ex.)
-    if soil_moist is None:
-        return []
-    # derivate of variable with time
-    soil_moist_dtime = soil_moist.differentiate(coord='time')
-    # keep absolute values
-    soil_moist_dtime_abs = np.abs(soil_moist_dtime)
-    
-    # compute threshold to determine the outliers
-    avrg = soil_moist_dtime_abs.mean()
-    stdev = soil_moist_dtime_abs.std()
-    thres = avrg + stdev_threshold*stdev
-    
-    # only keep outliers
-    irr_dati = soil_moist_dtime_abs.where(soil_moist_dtime_abs > thres, drop=True).time
-    
-    # remove close datetimes
-    tdelta_min = pd.Timedelta(6, unit='h')  #minimum time delta between 2 irrig
-    irr_dati_filtered = []
-    
-    for i, dati in enumerate(irr_dati):
-        if i == 0:
-            continue
-        else:
-            if (irr_dati[i].data - irr_dati[i-1].data) > tdelta_min:
-                irr_dati_filtered.append(dati.data)
-    
-    return irr_dati_filtered
-
- 
-def line_coords(data, 
-                start_pt = (41.6925905, 0.9285671), # cendrosa
-                end_pt = (41.590111, 1.029363), #els plans
-                nb_indices_exterior=10,
-                verbose=True):     
-    """
-    data: xarray dataset
-    start_pt: tuple with (lat, lon) coordinates of start point
-    start_pt: tuple with (lat, lon) coordinates of end point
-    nb_indices_exterior: int, number of indices to take resp. before and after
-        the start and end point.
-        
-    Returns:
-        Dict with following keys:
-            'ni_range':
-            'nj_range':
-            'slope':
-            'index_distance': numbers of indices between the start and end pt
-            'ni_step':
-            'nj_step':
-            'nij_step': distance in [m] between 2 pts of the line
-            'ni_start':
-            'ni_end':
-            'nj_start':
-            'nj_end':
-    """
-    # get ni, nj values (distance to borders of first domain in m)
-    # for Start site
-    index_lat_start, index_lon_start = indices_of_lat_lon(data, *start_pt, 
-                                                          verbose=verbose)
-    ni_start = data.ni[index_lon_start].values     # ni corresponds to longitude
-    nj_start = data.nj[index_lat_start].values     # nj corresponds to latitude
-    # for End site
-    index_lat_end, index_lon_end = indices_of_lat_lon(data, *end_pt,
-                                                      verbose=verbose)
-    ni_end = data.ni[index_lon_end].values     # ni corresponds to longitude
-    nj_end = data.nj[index_lat_end].values     # nj corresponds to latitude
-    
-    if verbose:
-        print('ni, nj start:', ni_start, nj_start)
-        print('ni, nj end:', ni_end, nj_end)
-    
-    #get line formula:
-    if ni_end != ni_start:
-        slope = (nj_end - nj_start)/(ni_end - ni_start)
-        y_intercept = nj_start - slope * ni_start
-        
-        if verbose:
-            print('slope and y-intercept :', slope, y_intercept)
-
-        # approximate distance between start and end in term of indices
-        index_distance = np.ceil(np.sqrt((index_lon_end - index_lon_start)**2 + \
-                                         (index_lat_end - index_lat_start)**2))
-        
-        # distance between start and end in term of meters ...
-        # .. on i (longitude)
-        ni_step = (ni_end - ni_start)/(index_distance-1)
-        # .. on j (latitude)
-        nj_step = (nj_end - nj_start)/(index_distance-1)
-        
-        ni_range = np.linspace(ni_start - ni_step*nb_indices_exterior, 
-                               ni_end + ni_step*nb_indices_exterior,
-                               num=int(index_distance)+2*nb_indices_exterior
-                               )
-        
-        nj_range = y_intercept + slope * ni_range
-        
-    else:  # ni_end == ni_start   -   vertical line - following meridian
-        index_distance = np.abs(index_lat_end - index_lat_start) + 1
-        nj_step = (nj_end - nj_start)/(index_distance - 1)
-        ni_step = 0
-        nj_range = np.linspace(nj_start - nj_step*nb_indices_exterior, 
-                               nj_end + nj_step*nb_indices_exterior,
-                               num=int(index_distance)+2*nb_indices_exterior)
-        ni_range = np.array([ni_end]*len(nj_range))
-        slope='vertical'
-    
-    # distance in meters between two points on section line
-    nij_step = np.sqrt(ni_step**2 + nj_step**2)
-    
-    return {'ni_range': ni_range, 'nj_range': nj_range, 
-            'slope': slope, 'index_distance': index_distance, 
-            'ni_step': ni_step, 'nj_step': nj_step, 'nij_step': nij_step,
-            'ni_start': ni_start, 'ni_end': ni_end,
-            'nj_start': nj_start, 'nj_end': nj_end}
-
-
-def distance_from_lat_lon(lat_lon_1, lat_lon_2):
-    """
-    compute distance in km between 2 pts given their coordinates in degrees
-    """
-    lat1_rad = np.radians(lat_lon_1[0])
-    lon1_rad = np.radians(lat_lon_1[1])
-    lat2_rad = np.radians(lat_lon_2[0])
-    lon2_rad = np.radians(lat_lon_2[1])
-    radius_earth = 6371.01  #km
-    
-    dist = radius_earth * np.arccos(
-            np.sin(lat1_rad)*np.sin(lat2_rad) + np.cos(lat1_rad)*np.cos(lat2_rad)*np.cos(lon1_rad - lon2_rad))
-    
-    return dist
-
-
-def center_uvw(data, data_type='wind', budget_type='UU', varname_bu='PRES'):
-    """
-    Interpolate in middle of grid for variable UT, VT and WT,
-    rename the associated coordinates, and squeezes the result.
-    Useful for operation on winds in post processing.
-    
-    Inputs:
-        data: xarray.Dataset, containing variables 'UT', 'VT', 'WT'
-    
-    Returns:
-        data: xarray.Dataset,
-            same dataset but with winds positionned in the center of grid
-    """
-    if data_type == 'wind':
-        data['UT'] = data['UT'].interp(ni_u=data.ni.values, nj_u=data.nj.values).rename(
-                {'ni_u': 'ni', 'nj_u': 'nj'})
-        data['VT'] = data['VT'].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
-                {'ni_v': 'ni', 'nj_v': 'nj'})
-        # remove useless coordinates
-        data_new = data.drop(['ni_u', 'nj_u', 'ni_v', 'nj_v'])
-        try:
-            data_new = data.drop(['latitude_u', 'longitude_u', 
-                                  'latitude_v', 'longitude_v',])
-        except ValueError:
-            pass
-    # for components UU and VV of MNH budgets ()
-    elif data_type == 'budget':
-        if budget_type == 'UU':
-            data[varname_bu] = data[varname_bu].interp(ni_u=data.ni.values, nj_u=data.nj.values).rename(
-                {'ni_u': 'ni', 'nj_u': 'nj'})
-            # remove useless coordinates
-            data_new = data.drop(['ni_u', 'nj_u', 
-                                  'latitude_u', 'longitude_u', ])
-                
-        if budget_type == 'VV':
-            data[varname_bu] = data[varname_bu].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
-                {'ni_v': 'ni', 'nj_v': 'nj'})
-            # remove useless coordinates
-            data_new = data.drop(['ni_v', 'nj_v',
-                                  'latitude_v', 'longitude_v', ])
-    
-    # TRY loop in case no WT found in file
-    try:
-        data['WT'] = data['WT'].interp(level_w=data.level.values).rename(
-                {'level_w': 'level'})
-        data['ALT'] = data['ALT'].interp(level_w=data.level.values).rename(
-                {'level_w': 'level'})
-        # remove useless coordinates
-        data_new = data.drop(['level_w'])
-    except KeyError:
-        pass
-    
-    # consider time no longer as a dimension but just as a single coordinate
-    data_new = data_new.squeeze()
-    
-    return data_new
-
-
-    
-
-def interp_iso_asl(alti_asl, ds, varname, verbose=True):
-    """
-    Interpolate values at same altitude ASL
-    
-    Returns:
-        np.array
-    
-    """
-    
-    ds = ds[[varname, 'ZS']].squeeze()
-    
-    # make with same asl value everywhere
-    alti_grid = np.array([[alti_asl]*len(ds.ni)]*len(ds.nj))
-    # compute the corresponding height AGL to keep iso alti ASL on each pt
-    level_grid = alti_grid - ds['ZS'].data
-    # initialize the result layer with same shape same than alti_grid
-    res_layer = level_grid*0
-    
-    # get column of correspondance between level and height AGL
-#    level = ds[varname][:, :, :].level.data 
-    level = ds.level.data
-    
-    # interpolation
-    for j in range(len(ds.nj)):
-        if verbose:
-            print('{0}/{1}'.format(j, len(ds.nj)))
-        for i in range(len(ds.ni)):
-            if level_grid[j,i] < 0:
-                res_layer[j,i] = np.nan
-            else:
-    #            res_layer[i,j] = ds['PRES'].interp(
-    #                ni=ds.ni[i], nj=ds.nj[j], level=level_grid[i,j])
-#                res_layer[j,i] = np.interp(level_grid[j,i], 
-#                                           level, 
-#                                           ds[varname][:, j, i])
-                f = interpolate.interp1d(level, 
-                                         ds[varname][:, j, i],
-                                         fill_value='extrapolate')
-                res_layer[j,i] = f(level_grid[j,i])
-
-    # new shorter loop: TODO
-#    for tuple_coord in np.ndindex(ds[varname].isel(level=0).shape):
-#        res_layer[tuple_coord] = np.interp(level_grid[tuple_coord], 
-#                                           level, 
-#                                           ds[varname][:, j, i])
-    
-    return res_layer
-
-
-def interp_iso_agl(alti_agl, ds_asl, varname, verbose=True):
-    """
-    Interpolate values at same altitude ASL
-    
-    Returns:
-        np.array
-    
-    """
-    
-    ds_asl = ds_asl[[varname, 'ZS']].squeeze()
-    
-    # make with same asl value everywhere
-    agl_grid = np.array([[alti_agl]*len(ds_asl.ni)]*len(ds_asl.nj))
-    # compute the corresponding height AGL to keep iso alti ASL on each pt
-    asl_grid = agl_grid + ds_asl['ZS'].data
-    # initialize the result layer with same shape same than asl_grid
-    res_layer = (agl_grid*0).astype('float')
-    
-    # get column of correspondance between level and height AGL
-#    level_asl = ds_asl.level.data
-    
-    # interpolation
-    for j in range(len(ds_asl.nj)):
-        if verbose:
-            print('{0}/{1}'.format(j, len(ds_asl.nj)))
-        for i in range(len(ds_asl.ni)):
-            var_column = ds_asl[varname][:, j, i].dropna(dim='level')
-            level_column = var_column.level
-#            if np.isnan(ds_asl[varname][:, j, i]).all():
-            if len(var_column) < 3:
-                res_layer[j,i] = np.nan
-            else:
-                f = interpolate.interp1d(level_column, 
-                                         var_column,
-                                         fill_value='extrapolate')
-                res_layer[j,i] = f(asl_grid[j,i])
-    
-    return res_layer
-
-
-def save_figure(plot_title, save_folder='./figures/', verbose=True):
-    """
-    Save the plot
-    """
-    #split the save_folder name at each /
-    for i in range(2, len(save_folder.split('/'))):
-        # recreate the path step by step and check its existence at each step.
-        # If not existing, make a new folder
-        path = '/'.join(save_folder.split('/')[0:i])
-        if not os.path.isdir(path):
-            print('Make directory: {0}'.format(path))
-            os.mkdir(path)
-    filename = (plot_title)
-    filename = filename.replace('=', '').replace('(', '').replace(')', '')
-    filename = filename.replace(' ', '_').replace(',', '').replace('.', '_')
-    filename = filename.replace('/', 'over')
-    plt.savefig(save_folder + '/' + str(filename), dpi=300)
-    if verbose:
-        print('figure {0} saved in {1}'.format(plot_title, save_folder))
-        
-
-## FROM pythermalcomfort, few modifs
-    
-def apparent_temperature(tdb, rh, v=0, q=None, **kwargs):
-    """Calculates the Apparent Temperature (AT). The AT is defined as the
-    temperature at the reference humidity level producing the same amount of
-    discomfort as that experienced under the current ambient temperature,
-    humidity, and solar radiation [17]_. In other words, the AT is an
-    adjustment to the dry bulb temperature based on the relative humidity
-    value. Absolute humidity with a dew point of 14°C is chosen as a reference.
-
-    [16]_. It includes the chilling effect of the wind at lower temperatures.
-
-    Two formulas for AT are in use by the Australian Bureau of Meteorology: one includes
-    solar radiation and the other one does not (http://www.bom.gov.au/info/thermal_stress/
-    , 29 Sep 2021). Please specify q if you want to estimate AT with solar load.
-
-    Parameters
-    ----------
-    tdb : float
-        dry bulb air temperature,[°C]
-    rh : float
-        relative humidity, [%]
-    v : float
-        wind speed 10m above ground level, [m/s]
-        
-    ERASED:
-    q : float
-        Net radiation absorbed per unit area of body surface [W/m2]
-
-
-    Returns
-    -------
-    float
-        apparent temperature, [°C]
-        
-    References
-    ----------
-    [16]	Blazejczyk, K., Epstein, Y., Jendritzky, G., Staiger, H., Tinz, B., 2012. Comparison of UTCI to selected thermal indices. Int. J. Biometeorol. 56, 515–535. https://doi.org/10.1007/s00484-011-0453-2
-    [17]	Steadman RG, 1984, A universal scale of apparent temperature. J Appl Meteorol Climatol 23:1674–1687
-    """
-#    default_kwargs = {
-#        "round": True,
-#    }
-#    kwargs = {**default_kwargs, **kwargs}
-
-    # dividing it by 100 since the at eq. requires p_vap to be in hPa
-    p_vap = psy_ta_rh(tdb, rh)["p_vap"] / 100
-
-    # equation sources [16] and http://www.bom.gov.au/info/thermal_stress/#apparent
-#    if q:
-#        t_at = tdb + 0.348 * p_vap - 0.7 * v + 0.7 * q / (v + 10) - 4.25
-#    else:
-    t_at = tdb + 0.33 * p_vap - 0.7 * v - 4.00
-
-    return t_at
-
-
-def psy_ta_rh(tdb, rh, p_atm=101325):
-    """Calculates psychrometric values of air based on dry bulb air temperature and
-    relative humidity.
-    
-    Comes from package 'pythermalcomfort'.
-    
-    For more accurate results we recommend the use of the the Python package
-    `psychrolib`_.
-    .. _psychrolib: https://pypi.org/project/PsychroLib/
-
-    Parameters
-    ----------
-    tdb: float
-        air temperature, [°C]
-    rh: float
-        relative humidity, [%]
-    p_atm: float
-        atmospheric pressure, [Pa]
-
-    Returns
-    -------
-    p_vap_sat: float
-        partial pressure of water vapor in saturated moist air, [Pa]
-    p_vap: float
-        partial pressure of water vapor in moist air, [Pa]
-    hr or mixing_ratio: float
-        humidity ratio, [kg water/kg dry air]
-        'mixing_ratio' added because 'hr' can be misleading
-    t_wb: float
-        wet bulb temperature, [°C]
-    t_dp: float
-        dew point temperature, [°C]
-    h: float
-#        enthalpy [J/kg dry air]
-    """
-    p_saturation = p_sat(tdb)
-    p_vap = rh / 100 * p_saturation
-    hr = 0.62198 * p_vap / (p_atm - p_vap)
-    tdp = t_dp(tdb, rh)
-    twb = t_wb(tdb, rh)
-#    h = enthalpy(tdb, hr)
-
-    return {
-        "p_vap_sat": p_saturation,
-        "p_vap": p_vap,
-        "hr": hr,
-        "mixing_ratio": hr,
-        "t_wb": twb,
-        "t_dp": tdp,
-#        "h": h,
-    }
-    
-def p_sat(tdb):
-    """Calculates saturated vapour pressure of water at different temperatures
-
-    Parameters
-    ----------
-    tdb: float
-        air temperature, [°C]
-
-    Returns
-    -------
-    p_sat: float
-        saturated vapour pressure, [Pa]
-    """
-
-    ta_k = tdb + 273.15
-
-    # Low temperature case commented to allow for calculation on array of ta_k
-    # (if not "np.array < 273.15" is ambiguous)
-#    if ta_k < 273.15:
-#        c1 = -5674.5359
-#        c2 = 6.3925247
-#        c3 = -0.9677843e-2
-#        c4 = 0.62215701 * np.pow(10, -6)
-#        c5 = 0.20747825 * np.pow(10, -8)
-#        c6 = -0.9484024 * np.pow(10, -12)
-#        c7 = 4.1635019
-#        pascals = np.exp(
-#            c1 / ta_k
-#            + c2
-#            + ta_k * (c3 + ta_k * (c4 + ta_k * (c5 + c6 * ta_k)))
-#            + c7 * np.log(ta_k)
-#        )
-#    else:
-    c8 = -5800.2206
-    c9 = 1.3914993
-    c10 = -0.048640239
-    c11 = 0.41764768e-4
-    c12 = -0.14452093e-7
-    c13 = 6.5459673
-    
-    pascals = np.exp(
-        c8 / ta_k
-        + c9
-        + ta_k * (c10 + ta_k * (c11 + ta_k * c12))
-        + c13 * np.log(ta_k)
-    )
-
-    return np.round(pascals, 1)
-
-
-def rel_humidity(spec_humidity, t_dry_bulb, pressure):
-    """Calculates the relative humidity.
-
-    Parameters
-    ----------
-    t_dry_bulb: float
-        dry bulb air temperature, [°C]
-    spec_hum: float
-        specific humidity, (kg/kg)
-
-    Returns
-    -------
-    rel_humidity: float
-        relative humidity
-    """
-    sat_mix_ratio = sat_mixing_ratio(pressure, t_dry_bulb)
-    rel_humidity = spec_humidity / ((1-spec_humidity)*sat_mix_ratio)
-    return rel_humidity
-    
-
-def sat_mixing_ratio(pressure, t_dry_bulb):
-    """
-    Calculates the saturation_mixing_ratio
-        Parameters
-    ----------
-    t_dry_bulb: float
-        dry bulb air temperature, [°C]
-    pressure: float
-        atmospheric pressure, (Pa)
-
-    Returns
-    -------
-    saturation mixing ratio: float
-        (kg/kg)
-    """
-    sat_mixing_ratio = 0.622*p_sat(t_dry_bulb) / (pressure-p_sat(t_dry_bulb))
-    return sat_mixing_ratio
-
-
-def t_dp(tdb, rh):
-    """Calculates the dew point temperature.
-
-    Parameters
-    ----------
-    tdb: float
-        dry bulb air temperature, [°C]
-    rh: float
-        relative humidity, [%]
-
-    Returns
-    -------
-    t_dp: float
-        dew point temperature, [°C]
-    """
-
-    c = 257.14
-    b = 18.678
-    d = 234.5
-
-    gamma_m = np.log(rh / 100 * np.exp((b - tdb / d) * (tdb / (c + tdb))))
-
-    return np.round(c * gamma_m / (b - gamma_m), 1)
-
-def t_wb(tdb, rh):
-    """Calculates the wet-bulb temperature using the Stull equation [6]_
-
-    Parameters
-    ----------
-    tdb: float
-        air temperature, [°C]
-    rh: float
-        relative humidity, [%]
-
-    Returns
-    -------
-    tdb: float
-        wet-bulb temperature, [°C]
-    """
-    twb = np.round(
-        tdb * np.arctan(0.151977 * (rh + 8.313659) ** (1 / 2))
-        + np.arctan(tdb + rh)
-        - np.arctan(rh - 1.676331)
-        + 0.00391838 * rh ** (3 / 2) * np.arctan(0.023101 * rh)
-        - 4.686035,
-        1,
-    )
-    return twb
-
-def check_folder_filenames():
-    folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/1.11_std_2021_21-24/'
-#    folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/2.13_irr_2021_21-24/'
     ls = os.listdir(folder)
     
     regex = re.compile(r'LIAIS.2.SEG.*[^0]dg.nc$')
@@ -1749,13 +1539,134 @@ def check_folder_filenames():
             print('issue with ', fn)
         else:
             print(fn + ' is OK')
+    
+
+
+def get_indices_of_lat_lon(ds, lat, lon, verbose=True):
+    """ 
+    Find indices corresponding to latitude and longitude values
+    for a given file.
+    
+    ds: xarray.DataSet
+        Dataset containing fields of netcdf file
+    lat: float, 
+        Latitude
+    lon: float,
+        Longitude
+    
+    Return:
+        tuple [index_lat, index_lon]
+    
+    """
+    # Get latitude and longitude data
+    try:
+        lat_dat = ds['latitude'].data
+        lon_dat = ds['longitude'].data
+    except KeyError:
+        try:
+            lat_dat = ds['latitude_u'].data
+            lon_dat = ds['longitude_u'].data
+        except KeyError:
+            try:
+                lat_dat = ds['latitude_v'].data
+                lon_dat = ds['longitude_v'].data
+            except KeyError:
+                raise AttributeError("""this dataset does not have 
+                                     latitude-longitude coordinates""")
+    
+    # Gross evaluation of lat, lon (because latitude lines are curved)
+    distance2lat = np.abs(lat_dat - lat)
+    index_lat = np.argwhere(distance2lat <= np.nanmin(distance2lat))[0,0]
+    
+    distance2lon = np.abs(lon_dat - lon)
+    index_lon = np.argwhere(distance2lon <= np.nanmin(distance2lon))[0,1]
+    
+#    print("Before refinement : index_lat={0}, index_lon={1}".format(
+#            index_lat, index_lon))
+    
+    # refine as long as optimum not reached
+    opti_reached = False
+    n = 0  #count of iteration
+    while opti_reached is False:
+        if (np.abs(lon_dat[index_lat, index_lon] - lon) > \
+            np.abs(lon_dat[index_lat, index_lon+1] - lon) ):
+            index_lon = index_lon+1
+        elif (np.abs(lon_dat[index_lat, index_lon] - lon) > \
+            np.abs(lon_dat[index_lat, index_lon-1] - lon) ):
+            index_lon = index_lon-1
+        elif (np.abs(lat_dat[index_lat, index_lon] - lat) > \
+            np.abs(lat_dat[index_lat+1, index_lon] - lat) ):
+            index_lat = index_lat+1
+        elif (np.abs(lat_dat[index_lat, index_lon] - lat) > \
+            np.abs(lat_dat[index_lat-1, index_lon] - lat) ):
+            index_lat = index_lat-1
+        elif n > 20:
+            raise ValueError("""loop does not converge, 
+                             check manually for indices.""")
+        else:
+            opti_reached = True
+    if verbose:
+        print("For lat={0}, lon={1} : index_lat={2}, index_lon={3}".format(
+            lat, lon, index_lat, index_lon))
+    
+    return index_lat, index_lon
+
+
+def get_points_in_polygon(data_in, polygon):
+    """
+    Return a list of all the points data points that are in a given polygon
+    
+    parameters:
+        data_in: array-like, xarray.dataset or xarray.dataarray
+        
+        polygon: 2D Polygon shape from shapely.geometry
+        
+    returns:
+        list of points contained in the polygon
+    
+    """
+    try:  #or: if 'ni_u' inlist(ds1.coords)
+        ds = center_uvw(data_in)
+    except (ValueError, KeyError):
+        ds = data_in
+        
+    inside_points = []
+    
+    # get one of the dataarray in the dataset, and retrieve its shape
+    if type(ds) == xr.core.dataset.Dataset:
+#        random_dataarray = ds[list(ds.keys())[0]]
+        random_dataarray = ds['latitude']  # latitude expected to be present in all (could be latitude_u also)
+    elif type(ds) == xr.core.dataarray.DataArray:
+        random_dataarray = ds
+    else:
+        raise TypeError('ds is not xr.dataset or xr.dataarray')
+    
+    # get shape of data
+    try:
+        shape_ds = random_dataarray[0, :, :].shape
+    except IndexError:
+        shape_ds = random_dataarray[:, :].shape
+    
+    # filter points that are inside the polygon
+    for coords in np.ndindex(shape_ds):
+        # get elements one by one
+        elt = ds.isel(nj=coords[0], ni=coords[1])
+#        elt = ds.isel(level=ilevel, nj=coords[0], ni=coords[1])
+
+        # create location point
+        location_elt = Point(elt.longitude, elt.latitude)
+        if polygon.contains(location_elt):
+            inside_points.append(elt)
+            
+    return inside_points
 
 
 def get_surface_type(site, domain_nb, model='irr',
                      ds=None, translate_patch = True, 
                      nb_patch=12):
     """
-    Returns the type and characteristics of surface for a given site
+    Returns the type and characteristics of land surface in SURFEX 
+    for a given site
     
     """
 
@@ -1862,53 +1773,834 @@ def get_surface_type(site, domain_nb, model='irr',
         
     return res
 
-def get_points_in_polygon(data_in, polygon):
-    """
-    Return a list of all the points data points that are in a given polygon
-    
-    parameters:
-        data_in: array-like, xarray.dataset or xarray.dataarray
-        
-        polygon: 2D Polygon shape from shapely.geometry
-        
-    returns:
-        list of points contained in the polygon
-    
-    """
-    try:  #or: if 'ni_u' inlist(ds1.coords)
-        ds = center_uvw(data_in)
-    except (ValueError, KeyError):
-        ds = data_in
-        
-    inside_points = []
-    
-    # get one of the dataarray in the dataset, and retrieve its shape
-    if type(ds) == xr.core.dataset.Dataset:
-#        random_dataarray = ds[list(ds.keys())[0]]
-        random_dataarray = ds['latitude']  # latitude expected to be present in all (could be latitude_u also)
-    elif type(ds) == xr.core.dataarray.DataArray:
-        random_dataarray = ds
-    else:
-        raise TypeError('ds is not xr.dataset or xr.dataarray')
-    
-    # get shape of data
-    try:
-        shape_ds = random_dataarray[0, :, :].shape
-    except IndexError:
-        shape_ds = random_dataarray[:, :].shape
-    
-    # filter points that are inside the polygon
-    for coords in np.ndindex(shape_ds):
-        # get elements one by one
-        elt = ds.isel(nj=coords[0], ni=coords[1])
-#        elt = ds.isel(level=ilevel, nj=coords[0], ni=coords[1])
 
-        # create location point
-        location_elt = Point(elt.longitude, elt.latitude)
-        if polygon.contains(location_elt):
-            inside_points.append(elt)
+def get_irrig_time(soil_moist, stdev_threshold=5):
+    """
+    soil_moist: xarray Dataarray,
+        Variable representing soil moisture of other variable 
+        strongly dependant on irrigation. Must have 'time' as coordinate.
+    """
+    # if soil_moist is None (not irrigated site for ex.)
+    if soil_moist is None:
+        return []
+    # derivate of variable with time
+    soil_moist_dtime = soil_moist.differentiate(coord='time')
+    # keep absolute values
+    soil_moist_dtime_abs = np.abs(soil_moist_dtime)
+    
+    # compute threshold to determine the outliers
+    avrg = soil_moist_dtime_abs.mean()
+    stdev = soil_moist_dtime_abs.std()
+    thres = avrg + stdev_threshold*stdev
+    
+    # only keep outliers
+    irr_dati = soil_moist_dtime_abs.where(soil_moist_dtime_abs > thres, drop=True).time
+    
+    # remove close datetimes
+    tdelta_min = pd.Timedelta(6, unit='h')  #minimum time delta between 2 irrig
+    irr_dati_filtered = []
+    
+    for i, dati in enumerate(irr_dati):
+        if i == 0:
+            continue
+        else:
+            if (irr_dati[i].data - irr_dati[i-1].data) > tdelta_min:
+                irr_dati_filtered.append(dati.data)
+    
+    return irr_dati_filtered
+
+   
+def get_line_coords(data, 
+                start_pt = (41.6925905, 0.9285671), # cendrosa
+                end_pt = (41.590111, 1.029363), #els plans
+                nb_indices_exterior=10,
+                verbose=True):     
+    """
+    data: xarray dataset
+    start_pt: tuple with (lat, lon) coordinates of start point
+    start_pt: tuple with (lat, lon) coordinates of end point
+    nb_indices_exterior: int, number of indices to take resp. before and after
+        the start and end point.
+        
+    Returns:
+        Dict with following keys:
+            'ni_range':
+            'nj_range':
+            'slope':
+            'index_distance': numbers of indices between the start and end pt
+            'ni_step':
+            'nj_step':
+            'nij_step': distance in [m] between 2 pts of the line
+            'ni_start':
+            'ni_end':
+            'nj_start':
+            'nj_end':
+    """
+    # get ni, nj values (distance to borders of first domain in m)
+    # for Start site
+    index_lat_start, index_lon_start = indices_of_lat_lon(data, *start_pt, 
+                                                          verbose=verbose)
+    ni_start = data.ni[index_lon_start].values     # ni corresponds to longitude
+    nj_start = data.nj[index_lat_start].values     # nj corresponds to latitude
+    # for End site
+    index_lat_end, index_lon_end = indices_of_lat_lon(data, *end_pt,
+                                                      verbose=verbose)
+    ni_end = data.ni[index_lon_end].values     # ni corresponds to longitude
+    nj_end = data.nj[index_lat_end].values     # nj corresponds to latitude
+    
+    if verbose:
+        print('ni, nj start:', ni_start, nj_start)
+        print('ni, nj end:', ni_end, nj_end)
+    
+    #get line formula:
+    if ni_end != ni_start:
+        slope = (nj_end - nj_start)/(ni_end - ni_start)
+        y_intercept = nj_start - slope * ni_start
+        
+        if verbose:
+            print('slope and y-intercept :', slope, y_intercept)
+
+        # approximate distance between start and end in term of indices
+        index_distance = np.ceil(np.sqrt((index_lon_end - index_lon_start)**2 + \
+                                         (index_lat_end - index_lat_start)**2))
+        
+        # distance between start and end in term of meters ...
+        # .. on i (longitude)
+        ni_step = (ni_end - ni_start)/(index_distance-1)
+        # .. on j (latitude)
+        nj_step = (nj_end - nj_start)/(index_distance-1)
+        
+        ni_range = np.linspace(ni_start - ni_step*nb_indices_exterior, 
+                               ni_end + ni_step*nb_indices_exterior,
+                               num=int(index_distance)+2*nb_indices_exterior
+                               )
+        
+        nj_range = y_intercept + slope * ni_range
+        
+    else:  # ni_end == ni_start   -   vertical line - following meridian
+        index_distance = np.abs(index_lat_end - index_lat_start) + 1
+        nj_step = (nj_end - nj_start)/(index_distance - 1)
+        ni_step = 0
+        nj_range = np.linspace(nj_start - nj_step*nb_indices_exterior, 
+                               nj_end + nj_step*nb_indices_exterior,
+                               num=int(index_distance)+2*nb_indices_exterior)
+        ni_range = np.array([ni_end]*len(nj_range))
+        slope='vertical'
+    
+    # distance in meters between two points on section line
+    nij_step = np.sqrt(ni_step**2 + nj_step**2)
+    
+    return {'ni_range': ni_range, 'nj_range': nj_range, 
+            'slope': slope, 'index_distance': index_distance, 
+            'ni_step': ni_step, 'nj_step': nj_step, 'nij_step': nij_step,
+            'ni_start': ni_start, 'ni_end': ni_end,
+            'nj_start': nj_start, 'nj_end': nj_end}
+
+def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[],
+              nb_indices_exterior=0):
+    """
+    Extract a subset of a domain.
+    
+    """
+    
+    if zoom_on != None:
+        prop = gv.zoom_domain_prop[zoom_on]
+        lat_range = prop['lat_range']
+        lon_range = prop['lon_range']
+    elif zoom_on == None:
+        if lat_range == []:
+            # raise ValueError("Argument 'zoom_on' or lat_range & lon_range must be given")
+            print('No subsetting done on the dataset.')
+            return ds
+        # else:
+        #     lat_range = lat_range
+        #     lon_range = lon_range
+        
+    nj_min, ni_min = indices_of_lat_lon(ds, 
+                                        np.min(lat_range), np.min(lon_range),
+                                        verbose=False)
+    nj_max, ni_max = indices_of_lat_lon(ds, 
+                                        np.max(lat_range), np.max(lon_range),
+                                        verbose=False)
+    
+    nj_min -= nb_indices_exterior
+    ni_min -= nb_indices_exterior
+    nj_max += nb_indices_exterior
+    ni_max += nb_indices_exterior
+    
+#    # if need to be more flexible to coordinates: TODO
+#    latitude_X = [key for key in list(ds.coords) if 'ni' in key][0]
+#    lastletters = latitude_X[-2::]
+#    if lastletters == '_u':
+#            ds_subset = ds.isel(ni_u=np.arange(ni_min, ni_max), 
+#                                nj_u=np.arange(nj_min, nj_max))
+#    elif lastletters == 'de':
+        
+    ds_subset = ds.isel(ni=np.arange(ni_min, ni_max), 
+                        nj=np.arange(nj_min, nj_max))
+    
+    return ds_subset.squeeze()
+
+def center_uvw(data, data_type='wind', budget_type='UU', varname_bu='PRES'):
+    """
+    Interpolate in middle of grid for variable UT, VT and WT,
+    rename the associated coordinates, and squeezes the result.
+    Useful for operation on winds in post processing.
+    
+    Inputs:
+        data: xarray.Dataset, containing variables 'UT', 'VT', 'WT'
+    
+    Returns:
+        data: xarray.Dataset,
+            same dataset but with winds positionned in the center of grid
+    """
+    if data_type == 'wind':
+        data['UT'] = data['UT'].interp(ni_u=data.ni.values, nj_u=data.nj.values).rename(
+                {'ni_u': 'ni', 'nj_u': 'nj'})
+        data['VT'] = data['VT'].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
+                {'ni_v': 'ni', 'nj_v': 'nj'})
+        # remove useless coordinates
+        data_new = data.drop(['ni_u', 'nj_u', 'ni_v', 'nj_v'])
+        try:
+            data_new = data.drop(['latitude_u', 'longitude_u', 
+                                  'latitude_v', 'longitude_v',])
+        except ValueError:
+            pass
+    # for components UU and VV of MNH budgets ()
+    elif data_type == 'budget':
+        if budget_type == 'UU':
+            data[varname_bu] = data[varname_bu].interp(ni_u=data.ni.values, nj_u=data.nj.values).rename(
+                {'ni_u': 'ni', 'nj_u': 'nj'})
+            # remove useless coordinates
+            data_new = data.drop(['ni_u', 'nj_u', 
+                                  'latitude_u', 'longitude_u', ])
+                
+        if budget_type == 'VV':
+            data[varname_bu] = data[varname_bu].interp(ni_v=data.ni.values, nj_v=data.nj.values).rename(
+                {'ni_v': 'ni', 'nj_v': 'nj'})
+            # remove useless coordinates
+            data_new = data.drop(['ni_v', 'nj_v',
+                                  'latitude_v', 'longitude_v', ])
+    
+    # TRY loop in case no WT found in file
+    try:
+        data['WT'] = data['WT'].interp(level_w=data.level.values).rename(
+                {'level_w': 'level'})
+        data['ALT'] = data['ALT'].interp(level_w=data.level.values).rename(
+                {'level_w': 'level'})
+        # remove useless coordinates
+        data_new = data.drop(['level_w'])
+    except KeyError:
+        pass
+    
+    # consider time no longer as a dimension but just as a single coordinate
+    data_new = data_new.squeeze()
+    
+    return data_new
+
+
+def interp_iso_asl(alti_asl, ds, varname, verbose=True):
+    """
+    Interpolate values at same altitude ASL
+    
+    Returns:
+        np.array
+    
+    TODO: try fastening the function with scipy.interpn, or map()
+        -> It did not work with map(),
+        and I did not manage to use interpn (not adapted?)
+    
+    """
+    
+    ds_sub = ds[[varname, 'ZS', 'ALT']].squeeze()
+    # ds_sub = ds_sub.where(ds_sub.ni<40000, drop=True)
+    # change coordinates of ALT: level_w -> level
+    ds_sub['ALT'] = ds_sub['ALT'].interp(level_w=ds_sub[varname].level.values).rename(
+            {'level_w': 'level'})
+    
+    # make 2D array with same asl value everywhere
+    alti_grid = ds_sub['ZS']*0 + alti_asl
+    
+    # make empty 2D array for the result
+    res_layer = alti_grid*0
+    
+    ds_alt = ds_sub['ALT']
+    ds_var = ds_sub[varname]
+    
+    # compute len() before loop allow to gain computation time
+    nj_len = len(ds_sub.nj)
+    ni_len = len(ds_sub.ni)
+    
+    for j in range(nj_len):
+        if verbose:
+            print('{0}/{1}'.format(j, nj_len))
             
-    return inside_points
+        for i in range(ni_len):
+            
+            res_layer[j,i] = np.interp(
+                # alti_grid.isel(ni=i, nj=j),  # 0d value of alti ASL wanted
+                alti_asl,
+                ds_alt.isel(ni=i, nj=j),  # 1d column of alti ASL
+                ds_var.isel(ni=i, nj=j),  # 1d column of varname
+                left = np.nan,
+                right = None)
+    
+    
+# OLD version: ---------
+    
+#     ds = ds[[varname, 'ZS']].squeeze()
+    
+#     # make with same asl value everywhere
+#     alti_grid = np.array([[alti_asl]*len(ds.ni)]*len(ds.nj))
+#     # compute the corresponding height AGL to keep iso alti ASL on each pt
+#     level_grid = alti_grid - ds['ZS'].data
+#     # initialize the result layer with same shape same than alti_grid
+#     res_layer = level_grid*0
+    
+#     # get column of correspondance between level and height AGL
+# #    level = ds[varname][:, :, :].level.data 
+#     level = ds.level.data
+    
+#     # interpolation
+#     for j in range(len(ds.nj)):
+#         if verbose:
+#             print('{0}/{1}'.format(j, len(ds.nj)))
+#         for i in range(len(ds.ni)):
+#             if level_grid[j,i] < 0:
+#                 res_layer[j,i] = np.nan
+#             else:
+#     #            res_layer[i,j] = ds['PRES'].interp(
+#     #                ni=ds.ni[i], nj=ds.nj[j], level=level_grid[i,j])
+# #                res_layer[j,i] = np.interp(level_grid[j,i], 
+# #                                           level, 
+# #                                           ds[varname][:, j, i])
+#                 f = interpolate.interp1d(level, 
+#                                          ds[varname][:, j, i],
+#                                          fill_value='extrapolate')
+#                 res_layer[j,i] = f(level_grid[j,i])
+
+    # new shorter loop: TODO
+#    for tuple_coord in np.ndindex(ds[varname].isel(level=0).shape):
+#        res_layer[tuple_coord] = np.interp(level_grid[tuple_coord], 
+#                                           level, 
+#                                           ds[varname][:, j, i])
+
+    return res_layer
+
+
+def interp_iso_agl(alti_agl, ds_asl, varname, verbose=True):
+    """
+    Interpolate values at same altitude ASL
+    
+    Returns:
+        np.array
+    
+    """
+    
+    ds_asl = ds_asl[[varname, 'ZS']].squeeze()
+    
+    # make with same asl value everywhere
+    agl_grid = np.array([[alti_agl]*len(ds_asl.ni)]*len(ds_asl.nj))
+    # compute the corresponding height AGL to keep iso alti ASL on each pt
+    asl_grid = agl_grid + ds_asl['ZS'].data
+    # initialize the result layer with same shape same than asl_grid
+    res_layer = (agl_grid*0).astype('float')
+    
+    # get column of correspondance between level and height AGL
+#    level_asl = ds_asl.level.data
+    
+    # interpolation
+    for j in range(len(ds_asl.nj)):
+        if verbose:
+            print('{0}/{1}'.format(j, len(ds_asl.nj)))
+        for i in range(len(ds_asl.ni)):
+            var_column = ds_asl[varname][:, j, i].dropna(dim='level')
+            level_column = var_column.level
+#            if np.isnan(ds_asl[varname][:, j, i]).all():
+            if len(var_column) < 3:
+                res_layer[j,i] = np.nan
+            else:
+                #TODO turn into np.interp
+                f = interpolate.interp1d(level_column, 
+                                         var_column,
+                                         fill_value='extrapolate')
+                res_layer[j,i] = f(asl_grid[j,i])
+    
+    return res_layer
+
+def flux_pt_to_mass_pt(ds, verbose=True):
+    """
+    Change flux point coordinates of dataset into mass point coordinates.
+    Done through interpolation between flux points.
+    Generalization of center_uvw() function.
+    
+    parameter:
+        ds: xarray.dataset
+    """
+    for var in list(ds.keys()):
+        
+        # NOT WORKING
+#        for coord in ['nj_v', 'nj_u', 'ni_v', 'ni_u', 'level_w']:
+#            new_coord = coord[:-2]
+#            ds[var] = ds[var].interp(coords={coord:ds[new_coord].values}).rename(
+#                {coord: new_coord})
+#            if verbose:
+#                print(f"{var}: coordinates '{coord}' changed to '{new_coord}'")
+            
+        # change coordinates for 'nj_v' flux points
+        if 'nj_v' in list(ds[var].coords):
+            ds[var] = ds[var].interp(nj_v=ds.nj.values).rename(
+                {'nj_v': 'nj'})
+            if verbose:
+                print(f"{var}: coordinates 'nj_v' changed to 'nj'")
+        
+        # change coordinates for 'ni_v' flux points
+        if 'ni_v' in list(ds[var].coords):
+            ds[var] = ds[var].interp(ni_v=ds.ni.values).rename(
+                {'ni_v': 'ni'})
+            if verbose:
+                print(f"{var}: coordinates 'ni_v' changed to 'ni'")
+        
+        # change coordinates for 'ni_u' flux points
+        if 'ni_u' in list(ds[var].coords):
+            ds[var] = ds[var].interp(ni_u=ds.ni.values).rename(
+                {'ni_u': 'ni'})
+            if verbose:
+                print(f"{var}: coordinates 'ni_u' changed to 'ni'")
+        
+        # change coordinates for 'nj_u' flux points
+        if 'nj_u' in list(ds[var].coords):
+            ds[var] = ds[var].interp(nj_u=ds.nj.values).rename(
+                {'nj_u': 'nj'})
+            if verbose:
+                print(f"{var}: coordinates 'nj_u' changed to 'nj'")
+        
+        # change coordinates for '_w' flux points
+        if 'level_w' in list(ds[var].coords):
+            ds[var] = ds[var].interp(level_w=ds.level.values).rename(
+                {'level_w': 'level'})
+            if verbose:
+                print(f"{var}: coordinate 'level_w' changed to 'level'")
+    
+        # ALT coordinate badly encoded ('level_w not defnied as coords)
+        if var == 'ALT':
+            ds[var] = ds[var].interp(level_w=ds.level.values).rename(
+                {'level_w': 'level'})
+            if verbose:
+                print(f"{var}: coordinate 'level_w' changed to 'level'")
+    
+    # remove flux coordinates
+    try:
+        ds_new = ds.drop(['latitude_u', 'longitude_u', 'ni_u', 'nj_u',
+                      'latitude_v', 'longitude_v', 'ni_v', 'nj_v',
+                      'level_w'
+                      ])
+    except:
+        if verbose:
+            print("no old coordinate dropped - error during ds.drop()")
+        ds_new = ds
+
+    return ds_new
+
+
+def agl_to_asl_coords(ds_agl, alti_asl_arr=np.arange(25,1000,25)):
+    """
+    Change coordinates of dataset from terrain-following (i.e. levels 
+    are above ground level - AGL), to flat (i.e. levels are above sea 
+    level - ASL).
+    
+    ds: xarray.Dataset containing 3D variables, ZS and coordinate level.
+    
+    N.B.:
+        Computation time: 
+            3s per alti if domain is 20x20 (zoom_on 'liaise')
+            ...s per alti if domain is 47x52 (zoom_on 'urgell')
+            ...s per alti if domain is 90x108 (zoom_on 'd2')
+            ...s per alti if domain is 164x290 (zoom_on 'd1' or None)
+        
+    """
+    var_list = list(ds_agl.keys())
+    var3d_list = var_list
+    var3d_list.remove('ZS')
+    
+    # SOME PRELIMINARY CHECK
+    if len(alti_asl_arr) < 2:
+        raise ValueError('alti_asl_arr must be greater than 1, use inter_iso_asl for 1 layer only')
+    
+    var_temp_construc = var_list[0]
+    if 'pint.quantity' in str(type(ds_agl[var_temp_construc].data)):  # issue if type pint.Quantity
+        var_temp_construc = var_list[1]
+    
+    # keep only layers of interest: (to gain computation time)
+    #TODO
+#    alti_agl_max = float(alti_asl_arr.max() - ds_agl_in.ZS.min())
+    #ds_agl_in.where(ds_agl_in.level < alti_agl_max, drop=True)
+    
+    # CREATE NEW DATASET based on AGL dataset
+    ds_agl = ds_agl.squeeze()
+    ds_asl = ds_agl[[var_temp_construc, 'ZS']].isel(level=np.arange(len(alti_asl_arr)))
+    
+    for var in var3d_list:
+        ds_asl[f'{var}_ASL'] = ds_asl[var_temp_construc]*0
+    
+    # change levels from AGL to ASL
+    ds_asl['level'] = alti_asl_arr
+    # remove vars that are not ASL
+    ds_asl = ds_asl.drop_vars([var_temp_construc])  # Now added in var_list
+    
+    
+    # INTERPOLATION
+    t0 = time.time()
+
+    for ilevel, alti in enumerate(alti_asl_arr):
+        print(f'Computation for {alti}m')
+        for var in var3d_list:
+            layer_interp = interp_iso_asl(alti, ds_agl, var, verbose=False)
+            ds_asl[f'{var}_ASL'][ilevel,:,:] = layer_interp
+            
+    print('interpolation time:', time.time()-t0)
+    
+    return ds_asl
+
+
+def asl_to_agl_coords(ds_asl, alti_agl_arr=np.arange(0,200,25)):
+    """
+    Change coordinates of dataset from flat (i.e. levels are above sea 
+    level - ASL) to terrain-following (i.e. levels 
+    are above ground level - AGL).
+    
+    ds: xarray.Dataset containing 3D variables, ZS and coordinate level.
+    
+    N.B.:
+        Computation time: 
+            0.003s per alti if domain is 20x20 (zoom_on 'liaise')
+            1.5s per alti if domain is 47x52 (zoom_on 'urgell')
+            10s per alti if domain is 90x108 (zoom_on 'd2')
+            100s per alti if domain is 164x290 (zoom_on 'd1' or None)
+        
+    """
+    var_list_ASL = list(ds_asl.keys())
+    var3d_list_ASL = var_list_ASL
+    var3d_list_ASL.remove('ZS')
+    
+    # SOME PRELIMINARY CHECK
+    if len(alti_agl_arr) < 2:
+        raise ValueError('alti_agl_arr must be greater than 1, use inter_iso_agl for 1 layer only')
+
+    
+    # keep only layers of interest: (to gain computation time)
+    #TODO
+
+    ds_asl = ds_asl.squeeze()
+
+#    # OLD WAY
+#    # CREATE NEW DATASET based on AGL dataset
+#    var_temp_construc = var_list_ASL[0]
+#    if var_temp_construc == 'ZS':  # issue if type pint.Quantity
+#        var_temp_construc = var_list_ASL[1]
+#    ds_agl = ds_asl[[var_temp_construc, 'ZS']]
+#
+#    for var_ASL in var_list_ASL:
+#        var_agl = var_ASL[:-4]  # remove '_asL' from varnames 'THT_ASL' -> 'THT'
+#        ds_agl[var_agl] = ds_agl[var_temp_construc]*0
+#    
+#    # change levels from AGL to ASL
+#    ds_agl['level'] = alti_agl_arr
+#    # remove vars that are not ASL
+#    ds_agl = ds_agl.drop_vars([var_temp_construc])
+    
+    # NEW WAY
+    # CREATE NEW DATASET based on AGL dataset
+    var3d_list_AGL = [key.replace('_ASL', '') for key in var3d_list_ASL]  # remove '_ASL' from varnames 'THT_ASL' -> 'THT'
+    dataarray3d_prop = (('level', 'nj', 'ni'), np.zeros((len(alti_agl_arr), 
+                                                      len(ds_asl.nj), 
+                                                      len(ds_asl.ni))
+                                                        ))
+    ds_agl = xr.Dataset()
+    for var3d in var3d_list_AGL:
+        var_dict = {var3d: dataarray3d_prop}
+        ds_agl = ds_agl.merge(xr.Dataset(data_vars=var_dict).copy(deep=True))
+        
+    ds_agl = ds_agl.merge(ds_asl['ZS'])
+    ds_agl['level'] = alti_agl_arr
+    
+#    if ds_agl['THT'].data is ds_agl['PABST'].data:
+#        raise ValueError('same ID')
+    
+    # INTERPOLATION
+    t0 = time.time()
+    
+#    var3d_list = var_list_AGL
+#    var3d_list.remove('ZS')
+    
+    for ilevel, alti in enumerate(alti_agl_arr):
+        print(f'Computation for {alti}m AGL')
+        for var_agl in var3d_list_AGL:
+            layer_interp = interp_iso_agl(alti, ds_asl, f'{var_agl}_ASL', 
+                                          verbose=False)
+            ds_agl[var_agl][ilevel,:,:] = layer_interp
+
+    print('interpolation time:', time.time()-t0)
+    
+    return ds_agl
+
+
+def merge_standard_and_budget_files(ds, ds_bu, join='outer'):
+    """
+    Merges standard and budget datasets from a same simulation.
+    """
+    # Put all data in mass point coordinates
+    print("'flux_pt_to_mass_pt()' for ds")
+    ds = flux_pt_to_mass_pt(ds, verbose=False)
+    print("'flux_pt_to_mass_pt()' for ds_bu")
+    ds_bu = flux_pt_to_mass_pt(ds_bu, verbose=False)
+    
+    # Merge
+    print("Merging datasets")
+    try:
+        ds_out = ds.merge(ds_bu)
+    except xr.MergeError:
+        if np.abs(ds_bu.latitude - ds.latitude).max() < 1e-5:
+                ds_bu['latitude'] = ds.latitude
+        if np.abs(ds_bu.longitude - ds.longitude).max() < 1e-5:
+                ds_bu['longitude'] = ds.longitude
+        # Retry
+        ds_out = ds.merge(ds_bu, join=join)
+    
+    return ds_out
+    
+
+#%% Matplotlib tools
+def save_figure(plot_title, save_folder='./figures/', verbose=True):
+    """
+    Save the plot
+    """
+    #split the save_folder name at each /
+    for i in range(2, len(save_folder.split('/'))):
+        # recreate the path step by step and check its existence at each step.
+        # If not existing, make a new folder
+        path = '/'.join(save_folder.split('/')[0:i])
+        if not os.path.isdir(path):
+            print('Make directory: {0}'.format(path))
+            os.mkdir(path)
+    filename = (plot_title)
+    filename = filename.replace('=', '').replace('(', '').replace(')', '')
+    filename = filename.replace(' ', '_').replace(',', '').replace('.', '_')
+    filename = filename.replace('/', 'over')
+    plt.savefig(save_folder + '/' + str(filename), dpi=300)
+    if verbose:
+        print('figure {0} saved in {1}'.format(plot_title, save_folder))
+        
+
+#%% Diagnostics
+
+def calc_apparent_temperature(tdb, rh, v=0, q=None, **kwargs):
+    """Calculates the Apparent Temperature (AT). The AT is defined as the
+    temperature at the reference humidity level producing the same amount of
+    discomfort as that experienced under the current ambient temperature,
+    humidity, and solar radiation [17]_. In other words, the AT is an
+    adjustment to the dry bulb temperature based on the relative humidity
+    value. Absolute humidity with a dew point of 14°C is chosen as a reference.
+
+    [16]_. It includes the chilling effect of the wind at lower temperatures.
+
+    Two formulas for AT are in use by the Australian Bureau of Meteorology: one includes
+    solar radiation and the other one does not (http://www.bom.gov.au/info/thermal_stress/
+    , 29 Sep 2021). Please specify q if you want to estimate AT with solar load.
+
+    taken from pythermalcomfort, few modifs.
+    
+    Parameters
+    ----------
+    tdb : float
+        dry bulb air temperature,[°C]
+    rh : float
+        relative humidity, [%]
+    v : float
+        wind speed 10m above ground level, [m/s]
+        
+    ERASED:
+    q : float
+        Net radiation absorbed per unit area of body surface [W/m2]
+
+
+    Returns
+    -------
+    float
+        apparent temperature, [°C]
+        
+    References
+    ----------
+    [16]	Blazejczyk, K., Epstein, Y., Jendritzky, G., Staiger, H., Tinz, B., 2012. Comparison of UTCI to selected thermal indices. Int. J. Biometeorol. 56, 515–535. https://doi.org/10.1007/s00484-011-0453-2
+    [17]	Steadman RG, 1984, A universal scale of apparent temperature. J Appl Meteorol Climatol 23:1674–1687
+    """
+#    default_kwargs = {
+#        "round": True,
+#    }
+#    kwargs = {**default_kwargs, **kwargs}
+
+    # dividing it by 100 since the at eq. requires p_vap to be in hPa
+    p_vap = psy_ta_rh(tdb, rh)["p_vap"] / 100
+
+    # equation sources [16] and http://www.bom.gov.au/info/thermal_stress/#apparent
+#    if q:
+#        t_at = tdb + 0.348 * p_vap - 0.7 * v + 0.7 * q / (v + 10) - 4.25
+#    else:
+    t_at = tdb + 0.33 * p_vap - 0.7 * v - 4.00
+
+    return t_at
+
+
+def calc_partial_vap_pres(tdb, rh):
+    """Calculates partial vapour pressure values of air 
+    based on dry bulb air temperature and relative humidity.
+    
+    Comes from package 'pythermalcomfort' that returns more values
+    like wet bulb temperature [°C], dew point temperature [°C],
+    enthalpy [J/kg dry air]
+    
+    For more accurate results we recommend the use of the the Python package
+    `psychrolib`_.
+    .. _psychrolib: https://pypi.org/project/PsychroLib/
+
+    Parameters
+    ----------
+    tdb: float
+        air temperature, [°C]
+    rh: float
+        relative humidity, [%]
+
+    Returns
+    -------
+    p_vap: float
+        partial pressure of water vapor in moist air, [Pa]
+    """
+    p_saturation = calc_sat_vap_pres(tdb)
+    p_vap = rh / 100 * p_saturation
+
+    return p_vap
+    
+    
+def calc_mixing_ratio(tdb, rh, p_atm=101325):
+    """Calculates mixing ratio of air based on dry bulb air temperature and
+    relative humidity.
+    
+    Comes from package 'pythermalcomfort' that returns more values
+    like wet bulb temperature [°C], dew point temperature [°C],
+    enthalpy [J/kg dry air]
+    
+    For more accurate results we recommend the use of the Python package
+    `psychrolib`_.
+    .. _psychrolib: https://pypi.org/project/PsychroLib/
+
+    Parameters
+    ----------
+    tdb: float
+        air temperature, [°C]
+    rh: float
+        relative humidity, [%]
+    p_atm: float
+        atmospheric pressure, [Pa]
+
+    Returns
+    -------
+    mixing_ratio: float
+        humidity ratio, [kg water/kg dry air]
+    """
+
+    p_vap = calc_partial_vap_pres(tdb, rh)
+    mixing_ratio = 0.62198 * p_vap / (p_atm - p_vap)
+
+    return mixing_ratio
+
+    
+def calc_sat_vap_pres(tdb):
+    """Calculates saturated vapour pressure of water at different temperatures
+
+    Parameters
+    ----------
+    tdb: float
+        air temperature, [°C]
+
+    Returns
+    -------
+    p_sat: float
+        saturated vapour pressure, [Pa]
+    """
+
+    ta_k = tdb + 273.15
+
+    # Low temperature case commented to allow for calculation on array of ta_k
+    # (if not "np.array < 273.15" is ambiguous)
+#    if ta_k < 273.15:
+#        c1 = -5674.5359
+#        c2 = 6.3925247
+#        c3 = -0.9677843e-2
+#        c4 = 0.62215701 * np.pow(10, -6)
+#        c5 = 0.20747825 * np.pow(10, -8)
+#        c6 = -0.9484024 * np.pow(10, -12)
+#        c7 = 4.1635019
+#        pascals = np.exp(
+#            c1 / ta_k
+#            + c2
+#            + ta_k * (c3 + ta_k * (c4 + ta_k * (c5 + c6 * ta_k)))
+#            + c7 * np.log(ta_k)
+#        )
+#    else:
+    c8 = -5800.2206
+    c9 = 1.3914993
+    c10 = -0.048640239
+    c11 = 0.41764768e-4
+    c12 = -0.14452093e-7
+    c13 = 6.5459673
+    
+    pascals = np.exp(
+        c8 / ta_k
+        + c9
+        + ta_k * (c10 + ta_k * (c11 + ta_k * c12))
+        + c13 * np.log(ta_k)
+    )
+
+    return np.round(pascals, 1)
+
+    
+def calc_rel_humidity(spec_humidity, t_dry_bulb, pressure):
+    """Calculates the relative humidity.
+
+    Parameters
+    ----------
+    t_dry_bulb: float
+        dry bulb air temperature, [°C]
+    spec_hum: float
+        specific humidity, (kg/kg)
+
+    Returns
+    -------
+    rel_humidity: float
+        relative humidity
+    """
+    sat_mix_ratio = sat_mixing_ratio(pressure, t_dry_bulb)
+    rel_humidity = spec_humidity / ((1-spec_humidity)*sat_mix_ratio)
+    return rel_humidity
+    
+  
+def calc_sat_mixing_ratio(pressure, t_dry_bulb):
+    """
+    Calculates the saturation_mixing_ratio
+        Parameters
+    ----------
+    t_dry_bulb: float
+        dry bulb air temperature, [°C]
+    pressure: float
+        atmospheric pressure, (Pa)
+
+    Returns
+    -------
+    saturation mixing ratio: float
+        (kg/kg)
+    """
+    sat_mixing_ratio = 0.622*p_sat(t_dry_bulb) / (pressure-p_sat(t_dry_bulb))
+    return sat_mixing_ratio
 
 
 def calc_u_star_sim(fmu_md, fmv_md):
@@ -1990,10 +2682,16 @@ def calc_ws_wd(ut, vt):
     it may be needed to center it with center_uvw().
 
     """
-    
     ws = np.sqrt(ut**2 + vt**2)
     wd_temp = np.arctan2(-ut, -vt)*180/np.pi
-    wd = xr.where(wd_temp<0, wd_temp+360, wd_temp)
+    
+    try:
+        # works with xarray datatypes and conserve the format
+        wd = xr.where(wd_temp<0, wd_temp+360, wd_temp)
+    except:
+        # work with more formats
+        wd = np.where(wd_temp<0, wd_temp+360, wd_temp)
+    
     return ws, wd
 
 def calc_u_v(ws, wd):
@@ -2011,6 +2709,86 @@ def calc_u_v(ws, wd):
 
 def calc_thetav(theta, spec_humidity):
     return theta + 0.61*spec_humidity*theta
+
+
+def calc_mslp(ds, ilevel=1, z0=0):
+    """
+    Extrapolate the a level pressure for given level of model 
+    and at wanted height. With ilevel=1 and z0=0, it corresponds to the 
+    mean sea level pressure.
+    N.B.: Comes from MNH routine 'write_lfifm1_for_diag.f90' in which 
+    the MSLP diagnostic is done.
+    
+    parameters:
+        ds with variables 'THT', 'RVT', 'PABST', 'ZS'
+        Units: PABST [Pa], THT [K], RVT [kg/kg] and ZS [m].
+    
+    ilevel: int, screen level, the level at which we want to extrapolate the
+        data to the sea level. If None, computation is done for all levels
+        
+    z0: float, altitude aslin m at which we want to extrapolate. Default is 0m
+        for sea level.
+        
+    return:
+        xarray.DataArray with values in Pa
+    """
+    lapse_rate = -6.5e-3    # standard atmo lapse rate in K/m
+    R0 = 8.314462           # gas constant for dry air J⋅K−1⋅mol−1
+    M = 0.028969            # Molar mass of dry air kg.mol-1
+    Rd = R0/M       # gas constant for dry air J⋅K−1⋅kg-1
+    Cpd = 1005              # heat capacity of dry air at constant pressure J⋅K−1⋅kg-1
+    P0 = 100000     # standard reference surface pressure, usually taken as 1000 hPa
+#    g = 9.80665     # m.s-2
+    g = 9.80665 * (6371000**2)/((6371000+ds.level+ds['ZS'])**2)
+    
+    # from MNH routine "write_lfifm1_for_diag.f90"
+#    # Exner function at the first mass point
+#    exner(:,:) = (PABST(:,:,ilevel) / P0)**(Rd/Cpd)
+#    #!  virtual temperature at the first mass point
+#    #!  virtual temperature at P0 for the first mass point
+#    thetav_p0(:,:) = exner(:,:) * thetav(:,:,ilevel)
+#    #!  virtual temperature at ground level (height = 0m agl, not 1st level)
+#    alti_agl = XZZ(:,:,ilevel) - ZS(:,:)     # XZZ is the altitude asl of each mass point
+#    thetav_gl(:,:) = thetav_p0(:,:) - lapse_rate*alti_agl
+#    #!  virtual temperature at sea level
+#    thetav_sl(:,:) = thetav_gl(:,:) - lapse_rate*ZS(:,:)
+#    #!  average underground virtual temperature
+#    thetav_underground(:,:) = 0.5*(thetav_gl(:,:) + thetav_sl(:,:))
+#    #!  surface pressure
+#    pres_screenlevel(:,:) = PABST(:,:,ilevel)
+#    #!  sea level pressure (hPa)
+##    mslp(:,:) = 1e-2*pres_screenlevel(:,:)*np.exp(g*ZS(:,:)/(Rd*thetav_underground(:,:)))  # in hPa
+    
+    #perso version:
+    # selection of level if ilevel different from None
+    ds = ds.squeeze()
+    if ilevel != None:
+        ds = ds.isel(level=ilevel)
+        
+    thetav = calc_thetav(ds['THT'], ds['RVT'])
+#    thetav = ds['THT']
+    
+    pres_screenlevel = ds['PABST']
+    exner = (pres_screenlevel / P0)**(Rd/Cpd)
+    thetav_p0 = exner * thetav
+    
+    # version in MNH:
+    # virtual temperature at ground level (height = 0m agl, not 1st level)
+    tempv_gl = thetav_p0
+    # virtual temperature at sea level
+    tempv_sl = tempv_gl - lapse_rate * ds['ZS']
+    # average underground virtual temperature
+    tempv_underground = 0.5*(tempv_gl + tempv_sl)
+    T0 = tempv_underground
+    
+    # version perso (from my understanding, but do not seems to be reliable in mountains...)
+#    T0 = thetav_p0
+    
+    height_asl_screenlevel = ds.level + ds['ZS'] - z0
+    
+    mslp = pres_screenlevel*np.exp(g*height_asl_screenlevel/(Rd*T0))
+    
+    return mslp
 
 
 def height_to_pressure_std(height, p0=101325):
@@ -2165,15 +2943,148 @@ def calc_fao56_et_0(rn_MJ, t_2m, ws_2m, rh_2m, p_atm, gnd_flx=0, gamma=66):
     LE_0 = 1000 * 2450 * ET_0 /(3600*24)
     
     return {'ET_0': ET_0, 'LE_0': LE_0}
-    
-    
-def wind_direction_mean(data):
+
+
+def calc_soil_prop(PCLAY=0.35, PSAND=0.15, 
+                   CPEDO_FUNCTION='CO84', CSCOND='PL98', CISBA='DIF',
+                   vol_water_content=np.nan):
     """
-    Computing the mean of circular data is not trivial (cf https://en.wikipedia.org/wiki/Directional_statistics)
+    Function from SURFEX routine, giving soil properties according to
+    fraction of sand and clay, and depending on the pedotransfer function.
+    in SFX: see soil.F90
+    author: Marti Belen, Lunel Tanguy
     
-    use function 'circmean', 'circstd' from scipy.stats    
+    parameters:
+        PCLAY: float between 0 and 1, clay fraction
+        PSAND: float between 0 and 1, sand fraction
+        HPEDOTF: pedotransfer function name
+        PCLAY: fraction of clay
+        PSAND: fraction of sand
+    
+    returns: dict with following keys:
+        - general property:
+        W_sat: water at saturation = porosity [m3/m3]
+        - hydraulic properties:
+        W_wilt: Volumetric water content of Wilting point [m3/m3]
+        W_fc: Volumetric water content of Field Capacity [m3/m3]
+        b: soil water b-parameter (from CH78 and CO84 papers)
+        psi_sat: Matric potential at saturation
+        K_sat: hydraulic conductivity at saturation
+        - thermal properties:
+        CG_wilt: volumetric soil heat capacity at wilting point [J/m3/K]
+        CG_fc: volumetric soil heat capacity [J/m3/K]
+        thermal_cond_sat: thermal conductivity at saturation [W/m/K]
+        thermal_cond_fc: thermal conductivity at field capacity [W/m/K]
+        thermal_cond_wilt: thermal conductivity at wilting point [W/m/K]
+            if vol_water_content != NaN:
+        CG: volumetric soil heat capacity [J/m3/K]
+        thermal_cond: thermal conductivity [W/m/K]
+        
     """
-    return False
+
+    res_dict = {}
+    
+    if CPEDO_FUNCTION == 'CH78':
+        # W_sat:
+        res_dict['W_sat'] = 0.001 * (-108.*PSAND+494.305)
+        # W_wilt: Volumetric water content of Wilting point
+        res_dict['W_wilt'] = 37.1342E-3*(PCLAY*100.)**0.5
+        # W_fc: Volumetric water content of Field Capacity
+        if CISBA == 'DIF':
+            res_dict['W_fc'] = 0.2298915119 - 0.4062575773*PSAND + 0.0874218705*PCLAY \
+                     + 0.2942558675*PSAND**(1./3.)+0.0413771051*PCLAY**(1./3.)
+        else:
+            res_dict['W_fc'] = 89.0467E-3*(PCLAY*100.)**0.3496
+        # b:
+        res_dict['b'] = 13.7*PCLAY + 3.501       
+        # psisat, or matpotsat = water matrix potential at saturation
+        res_dict['psi_sat'] = -0.01*(10.**(1.85 - 0.88*PSAND))
+        # ksat, hydcondsat = hydraulic conductivity at saturation ?
+        res_dict['K_sat'] = 1.0e-6*(10.0**(0.161874E+01                   \
+                            - 0.581989E+01*PCLAY    - 0.907123E-01*PSAND    \
+                            + 0.529268E+01*PCLAY**2 + 0.120332E+01*PSAND**2))
+    elif CPEDO_FUNCTION == 'CO84':
+        # W_sat
+        res_dict['W_sat'] = 0.505-0.142*PSAND-0.037*PCLAY 
+        # W_wilt: Volumetric water content of Wilting point
+        res_dict['W_wilt'] = 0.15333-0.147*PSAND+0.33*PCLAY-0.102*(PCLAY**2)
+        # W_fc: Volumetric water content of Field Capacity
+        if CISBA == 'DIF':
+            res_dict['W_fc'] = 0.2016592588 - 0.5785747196*PSAND + 0.1113006987*PCLAY    \
+                         + 0.4305771483*PSAND**(1./3.)-0.0080618093*PCLAY**(1./3.)
+        else:
+            res_dict['W_fc'] = 0.1537-0.1233*PSAND+0.2685*PCLAY**(1./3.)
+        # b:
+        res_dict['b'] = 3.10+15.7*PCLAY-0.3*PSAND
+        # psisat, or matpotsat = matrix potential at saturation
+        res_dict['psi_sat'] = -0.01*(10.0**(1.54-0.95*PSAND+0.63*(1.-PSAND-PCLAY)))
+        # ksat, hydcondsat = hydraulic conductivity at saturation ?
+        res_dict['K_sat'] = 0.0254*(10.0**(-0.6+1.26*PSAND-0.64*PCLAY))/3600
+    
+    #
+    if CSCOND == 'NP89':
+        raise ValueError("""CSCOND='NP89' not avalaible yet, 
+                         check soil.F90 surfex routine""")
+        # Ground heat capacity at saturation
+        #res_dict['Cg_sat'] = (-1.5571*PSAND - 1.441*PCLAY + 4.70217 )*1e-6
+        # ...
+    elif CSCOND  == 'PL98':
+        mass_soil_heat_capa = 733  #[J/kg/K] soil specific heat, SPHSOIL in SFX
+        soil_compact_weight = 2700  #[kg/m3]  DRYWGHT in SFX
+        vol_soil_heat_capa_compact = mass_soil_heat_capa * soil_compact_weight  #=1979100 J/m3/K
+        vol_water_heat_capa = 4180000  # [J/m3/K]
+        # calculate Volumetric soil heat capacity
+        res_dict['CG_wilt'] = (
+                (1 - res_dict['W_sat'])*vol_soil_heat_capa_compact \
+                + res_dict['W_wilt'] * vol_water_heat_capa)
+        res_dict['CG_fc'] = (
+                (1 - res_dict['W_sat'])*vol_soil_heat_capa_compact \
+                + res_dict['W_fc'] * vol_water_heat_capa)
+        res_dict['CG'] = (
+                (1 - res_dict['W_sat'])*vol_soil_heat_capa_compact \
+                + vol_water_content * vol_water_heat_capa)
+
+        # calculate soil thermal conductivity
+        PQUARTZ = 0.038 + 0.95*PSAND
+        CONDQRTZ = 7.7    # W/(m K) Quartz thermal conductivity
+        CONDWTR = 0.57   # W/(m K)  Water thermal conductivity
+        if PQUARTZ > 0.2:
+            CONDOTH = 2.0    # W/(m K)  Other thermal conductivity
+        else:
+            CONDOTH = 3.0
+        # soil solids conductivity
+        CONDSLD = (CONDQRTZ**PQUARTZ) * (CONDOTH**(1.0-PQUARTZ))
+        # soil dry conductivity
+        GAMMAD = (1.0-res_dict['W_sat'])*soil_compact_weight  # soil dry density
+        CONDDRY = (0.135*GAMMAD + 64.7)/(soil_compact_weight - 0.947*GAMMAD) 
+        # Saturated thermal conductivity:
+        res_dict['thermal_cond_sat'] = (CONDSLD**(1.0-res_dict['W_sat']))* (CONDWTR) 
+        # effective thermal conductivity
+        SATDEG = np.max([0.1, vol_water_content/res_dict['W_sat']])  # saturation degree
+        KERSTEN  = np.log10(SATDEG) + 1.0
+        res_dict['thermal_cond'] = KERSTEN*(res_dict['thermal_cond_sat']-CONDDRY) + CONDDRY
+        # thermal conductivity at Field capacity
+        SATDEG = np.max([0.1, res_dict['W_wilt']/res_dict['W_sat']])
+        KERSTEN  = np.log10(SATDEG) + 1.0
+        res_dict['thermal_cond_wilt'] = KERSTEN*(res_dict['thermal_cond_sat']-CONDDRY) + CONDDRY
+        # thermal conductivity at Field capacity
+        SATDEG = np.max([0.1, res_dict['W_fc']/res_dict['W_sat']])
+        KERSTEN  = np.log10(SATDEG) + 1.0
+        res_dict['thermal_cond_fc'] = KERSTEN*(res_dict['thermal_cond_sat']-CONDDRY) + CONDDRY
+        
+    return res_dict
+    
+
+def calc_mean_wd(data):
+    """
+    Computes the circular mean of wind direction data found between 0 and 360
+    
+    N.B.: Computing the mean of circular data is not trivial 
+    (cf https://en.wikipedia.org/wiki/Directional_statistics)
+    
+    cf function 'circmean', 'circstd' from scipy.stats    
+    """
+    return stats.circmean(data, high=360, low=0)
 
 
 def log_wind_profile(ws, ws_height, new_height, z_0, d=0):
@@ -2219,7 +3130,7 @@ def log_wind_profile(ws, ws_height, new_height, z_0, d=0):
     return ws_new
 
 
-def CLS_WIND(ws, z_uv, Cd, CdN, Ri, new_height):
+def cls_wind(ws, z_uv, Cd, CdN, Ri, new_height):
     """
     /!\To revise, not working
     
@@ -2394,91 +3305,9 @@ def cls_tq(TA, QA, HT, Z0, CD, CH, RI, TS, QS, H, PNM):
     return TNM, QNM
 
 
-
-
-
-def calc_mslp(ds, ilevel=1, z0=0):
-    """
-    Extrapolate the a level pressure for given level of model 
-    and at wanted height. With ilevel=1 and z0=0, it corresponds to the 
-    mean sea level pressure.
-    N.B.: Comes from MNH routine 'write_lfifm1_for_diag.f90' in which 
-    the MSLP diagnostic is done.
-    
-    parameters:
-        ds with variables 'THT', 'RVT', 'PABST', 'ZS'
-        Units: PABST [Pa], THT [K], RVT [kg/kg] and ZS [m].
-    
-    ilevel: int, screen level, the level at which we want to extrapolate the
-        data to the sea level. If None, computation is done for all levels
-        
-    z0: float, altitude aslin m at which we want to extrapolate. Default is 0m
-        for sea level.
-        
-    return:
-        xarray.DataArray with values in Pa
-    """
-    lapse_rate = -6.5e-3    # standard atmo lapse rate in K/m
-    R0 = 8.314462           # gas constant for dry air J⋅K−1⋅mol−1
-    M = 0.028969            # Molar mass of dry air kg.mol-1
-    Rd = R0/M       # gas constant for dry air J⋅K−1⋅kg-1
-    Cpd = 1005              # heat capacity of dry air at constant pressure J⋅K−1⋅kg-1
-    P0 = 100000     # standard reference surface pressure, usually taken as 1000 hPa
-#    g = 9.80665     # m.s-2
-    g = 9.80665 * (6371000**2)/((6371000+ds.level+ds['ZS'])**2)
-    
-    # from MNH routine "write_lfifm1_for_diag.f90"
-#    # Exner function at the first mass point
-#    exner(:,:) = (PABST(:,:,ilevel) / P0)**(Rd/Cpd)
-#    #!  virtual temperature at the first mass point
-#    #!  virtual temperature at P0 for the first mass point
-#    thetav_p0(:,:) = exner(:,:) * thetav(:,:,ilevel)
-#    #!  virtual temperature at ground level (height = 0m agl, not 1st level)
-#    alti_agl = XZZ(:,:,ilevel) - ZS(:,:)     # XZZ is the altitude asl of each mass point
-#    thetav_gl(:,:) = thetav_p0(:,:) - lapse_rate*alti_agl
-#    #!  virtual temperature at sea level
-#    thetav_sl(:,:) = thetav_gl(:,:) - lapse_rate*ZS(:,:)
-#    #!  average underground virtual temperature
-#    thetav_underground(:,:) = 0.5*(thetav_gl(:,:) + thetav_sl(:,:))
-#    #!  surface pressure
-#    pres_screenlevel(:,:) = PABST(:,:,ilevel)
-#    #!  sea level pressure (hPa)
-##    mslp(:,:) = 1e-2*pres_screenlevel(:,:)*np.exp(g*ZS(:,:)/(Rd*thetav_underground(:,:)))  # in hPa
-    
-    #perso version:
-    # selection of level if ilevel different from None
-    ds = ds.squeeze()
-    if ilevel != None:
-        ds = ds.isel(level=ilevel)
-        
-    thetav = calc_thetav(ds['THT'], ds['RVT'])
-#    thetav = ds['THT']
-    
-    pres_screenlevel = ds['PABST']
-    exner = (pres_screenlevel / P0)**(Rd/Cpd)
-    thetav_p0 = exner * thetav
-    
-    # version in MNH:
-    # virtual temperature at ground level (height = 0m agl, not 1st level)
-    tempv_gl = thetav_p0
-    # virtual temperature at sea level
-    tempv_sl = tempv_gl - lapse_rate * ds['ZS']
-    # average underground virtual temperature
-    tempv_underground = 0.5*(tempv_gl + tempv_sl)
-    T0 = tempv_underground
-    
-    # version perso (from my understanding, but do not seems to be reliable in mountains...)
-#    T0 = thetav_p0
-    
-    height_asl_screenlevel = ds.level + ds['ZS'] - z0
-    
-    mslp = pres_screenlevel*np.exp(g*height_asl_screenlevel/(Rd*T0))
-    
-    return mslp
-
-
 def windvec_verti_proj(u, v, level, angle):
-    """Compute the projected horizontal wind vector on an axis with a given angle w.r.t. the x/ni axes (West-East)
+    """Compute the projected horizontal wind vector on an axis 
+    with a given angle w.r.t. the x/ni axes (West-East)
     
     Copied from MNHPy.
     
@@ -2508,280 +3337,6 @@ def windvec_verti_proj(u, v, level, angle):
         projected_wind[k, :, :] = u[k, :, :] * np.cos(angle) + v[k, :, :] * np.sin(angle)
 
     return projected_wind
-
-
-def agl_to_asl_coords(ds_agl, alti_asl_arr=np.arange(25,1000,25)):
-    """
-    Change coordinates of dataset from terrain-following (i.e. levels 
-    are above ground level - AGL), to flat (i.e. levels are above sea 
-    level - ASL).
-    
-    ds: xarray.Dataset containing 3D variables, ZS and coordinate level.
-    
-    N.B.:
-        Computation time: 
-            3s per alti if domain is 20x20 (zoom_on 'liaise')
-            ...s per alti if domain is 47x52 (zoom_on 'urgell')
-            ...s per alti if domain is 90x108 (zoom_on 'd2')
-            ...s per alti if domain is 164x290 (zoom_on 'd1' or None)
-        
-    """
-    var_list = list(ds_agl.keys())
-    var3d_list = var_list
-    var3d_list.remove('ZS')
-    
-    # SOME PRELIMINARY CHECK
-    if len(alti_asl_arr) < 2:
-        raise ValueError('alti_asl_arr must be greater than 1, use inter_iso_asl for 1 layer only')
-    
-    var_temp_construc = var_list[0]
-    if 'pint.quantity' in str(type(ds_agl[var_temp_construc].data)):  # issue if type pint.Quantity
-        var_temp_construc = var_list[1]
-    
-    # keep only layers of interest: (to gain computation time)
-    #TODO
-#    alti_agl_max = float(alti_asl_arr.max() - ds_agl_in.ZS.min())
-    #ds_agl_in.where(ds_agl_in.level < alti_agl_max, drop=True)
-    
-    # CREATE NEW DATASET based on AGL dataset
-    ds_agl = ds_agl.squeeze()
-    ds_asl = ds_agl[[var_temp_construc, 'ZS']].isel(level=np.arange(len(alti_asl_arr)))
-    
-    for var in var3d_list:
-        ds_asl[f'{var}_ASL'] = ds_asl[var_temp_construc]*0
-    
-    # change levels from AGL to ASL
-    ds_asl['level'] = alti_asl_arr
-    # remove vars that are not ASL
-    ds_asl = ds_asl.drop_vars([var_temp_construc])  # Now added in var_list
-    
-    
-    # INTERPOLATION
-    t0 = time.time()
-
-    for ilevel, alti in enumerate(alti_asl_arr):
-        print(f'Computation for {alti}m')
-        for var in var3d_list:
-            layer_interp = interp_iso_asl(alti, ds_agl, var, verbose=False)
-            ds_asl[f'{var}_ASL'][ilevel,:,:] = layer_interp
-            
-    print('interpolation time:', time.time()-t0)
-    
-    return ds_asl
-
-
-def asl_to_agl_coords(ds_asl, alti_agl_arr=np.arange(0,200,25)):
-    """
-    Change coordinates of dataset from flat (i.e. levels are above sea 
-    level - ASL) to terrain-following (i.e. levels 
-    are above ground level - AGL).
-    
-    ds: xarray.Dataset containing 3D variables, ZS and coordinate level.
-    
-    N.B.:
-        Computation time: 
-            0.003s per alti if domain is 20x20 (zoom_on 'liaise')
-            1.5s per alti if domain is 47x52 (zoom_on 'urgell')
-            10s per alti if domain is 90x108 (zoom_on 'd2')
-            100s per alti if domain is 164x290 (zoom_on 'd1' or None)
-        
-    """
-    var_list_ASL = list(ds_asl.keys())
-    var3d_list_ASL = var_list_ASL
-    var3d_list_ASL.remove('ZS')
-    
-    # SOME PRELIMINARY CHECK
-    if len(alti_agl_arr) < 2:
-        raise ValueError('alti_agl_arr must be greater than 1, use inter_iso_agl for 1 layer only')
-
-    
-    # keep only layers of interest: (to gain computation time)
-    #TODO
-
-    ds_asl = ds_asl.squeeze()
-
-#    # OLD WAY
-#    # CREATE NEW DATASET based on AGL dataset
-#    var_temp_construc = var_list_ASL[0]
-#    if var_temp_construc == 'ZS':  # issue if type pint.Quantity
-#        var_temp_construc = var_list_ASL[1]
-#    ds_agl = ds_asl[[var_temp_construc, 'ZS']]
-#
-#    for var_ASL in var_list_ASL:
-#        var_agl = var_ASL[:-4]  # remove '_asL' from varnames 'THT_ASL' -> 'THT'
-#        ds_agl[var_agl] = ds_agl[var_temp_construc]*0
-#    
-#    # change levels from AGL to ASL
-#    ds_agl['level'] = alti_agl_arr
-#    # remove vars that are not ASL
-#    ds_agl = ds_agl.drop_vars([var_temp_construc])
-    
-    # NEW WAY
-    # CREATE NEW DATASET based on AGL dataset
-    var3d_list_AGL = [key.replace('_ASL', '') for key in var3d_list_ASL]  # remove '_ASL' from varnames 'THT_ASL' -> 'THT'
-    dataarray3d_prop = (('level', 'nj', 'ni'), np.zeros((len(alti_agl_arr), 
-                                                      len(ds_asl.nj), 
-                                                      len(ds_asl.ni))
-                                                        ))
-    ds_agl = xr.Dataset()
-    for var3d in var3d_list_AGL:
-        var_dict = {var3d: dataarray3d_prop}
-        ds_agl = ds_agl.merge(xr.Dataset(data_vars=var_dict).copy(deep=True))
-        
-    ds_agl = ds_agl.merge(ds_asl['ZS'])
-    ds_agl['level'] = alti_agl_arr
-    
-#    if ds_agl['THT'].data is ds_agl['PABST'].data:
-#        raise ValueError('same ID')
-    
-    # INTERPOLATION
-    t0 = time.time()
-    
-#    var3d_list = var_list_AGL
-#    var3d_list.remove('ZS')
-    
-    for ilevel, alti in enumerate(alti_agl_arr):
-        print(f'Computation for {alti}m AGL')
-        for var_agl in var3d_list_AGL:
-            layer_interp = interp_iso_agl(alti, ds_asl, f'{var_agl}_ASL', 
-                                          verbose=False)
-            ds_agl[var_agl][ilevel,:,:] = layer_interp
-
-    print('interpolation time:', time.time()-t0)
-    
-    return ds_agl
-
-
-def calc_soil_prop(PCLAY=0.35, PSAND=0.15, 
-                   CPEDO_FUNCTION='CO84', CSCOND='PL98', CISBA='DIF',
-                   vol_water_content=np.nan):
-    """
-    Function from SURFEX routine, giving soil properties according to
-    fraction of sand and clay, and depending on the pedotransfer function.
-    in SFX: see soil.F90
-    author: Marti Belen, Lunel Tanguy
-    
-    parameters:
-        PCLAY: float between 0 and 1, clay fraction
-        PSAND: float between 0 and 1, sand fraction
-        HPEDOTF: pedotransfer function name
-        PCLAY: fraction of clay
-        PSAND: fraction of sand
-    
-    returns: dict with following keys:
-        - general property:
-        W_sat: water at saturation = porosity [m3/m3]
-        - hydraulic properties:
-        W_wilt: Volumetric water content of Wilting point [m3/m3]
-        W_fc: Volumetric water content of Field Capacity [m3/m3]
-        b: soil water b-parameter (from CH78 and CO84 papers)
-        psi_sat: Matric potential at saturation
-        K_sat: hydraulic conductivity at saturation
-        - thermal properties:
-        CG_wilt: volumetric soil heat capacity at wilting point [J/m3/K]
-        CG_fc: volumetric soil heat capacity [J/m3/K]
-        thermal_cond_sat: thermal conductivity at saturation [W/m/K]
-        thermal_cond_fc: thermal conductivity at field capacity [W/m/K]
-        thermal_cond_wilt: thermal conductivity at wilting point [W/m/K]
-            if vol_water_content != NaN:
-        CG: volumetric soil heat capacity [J/m3/K]
-        thermal_cond: thermal conductivity [W/m/K]
-        
-    """
-
-    res_dict = {}
-    
-    if CPEDO_FUNCTION == 'CH78':
-        # W_sat:
-        res_dict['W_sat'] = 0.001 * (-108.*PSAND+494.305)
-        # W_wilt: Volumetric water content of Wilting point
-        res_dict['W_wilt'] = 37.1342E-3*(PCLAY*100.)**0.5
-        # W_fc: Volumetric water content of Field Capacity
-        if CISBA == 'DIF':
-            res_dict['W_fc'] = 0.2298915119 - 0.4062575773*PSAND + 0.0874218705*PCLAY \
-                     + 0.2942558675*PSAND**(1./3.)+0.0413771051*PCLAY**(1./3.)
-        else:
-            res_dict['W_fc'] = 89.0467E-3*(PCLAY*100.)**0.3496
-        # b:
-        res_dict['b'] = 13.7*PCLAY + 3.501       
-        # psisat, or matpotsat = water matrix potential at saturation
-        res_dict['psi_sat'] = -0.01*(10.**(1.85 - 0.88*PSAND))
-        # ksat, hydcondsat = hydraulic conductivity at saturation ?
-        res_dict['K_sat'] = 1.0e-6*(10.0**(0.161874E+01                   \
-                            - 0.581989E+01*PCLAY    - 0.907123E-01*PSAND    \
-                            + 0.529268E+01*PCLAY**2 + 0.120332E+01*PSAND**2))
-    elif CPEDO_FUNCTION == 'CO84':
-        # W_sat
-        res_dict['W_sat'] = 0.505-0.142*PSAND-0.037*PCLAY 
-        # W_wilt: Volumetric water content of Wilting point
-        res_dict['W_wilt'] = 0.15333-0.147*PSAND+0.33*PCLAY-0.102*(PCLAY**2)
-        # W_fc: Volumetric water content of Field Capacity
-        if CISBA == 'DIF':
-            res_dict['W_fc'] = 0.2016592588 - 0.5785747196*PSAND + 0.1113006987*PCLAY    \
-                         + 0.4305771483*PSAND**(1./3.)-0.0080618093*PCLAY**(1./3.)
-        else:
-            res_dict['W_fc'] = 0.1537-0.1233*PSAND+0.2685*PCLAY**(1./3.)
-        # b:
-        res_dict['b'] = 3.10+15.7*PCLAY-0.3*PSAND
-        # psisat, or matpotsat = matrix potential at saturation
-        res_dict['psi_sat'] = -0.01*(10.0**(1.54-0.95*PSAND+0.63*(1.-PSAND-PCLAY)))
-        # ksat, hydcondsat = hydraulic conductivity at saturation ?
-        res_dict['K_sat'] = 0.0254*(10.0**(-0.6+1.26*PSAND-0.64*PCLAY))/3600
-    
-    #
-    if CSCOND == 'NP89':
-        raise ValueError("""CSCOND='NP89' not avalaible yet, 
-                         check soil.F90 surfex routine""")
-        # Ground heat capacity at saturation
-        #res_dict['Cg_sat'] = (-1.5571*PSAND - 1.441*PCLAY + 4.70217 )*1e-6
-        # ...
-    elif CSCOND  == 'PL98':
-        mass_soil_heat_capa = 733  #[J/kg/K] soil specific heat, SPHSOIL in SFX
-        soil_compact_weight = 2700  #[kg/m3]  DRYWGHT in SFX
-        vol_soil_heat_capa_compact = mass_soil_heat_capa * soil_compact_weight  #=1979100 J/m3/K
-        vol_water_heat_capa = 4180000  # [J/m3/K]
-        # calculate Volumetric soil heat capacity
-        res_dict['CG_wilt'] = (
-                (1 - res_dict['W_sat'])*vol_soil_heat_capa_compact \
-                + res_dict['W_wilt'] * vol_water_heat_capa)
-        res_dict['CG_fc'] = (
-                (1 - res_dict['W_sat'])*vol_soil_heat_capa_compact \
-                + res_dict['W_fc'] * vol_water_heat_capa)
-        res_dict['CG'] = (
-                (1 - res_dict['W_sat'])*vol_soil_heat_capa_compact \
-                + vol_water_content * vol_water_heat_capa)
-
-        # calculate soil thermal conductivity
-        PQUARTZ = 0.038 + 0.95*PSAND
-        CONDQRTZ = 7.7    # W/(m K) Quartz thermal conductivity
-        CONDWTR = 0.57   # W/(m K)  Water thermal conductivity
-        if PQUARTZ > 0.2:
-            CONDOTH = 2.0    # W/(m K)  Other thermal conductivity
-        else:
-            CONDOTH = 3.0
-        # soil solids conductivity
-        CONDSLD = (CONDQRTZ**PQUARTZ) * (CONDOTH**(1.0-PQUARTZ))
-        # soil dry conductivity
-        GAMMAD = (1.0-res_dict['W_sat'])*soil_compact_weight  # soil dry density
-        CONDDRY = (0.135*GAMMAD + 64.7)/(soil_compact_weight - 0.947*GAMMAD) 
-        # Saturated thermal conductivity:
-        res_dict['thermal_cond_sat'] = (CONDSLD**(1.0-res_dict['W_sat']))* (CONDWTR) 
-        # effective thermal conductivity
-        SATDEG = np.max([0.1, vol_water_content/res_dict['W_sat']])  # saturation degree
-        KERSTEN  = np.log10(SATDEG) + 1.0
-        res_dict['thermal_cond'] = KERSTEN*(res_dict['thermal_cond_sat']-CONDDRY) + CONDDRY
-        # thermal conductivity at Field capacity
-        SATDEG = np.max([0.1, res_dict['W_wilt']/res_dict['W_sat']])
-        KERSTEN  = np.log10(SATDEG) + 1.0
-        res_dict['thermal_cond_wilt'] = KERSTEN*(res_dict['thermal_cond_sat']-CONDDRY) + CONDDRY
-        # thermal conductivity at Field capacity
-        SATDEG = np.max([0.1, res_dict['W_fc']/res_dict['W_sat']])
-        KERSTEN  = np.log10(SATDEG) + 1.0
-        res_dict['thermal_cond_fc'] = KERSTEN*(res_dict['thermal_cond_sat']-CONDDRY) + CONDDRY
-        
-    return res_dict
-
-
 
 
 def diag_lowleveljet_height(ds, top_layer_agl=1000, wind_var='WS',
@@ -2858,125 +3413,51 @@ def diag_lowleveljet_height(ds, top_layer_agl=1000, wind_var='WS',
         
     return ds
 
+    
+#%% Deprecated functions
+def indices_of_lat_lon(ds, lat, lon, verbose=True):
+    raise NameError("Deprecated function, use get_indices_of_lat_lon() instead")
 
-def merge_standard_and_budget_files(ds, ds_bu, join='outer'):
-    """
-    Merges standard and budget datasets from a same simulation.
-    """
-    # Put all data in mass point coordinates
-    print("'flux_pt_to_mass_pt()' for ds")
-    ds = flux_pt_to_mass_pt(ds, verbose=False)
-    print("'flux_pt_to_mass_pt()' for ds_bu")
-    ds_bu = flux_pt_to_mass_pt(ds_bu, verbose=False)
+def line_coords(data, 
+                 start_pt = (41.6925905, 0.9285671), # cendrosa
+                 end_pt = (41.590111, 1.029363), #els plans
+                 nb_indices_exterior=10,
+                 verbose=True):
+    raise NameError("Deprecated function, use get_line_coords() instead")
     
-    # Merge
-    print("Merging datasets")
-    try:
-        ds_out = ds.merge(ds_bu)
-    except xr.MergeError:
-        if np.abs(ds_bu.latitude - ds.latitude).max() < 1e-5:
-                ds_bu['latitude'] = ds.latitude
-        if np.abs(ds_bu.longitude - ds.longitude).max() < 1e-5:
-                ds_bu['longitude'] = ds.longitude
-        # Retry
-        ds_out = ds.merge(ds_bu, join=join)
-    
-    return ds_out
-    
-    
-def flux_pt_to_mass_pt(ds, verbose=True):
-    """
-    Change flux point coordinates of dataset into mass point coordinates.
-    Done through interpolation between flux points.
-    Generalization of center_uvw() function.
-    
-    parameter:
-        ds: xarray.dataset
-    """
-    for var in list(ds.keys()):
-        
-        # NOT WORKING
-#        for coord in ['nj_v', 'nj_u', 'ni_v', 'ni_u', 'level_w']:
-#            new_coord = coord[:-2]
-#            ds[var] = ds[var].interp(coords={coord:ds[new_coord].values}).rename(
-#                {coord: new_coord})
-#            if verbose:
-#                print(f"{var}: coordinates '{coord}' changed to '{new_coord}'")
-            
-        # change coordinates for 'nj_v' flux points
-        if 'nj_v' in list(ds[var].coords):
-            ds[var] = ds[var].interp(nj_v=ds.nj.values).rename(
-                {'nj_v': 'nj'})
-            if verbose:
-                print(f"{var}: coordinates 'nj_v' changed to 'nj'")
-        
-        # change coordinates for 'ni_v' flux points
-        if 'ni_v' in list(ds[var].coords):
-            ds[var] = ds[var].interp(ni_v=ds.ni.values).rename(
-                {'ni_v': 'ni'})
-            if verbose:
-                print(f"{var}: coordinates 'ni_v' changed to 'ni'")
-        
-        # change coordinates for 'ni_u' flux points
-        if 'ni_u' in list(ds[var].coords):
-            ds[var] = ds[var].interp(ni_u=ds.ni.values).rename(
-                {'ni_u': 'ni'})
-            if verbose:
-                print(f"{var}: coordinates 'ni_u' changed to 'ni'")
-        
-        # change coordinates for 'nj_u' flux points
-        if 'nj_u' in list(ds[var].coords):
-            ds[var] = ds[var].interp(nj_u=ds.nj.values).rename(
-                {'nj_u': 'nj'})
-            if verbose:
-                print(f"{var}: coordinates 'nj_u' changed to 'nj'")
-        
-        # change coordinates for '_w' flux points
-        if 'level_w' in list(ds[var].coords):
-            ds[var] = ds[var].interp(level_w=ds.level.values).rename(
-                {'level_w': 'level'})
-            if verbose:
-                print(f"{var}: coordinate 'level_w' changed to 'level'")
-    
-        # ALT coordinate badly encoded ('level_w not defnied as coords)
-        if var == 'ALT':
-            ds[var] = ds[var].interp(level_w=ds.level.values).rename(
-                {'level_w': 'level'})
-            if verbose:
-                print(f"{var}: coordinate 'level_w' changed to 'level'")
-    
-    # remove flux coordinates
-    try:
-        ds_new = ds.drop(['latitude_u', 'longitude_u', 'ni_u', 'nj_u',
-                      'latitude_v', 'longitude_v', 'ni_v', 'nj_v',
-                      'level_w'
-                      ])
-    except:
-        if verbose:
-            print("no old coordinate dropped - error during ds.drop()")
-        ds_new = ds
+def psy_ta_rh(tdb, rh, p_atm=101325):
+    raise NameError(
+        """ Deprecated function, use calc_partial_vap_pres() or 
+            calc_mixing_ratio() instead""")
 
-    return ds_new
-            
+def apparent_temperature(tdb, rh, v=0, q=None, **kwargs):
+    raise NameError("Deprecated function, use calc_apparent_temperature() instead")
 
+def sat_mixing_ratio(pressure, t_dry_bulb):
+    raise NameError("Deprecated function, use calc_sat_mixing_ratio() instead")
+    
+def p_sat(tdb):
+    raise NameError("Deprecated function, use calc_sat_vap_pres() instead")
+    
+def rel_humidity(spec_humidity, t_dry_bulb, pressure):
+    raise NameError("Deprecated function, use calc_rel_humidity() instead")
+    
+def get_simu_filename(*args, **kwargs):
+    raise NameError("""
+                     Deprecated function get_simu_filename().
+                     Use get_simu_filepath() instead.
+                     """)
+
+def get_simu_filename_000(model, date='20210722-1200'):
+    raise NameError(
+            """Function 'get_simu_filename_000()' is deprecated 
+            and should be replaced by get_simu_filepath.
+            """)
+
+#%% Main
 if __name__ == '__main__':
-    print('yo')
-    model = 'irrswi1_d1'
-    wanted_date = '20210716-2300'
+    pass
     
-    filepath = get_simu_filepath(
-            model, wanted_date, file_suffix='dg',out_suffix='')
-    ds = xr.open_dataset(filepath)
-    
-    filepath_bu = get_simu_filepath(
-            model, wanted_date, filetype='000')
-    ds_bu = open_multiple_budget_file(
-            filepath_bu, 
-            budget_type_list=['UU', 'VV', 'TH'],
-            wanted_datetime=wanted_date)
-#    
-#    ds_out = flux_pt_to_mass_pt(ds, verbose=True)
-    ds_out = merge_standard_and_budget_files(ds, ds_bu, join='inner')
     
 
 

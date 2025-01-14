@@ -15,11 +15,11 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'irta-corn'
+site = 'XM'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'Q_1_1_1'
+varname_obs = 'T'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -38,7 +38,7 @@ varname_obs = 'Q_1_1_1'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim_list = ['Q2M_ISBA']
+varname_sim_list = ['T2M_ISBA']
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 # U_STAR, BOWEN
 
@@ -64,6 +64,7 @@ stdtype = None  # 'fillbetween' or 'errorbars' or None
 hspace = 4  # error bars horizontal spacing
 errors_computation = True
 add_seb_residue = False
+
 ######################################################
 
 simu_folders = {key:gv.simu_folders[key] for key in models}
@@ -126,7 +127,7 @@ elif varname_obs in ['WQ_2m', 'WQ_10m']:
     ylabel = 'h2o turbulent flux [kg.m-2.s-1]'
     secondary_axis = 'le'
 elif varname_obs in ['ta_1', 'ta_2', 'ta_3', 'ta_4', 'ta_5', 'TEMP_2m',
-                     'TA_1_1_1']:
+                     'TA_1_1_1', 'T']:
     ylabel = 'air temperature [K]'
     offset_obs = 273.15
 #    offset_obs = 0
@@ -158,25 +159,36 @@ if site == 'cendrosa':
     datafolder = gv.global_data_liaise + '/cendrosa/30min/'
     filename_prefix = 'LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
+    time_shift_correction = None
+
 elif site == 'preixana':
     datafolder = gv.global_data_liaise + '/preixana/30min/'
     filename_prefix = 'LIAISE_PREIXANA_CNRM_MTO-FLUX-30MIN_L2_'
     in_filenames_obs = filename_prefix + date
+    time_shift_correction = None
+
 elif site == 'elsplans':
     freq = '30'  # '5' min or '30'min
     datafolder = gv.global_data_liaise + '/elsplans/mat_50m/{0}min/'.format(freq)
     filename_prefix = 'LIAISE_'
     date = date.replace('-', '')
     in_filenames_obs = filename_prefix + date
-#    varname_sim_suffix = '_ISBA'  # or P7, but already represents 63% of _ISBA
+    time_shift_correction = None
+
 elif site in ['irta-corn', 'irta-corn-real']:
     datafolder = gv.global_data_liaise + '/irta-corn/seb/'
     in_filenames_obs = 'LIAISE_IRTA-CORN_UIB_SEB-10MIN_L2.nc'
-else:
-    raise ValueError('Site name not known')
+    time_shift_correction = None
+
+else: # SMC stations
+    freq = '30'
+    datafolder = gv.global_data_liaise + '/SMC/ALL_stations_july/' 
+    in_filenames_obs = f'{site}.nc'
+    time_shift_correction = -30
+    # raise ValueError('Site name not known')
     
-lat = gv.sites[site]['lat']
-lon = gv.sites[site]['lon']
+lat = gv.whole[site]['lat']
+lon = gv.whole[site]['lon']
 
 
 #%% OBS: Concatenate and plot data
@@ -188,8 +200,11 @@ elif site == 'elsplans':
     out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
     dat_to_nc = 'ukmo'
 #    dat_to_nc = None   #To keep existing netcdf file
-else:
+elif site == 'cendrosa':
     out_filename_obs = 'CAT_' + date + filename_prefix + '.nc'
+    dat_to_nc = None
+else:  # SMC case
+    out_filename_obs = in_filenames_obs
     dat_to_nc = None
     
 # CONCATENATE multiple days
@@ -249,14 +264,20 @@ elif site == 'elsplans':
     obs['BOWEN_2m'] = obs['H_2m'] / obs['LE_2m']
     #obs['WQ_2m_WPL'] = obs['WQ_2m']*(1.016)*(0+(1.2/300)*obs['WT_2m'])  #eq (25)
     obs['LE_2m_WPL'] = obs['LE_2m']*(1.010)*(1+0.051*obs['BOWEN_2m'])  #eq (47) of paper WPL
-    
-    
     for i in [10,20,30,40]:
         obs['SWI{0}_subsoil'.format(i)] = tools.calc_swi(
                 obs['PR{0}_subsoil'.format(i)]*0.01,  #conversion from % to decimal
                 gv.wilt_pt[site][i],
                 gv.field_capa[site][i],)
-    
+else:  # SMC stations
+    obs['datetime'] = [pd.Timestamp(str((elt.data))) for elt in obs['datetime']]
+    obs = obs.rename({'datetime': 'time'})
+
+
+if time_shift_correction not in [None, 0]:
+    obs['time'] = obs['time'] - pd.Timedelta(time_shift_correction, 'm')        
+
+
 # PLOT:
 fig = plt.figure(figsize=figsize)
 
@@ -297,10 +318,13 @@ if varname_obs != '':
 ##                          label='obs_'+varname_obs,
 #                          color=colordict['obs'],
 #                          linewidth=1)
-        
-    
+            
     # compute mean day profile 
     df = obs_var_corr.to_dataframe()
+    
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.DatetimeIndex(df.index)
+    
     df['hour_minute'] = df.index.time
     df['day'] = df.index.day
     if site =='cendrosa' and varname_obs in ['lhf_1', 'shf_1']:
@@ -512,10 +536,8 @@ for  varname_sim in varname_sim_list:
                          fmt='none',
                          elinewidth=0.5, capsize=2,
                          color=colordict[model])
-            
         
-        ax = plt.gca()
-        
+        ax = plt.gca()        
     #    ax.set_xlim([np.min(obs.time), np.max(obs.time)])
 #        ax.set_xlim([np.min(dati_arr), np.max(dati_arr)])
         
@@ -592,7 +614,7 @@ if errors_computation:
 else:
     plt.legend(loc='best')
 
-
+plot_title = '{0} at {1}'.format(varname_sim, site)
 plt.title(plot_title)
 #plt.title('test')
 plt.grid()

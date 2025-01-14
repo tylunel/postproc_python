@@ -1,5 +1,3 @@
---cendrosa-WS
-Bias:
-{'irrswi1_d1': -0.0772, 'noirr_lai_d1': 0.599}
-RMSE:
-{'irrswi1_d1': 0.874, 'noirr_lai_d1': 1.4}
+--cendrosa-WS 
+Bias_{global} & -0.0772 & 0.599 \\
+RMSE_{global} & 0.874 & 1.4 \\

@@ -30,7 +30,9 @@ model = 'noirr_lai_d1'
         # 'irrlagrip30thld07_d1',
         # 'irrswi1_d1',
         # 'irr_d1',
-         
+
+unify_swd = True  # take SWD from a unique forcing
+
 simu_folder = gv.simu_folders[model]
 
 ## Data path
@@ -63,8 +65,13 @@ else:
                         mode='r')
 
 ## Create NetCDF File
-ncdf_new = nc.Dataset(data_path + 'generate_forcing/FORCING_{0}_{1}.nc'.format(
-    site, simu_folder[:4]), mode='w')
+output_name = f'FORCING_{site}_{simu_folder[:4]}.nc'
+if unify_swd:
+    output_folder = 'generate_forcing/swd_unified/'
+else:
+    output_folder = 'generate_forcing/'
+ncdf_new = nc.Dataset(f'{data_path}/{output_folder}/{output_name}',
+                      mode='w',)
 
 plot_data = False
 
@@ -76,14 +83,21 @@ index_lat, index_lon = tools.indices_of_lat_lon(ds_mnh_xr,
 filelength = len(ds_mnh_xr.record)
 #filelength = len(ds_mnh_xr.time)
 
-# get forcing from cendrosa for getting CO2 concentration
-fn = 'generate_forcing/FORCING_cendrosa_obs.nc'
-ds = nc.Dataset(data_path + fn, 
-                mode='r')
+# -- Reference forcings for CO2, SWD, and time
 
-# TIME
-fn = '/cnrm/surface/lunelt/for_tanguy/in_out_generate_nc/CAT_2021-07LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_.nc'
-cendrosa = nc.Dataset(fn)
+# CO2: get forcing from cendrosa for getting CO2 concentration
+fn_cendrosa_forc_ref = 'generate_forcing/reference_forcings/FORCING_cendrosa_obs.nc'
+ds_cendrosa_forc_ref = nc.Dataset(data_path + fn_cendrosa_forc_ref, 
+                             mode='r')
+
+# SWD: take reference SWD from IRR simu (8.16)
+fn_cendrosa_sim_irr = 'generate_forcing/reference_forcings/FORCING_cendrosa_8.16.nc'
+ds_cendrosa_sim_irr = nc.Dataset(data_path + fn_cendrosa_sim_irr, 
+                                 mode='r')
+
+# TIME: get time format from concatenated obs (issue when trying to use other sources)
+fn_cendrosa_obs = data_path + '/generate_forcing/reference_forcings/CAT_2021-07LIAISE_LA-CENDROSA_CNRM_MTO-FLUX-30MIN_L2_.nc'
+cendrosa = nc.Dataset(fn_cendrosa_obs)
 init_time = dt.strptime('2021-07-01-10','%Y-%m-%d-%H')  # corrected to 07-14 later
 timestamp = init_time + cendrosa['time'][1::2][:filelength]*timedelta(seconds=1)
 
@@ -99,7 +113,7 @@ time_var.units = 'seconds since 1970-01-01 00:00:00'  # to do
 time_var.standard_name = 'time'
 time_var.long_name = 'seconds since 1970-01-01 00:00:00 unixtime UTC'
 
-#ncdf_new["time"][:] = cendrosa["time"][:] + 1625097600. # add time from beggining cendrosa to unixtime
+#ncdf_new["time"][:] = cendrosa["time"][:] + 1625097600. # add time from beginning cendrosa to unixtime
 #ncdf_new["time"][:] = cendrosa['time'][1::2][:filelength] + 1626256800 # unixtime for 2021-07-14T10
 ncdf_new["time"][:] = cendrosa['time'][1::2][:filelength] - 3600 + 1626224400 # unixtime for 2021-07-14T01
 init_time_final= dt.strptime('1970-01-01','%Y-%m-%d')
@@ -152,16 +166,6 @@ PSurf_var.long_name = 'Surface_Pressure'
 PSurf_var.units = 'Pa'
 ncdf_new["PSurf"][:,0] = ds_mnh['PRES'][:,0,0,index_lat,index_lon]*100
 
-dirswdown_var = ncdf_new.createVariable('DIR_SWdown', np.float32, ('time','Number_of_points'))
-dirswdown_var.long_name = 'Surface_Incicent_Direct_Shortwave_Radiation'
-dirswdown_var.units = 'W/m2' 
-ncdf_new["DIR_SWdown"][:,0] = np.sum(ds_mnh['DIRFLASWD'], axis=2)[:,0,index_lat,index_lon]
-
-sca_swdown_var = ncdf_new.createVariable('SCA_SWdown', np.float32, ('time','Number_of_points'))
-sca_swdown_var.long_name = 'Surface_Incident_Diffuse_Shortwave_Radiation'
-sca_swdown_var.units = 'W/m2'
-ncdf_new["SCA_SWdown"][:,0] = np.sum(ds_mnh['SCAFLASWD'], axis=2)[:,0,index_lat,index_lon]
-
 lwdown_var = ncdf_new.createVariable('LWdown', np.float32, ('time','Number_of_points'))
 lwdown_var.long_name = 'Surface_Incident_Diffuse_Shortwave_Radiation'
 lwdown_var.units = 'W/m2'
@@ -178,11 +182,30 @@ snowf_var.units = 'Kg/m2/s'
 #ncdf_new["Snowf"][:,0] = np.zeros(filelength)
 ncdf_new["Snowf"][:,0] = ds_mnh['SNOWF_ISBA'][:,index_lat,index_lon]
 
+#%% Unified vars: SWD and CO2
+
+dirswdown_var = ncdf_new.createVariable('DIR_SWdown', np.float32, ('time','Number_of_points'))
+dirswdown_var.long_name = 'Surface_Incicent_Direct_Shortwave_Radiation'
+dirswdown_var.units = 'W/m2'
+if unify_swd:
+    # ncdf_new["DIR_SWdown"][:,0] = np.sum(ds_cendrosa_sim_irr['DIRFLASWD'], axis=2)[:,0,index_lat,index_lon]
+    ncdf_new["DIR_SWdown"][:,0] = ds_cendrosa_sim_irr['DIR_SWdown'][:]
+else:
+    ncdf_new["DIR_SWdown"][:,0] = np.sum(ds_mnh['DIRFLASWD'], axis=2)[:,0,index_lat,index_lon]
+
+sca_swdown_var = ncdf_new.createVariable('SCA_SWdown', np.float32, ('time','Number_of_points'))
+sca_swdown_var.long_name = 'Surface_Incident_Diffuse_Shortwave_Radiation'
+sca_swdown_var.units = 'W/m2'
+if unify_swd:
+    # ncdf_new["SCA_SWdown"][:,0] = np.sum(ds_cendrosa_sim_irr['SCAFLASWD'], axis=2)[:,0,index_lat,index_lon]
+    ncdf_new["SCA_SWdown"][:,0] = ds_cendrosa_sim_irr['SCA_SWdown'][:]
+else:
+    ncdf_new["SCA_SWdown"][:,0] = np.sum(ds_mnh['SCAFLASWD'], axis=2)[:,0,index_lat,index_lon]
 
 co2air_var = ncdf_new.createVariable('CO2air', np.float32, ('time','Number_of_points'))
 co2air_var.long_name = 'Near_Surface_CO2_Concentration'
 co2air_var.units = 'Kg/m3'
-ncdf_new["CO2air"][:,0] = np.zeros(filelength) + ds['CO2air'][:].mean()
+ncdf_new["CO2air"][:,0] = np.zeros(filelength) + ds_cendrosa_forc_ref['CO2air'][:].mean()
 
 #%% Wind
 # compute ws and wd from ut and vt
@@ -201,7 +224,7 @@ ncdf_new["Wind_DIR"][:,0] = wd
 
 ncdf_new.close()
 print(f"""Forcing file created:
-    {data_path}/generate_forcing/FORCING_{site}_{simu_folder[:4]}.nc""")
+    {data_path}/{output_folder}/{output_name}""")
 
 #%% Plot
 

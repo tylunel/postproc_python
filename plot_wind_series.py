@@ -33,6 +33,7 @@ models = [
         # 'irr_d2_old', 
         # 'std_d2_old',
         # 'std_d2', 
+        'std_d1', 
         # 'irr_d2', 
         # 'std_d1_16_10min', 
         # 'irr_d1',

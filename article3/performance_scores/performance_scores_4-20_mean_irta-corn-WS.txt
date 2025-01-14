@@ -1,5 +1,3 @@
---irta-corn-WS
-Bias filt:
-{'irrswi1_d1': 0.13, 'noirr_lai_d1': 0.406}
-RMSE filt:
-{'irrswi1_d1': 0.234, 'noirr_lai_d1': 0.727}
+--irta-corn-WS 
+Bias_{day} & 0.312 & 1.17 \\
+RMSE_{day} & 0.385 & 1.35 \\

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 @author: Tanguy LUNEL
-Creation : 07/01/2021
+
+The averaged time series of air temperature, humidity and wind 
+for article et_overestimation (figures 1, 2, 3)
     
 """
 
@@ -16,11 +18,11 @@ import matplotlib
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'irta-corn'
+site = 'cendrosa'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'WS'
+varname_obs = 'hus_2'  #ta_2, hur_2, hus_2, ws_1, swd // TA_1_1_1, RH_1_1_1, Q_1_1_1, WS, SW_IN
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd, ws_5 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -39,15 +41,15 @@ varname_obs = 'WS'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim = 'WS'
-# T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
-# U_STAR, BOWEN
+varname_sim = 'Q2M_ISBA'
+# T2M_ISBA, HU2M_ISBA, Q2M_ISBA, WS
+# U_STAR, BOWEN, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 
 #If varname_sim is 3D:
 ilevel = 1   #0 is Halo, 1->2m, 2->6.12m, 3->10.49m
 
-figsize = (7, 7) #small for presentation: (6,6), big: (15,9)
-save_plot = False
+figsize = (6, 5) #small for presentation: (6,6), big: (15,9)
+save_plot = True
 save_folder = './fig/averaged_time_series/'
 
 models = [
@@ -62,7 +64,7 @@ models = [
 #        'lagrip100_d1',
          ]
 
-stdtype = None  # 'fillbetween' or 'errorbars' or None
+stdtype = 'fillbetween'  # 'fillbetween' or 'errorbars' or None
 hspace = 4  # error bars horizontal spacing
 errors_computation = True
 hour_start_filt = 4
@@ -137,12 +139,16 @@ linedict = gv.styledict
 
 legend_dict = {
     'obs': 'obs',
-    'irrswi1_d1': 'simu_IRR_FC',
-    'std_d1': 'simu_NOIRR',
-    'noirr_lai_d1': 'simu_NOIRR',
-    'irrlagrip30_d1': 'simu_IRR_THLD',
+    'irrswi1_d1': 'coupled_IRR_FC',
+    'std_d1': 'coupled_NOIRR',
+    'noirr_lai_d1': 'coupled_NOIRR',
+    'irrlagrip30_d1': 'coupled_IRR_THLD',
     }
     
+
+gv.whole['cendrosa']['longname']= 'La Cendrosa alfalfa field'
+# gv.whole['irta-corn']['longname']= 'La Cendrosa alfalfa field'
+
 #%% Dependant Parameters
 
 # default values (can be change below)
@@ -162,7 +168,7 @@ elif varname_sim in ['Q2M_ISBA']:
     if site == 'cendrosa':
         coeff_obs = 0.001
 elif varname_sim in ['HU2M_ISBA']:
-    ylabel = 'Air relative humidity at 2 m a.g.l.'
+    ylabel = 'Air relative humidity at 2 m a.g.l. [%]'
     ymin, ymax = 0, 1
     # if site == 'cendrosa':
     coeff_obs = 0.01
@@ -173,7 +179,8 @@ elif varname_sim in ['MRV']:
         coeff_obs = 1000
 elif varname_sim in ['WS']:
     if site == 'irta-corn':
-        ylabel = 'Wind speed at 1.7 m a.g.l. [m s$^{-1}$]'
+        # ylabel = 'Wind speed at 1.7 m a.g.l. [m s$^{-1}$]'
+        ylabel = 'Wind speed at 2 m a.g.l. [m s$^{-1}$]'
     elif site == 'cendrosa':
         ylabel = 'Wind speed at 2 m a.g.l. [m s$^{-1}$]'
     ymin, ymax = 0, 5
@@ -373,7 +380,7 @@ if varname_obs != '':
         plt.fill_between(df_mean_profile['hour'], 
                           df_mean_profile['mean']-df_mean_profile['std'],
                           df_mean_profile['mean']+df_mean_profile['std'],
-                          alpha=0.2, 
+                          alpha=0.1, 
                           facecolor=colordict['obs'],
                           )
     if stdtype == 'errorbar':
@@ -541,7 +548,7 @@ for model in simu_folders:
     pds_mean.name = 'mean'
     pds_std.name = 'std'
     
-    df_mean_profile = pd.merge(pds_mean, pds_std, 
+    df_mean_profile = pd.merge(pds_mean, pds_std,
                                left_index=True, right_index=True)
     
     df_mean_profile['minutes'] = [time.minute for time in df_mean_profile.index]
@@ -562,7 +569,7 @@ for model in simu_folders:
         plt.fill_between(df_mean_profile['hour'], 
                           df_mean_profile['mean']-df_mean_profile['std'],
                           df_mean_profile['mean']+df_mean_profile['std'],
-                          alpha=0.2, 
+                          alpha=0.1, 
                           facecolor=colordict[model],
                           )
     if stdtype == 'errorbar':
@@ -576,7 +583,6 @@ for model in simu_folders:
                      fmt='none',
                      elinewidth=0.5, capsize=2,
                      color=colordict[model])
-        
         
     ax = plt.gca()
     
@@ -603,7 +609,7 @@ for model in simu_folders:
         # --- Option 2 ---
         # for key in profile_dict:
         #     df_mean_profile_filt = df_mean_profile[df_mean_profile.hour > 4][df_mean_profile.hour < 20]
-        diff_filt[model] = (profile_dict[model] - profile_dict['obs']).dropna()
+        diff_filt[model] = (profile_dict[model] - profile_dict['obs']).dropna()['mean']
         bias_filt[model] = float('%.3g' % np.nanmean(diff_filt[model]))
         rmse_filt[model] = float('%.3g' % np.sqrt(np.nanmean(diff_filt[model]**2)))
         
@@ -612,10 +618,28 @@ for model in simu_folders:
 
 ax = plt.gca()
 ax.set_ylabel(ylabel)
-ax.set_ylim(ymin, ymax)
+
+if stdtype is None:
+    ax.set_ylim(ymin, ymax)
+else:
+    yrange = ymax - ymin
+    ax.set_ylim(ymin - yrange*0.1, ymax + yrange*0.1)
+
+if varname_sim == 'HU2M_ISBA': #change fractions into percentages
+    ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1])
+    ax.set_yticklabels([0, 20, 40, 60, 80, 100])
+elif varname_sim == 'Q2M_ISBA':
+    ax.set_yticks([0, 0.002, 0.004, 0.006, 0.008, 0.010, 0.012, 0.014, 0.016, 0.018,],
+                  [0, 2, 4, 6, 8, 10, 12, 14, 16, 18,])
+    ylabel = 'Air specific humidity at 2 m a.g.l. [g kg$^{-1}$]'
+    ax.set_ylabel(ylabel)
+
 ax.set_xlabel('hour UTC')
 plt.xticks([0, 4, 8, 12, 16, 20, 24])
+ax.set_xlim(0, 23.5)
+
 plt.grid()
+plt.subplots_adjust(top=0.9, bottom=0.10, left=0.12, right=0.9)
 
 # add grey zones for night
 #days = np.arange(1,30)
@@ -656,23 +680,23 @@ if errors_computation:
     print(results_str)
     
     with open(f'./performance_scores/performance_scores_mean_{site}-{varname_sim}.txt', 'w') as data:  
-      data.write(str(results_str))
-      # --- format random
-      # results_str_filt = f'--{site}-{varname_sim}' +\
-      #     '\nBias filt:\n' + str(bias_filt) +\
-      #     '\nRMSE filt:\n' + str(rmse_filt)
-      # --- format Table LaTeX
-      results_str_filt = f'--{site}-{varname_sim} ' +\
-          '\nBias_{day} & ' + str(bias_filt['irrswi1_d1']) + ' & ' + str(bias_filt['noirr_lai_d1']) + ' \\\\' + \
-          '\nRMSE_{day} & ' + str(rmse_filt['irrswi1_d1']) + ' & ' + str(rmse_filt['noirr_lai_d1']) + ' \\\\'
-      print(results_str_filt)
-      
-      with open(f'./performance_scores/performance_scores_{hour_start_filt}-{hour_end_filt}_mean_{site}-{varname_sim}.txt', 'w') as data:  
+        data.write(str(results_str))
+    
+    # --- format random
+    # results_str_filt = f'--{site}-{varname_sim}' +\
+    #     '\nBias filt:\n' + str(bias_filt) +\
+    #     '\nRMSE filt:\n' + str(rmse_filt)
+    # --- format Table LaTeX
+    results_str_filt = f'--{site}-{varname_sim} ' +\
+        '\nBias_{day} & ' + str(bias_filt['irrswi1_d1']) + ' & ' + str(bias_filt['noirr_lai_d1']) + ' \\\\' + \
+        '\nRMSE_{day} & ' + str(rmse_filt['irrswi1_d1']) + ' & ' + str(rmse_filt['noirr_lai_d1']) + ' \\\\'
+    print(results_str_filt)
+    
+    with open(f'./performance_scores/performance_scores_{hour_start_filt}-{hour_end_filt}_mean_{site}-{varname_sim}.txt', 'w') as data:  
         data.write(str(results_str_filt))
     
-else:
-    plt.legend(loc='best')
 
+plt.legend(loc='best')
 plot_title = gv.whole[site]['longname']
 plt.title(plot_title)
 
@@ -682,7 +706,12 @@ plt.title(plot_title)
 
 #%% Save figure
 
-save_title = f'{ylabel} at {site}-{models}'
+
+if stdtype is None:
+    save_title = f'{ylabel} at {site}-{models}'
+else:
+    save_title = f'{ylabel} at {site}-{models}_stdev'
+    
 if save_plot:
     tools.save_figure(save_title, save_folder)
 #    tools.save_figure(plot_title, '/d0/images/lunelt/figures/')

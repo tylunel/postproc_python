@@ -24,9 +24,9 @@ from shapely.geometry import Point, LineString
 model = 'irrswi1_d1'
 
 # Datetime
-wanted_date = '20210721-2300'
+wanted_date = '20210717-0200'
 
-varname_colormap = 'WT'
+varname_colormap = 'WS'
 plot_title = 'Wind'
 cbar_label = 'Wind speed [m s$^{-1}$]'
 

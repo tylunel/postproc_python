@@ -13,13 +13,13 @@ import global_variables as gv
 
 
 ########## Independant parameters ###############
-wanted_date = '20210721-1600'
-site = 'elsplans'  # 'cendrosa', 'elsplans', 'irta'
+wanted_date = '20210722-1300'
+site = 'cendrosa'  # 'cendrosa', 'elsplans', 'irta'
 
 # variable name from MNH files: 'THT', THTV 'RVT', 'WS'
-var_simu = 'THT'
+var_simu = 'RVT'
 # variable name from obs files: 'potentialTemperature', 'mixingRatio', virtualPotentialTemperature, windSpeed
-var_obs = 'potentialTemperature'
+var_obs = 'mixingRatio'
 
 coeff_corr = 1  #to switch from obs to simu2
 
@@ -29,20 +29,19 @@ vmin, vmax = None, None
 simu_list = [
 #            'irrswi1_d1_16_10min',
             'irrswi1_d1',
-#            'std_d1', 
+            'std_d1', 
 #            'irrlagrip30_d1',
 #            'irrlagrip30_d1_old',
-#            'irr_d1',
+            # 'irr_d2',
             ]
 
 simu_only = False
 
 # Path in simu is average of neighbouring grid points
-mean_profile = False
+mean_profile = True
 column_width = 3
 # Path in simu follows real RS path  #issue: fix discontinuities
 follow_rs_position = False
-
 
 # highest level AGL plotted
 toplevel = 2500
@@ -76,7 +75,13 @@ colordict = {'irr_d2': 'g',
              'irr_d2_old': 'g', 
              'std_d2_old': 'r', 
              'obs': 'k'}
-        
+      
+legend_dict = {
+    'obs': 'obs',
+    'std_d1': 'simu_STD',
+    'irrswi1_d1': 'simu_IRR',
+    'irrlagrip30_d1': 'simu_IRR_THLD',
+    } 
 
 #%% LOAD OBS DATASET
 if simu_only == False:
@@ -145,7 +150,6 @@ if obs_available:
         # keep only low layer of atmos (~ABL)
         obs_low = obs.where(obs['level_agl'] < toplevel, drop=True)
     
-    
     obs_low['potentialTemperature'] = tools.potential_temperature_from_temperature(
             obs_low['pressure'], obs_low['temperature'])
     obs_low['virtualPotentialTemperature'] = \
@@ -199,9 +203,9 @@ for model in simu_list:
             ).squeeze()
         var1d_column = var3d_column.mean(dim=['nj', 'ni'])
         var1d_column_std = var3d_column.std(dim=['nj', 'ni'])
-        plt.plot(var1d_column.data, var1d_column.level, 
-#                 label=f'mean_&_stdev_{model}',
-                 label=f'mean_&_stdev_{model}_{simu_time}',
+        plt.plot(var1d_column.data, var1d_column.level,
+                 # label=f'mean_&_stdev_{model}_{simu_time}',
+                 label=legend_dict[model],
                  c=colordict[model],
                  )
         plt.fill_betweenx(var1d_column.level, 
@@ -217,7 +221,8 @@ for model in simu_list:
                  ls='--', 
                  color=colordict[model], 
 #                 label=model,
-                 label=f'{model}_{simu_time}',
+                 # label=f'{model}_{simu_time}',
+                 label=legend_dict[model]
                  )
         
     # Realistic path of radiosounding (with interpolation)

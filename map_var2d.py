@@ -8,6 +8,7 @@ Script for plotting simple colormaps
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import xarray as xr
 import tools
 import shapefile
@@ -20,34 +21,41 @@ import os
 from metpy.plots import StationPlot
 
 ###############################################
-model = 'irrlagrip30_d1'
+model = 'irrswi1_d1'  # irrswi1_d1, std_d1
 
 domain_nb = 1
 
-wanted_date = '20210714-1200'
+wanted_date = '20210722-1200'
 
 color_map = 'coolwarm'   # BuPu, coolwarm, viridis, RdYlGn, jet,... (add _r to reverse)
                     # YlOrBr for orography
                     # RdYlGn, YlGn for LAI
                     # coolwarm_r for SWI
 
-var_name = 'SWI3_ISBA'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR, TSWI_T_ISBA, SWI3_ISBA
-vmin = -0.2
-vmax = 1.2
+var_name = 'TI'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR, TSWI_T_ISBA, SWI3_ISBA
+vmin = 0
+vmax = 0.2
+var_name_long = 'TI [%]'
 
 # level, only useful if var 3D
-ilevel = 1  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
-ilevel_wind = 3
+ilevel = 20  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m, 66:2930m
+ilevel_wind = 20
 
-zoom_on = 'd2'  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
 
-add_winds = False
+add_winds = True
 add_smc_obs = False
 add_pgf = False
 marinada_areas = False
+sea_borders = True
+france_borders = False
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
+sites_to_plot = [
+    'planier',
+    'marseille',
+    ]
 
-isoalti_list = [600,]
+isoalti_list = [200, 400, 600,]
 obs_circle_size = 50
 cbar_loc = 'right'  # 'left', 'right', 'top', 'bottom'
 
@@ -55,15 +63,8 @@ save_plot = True
 #save_folder = './figures/scalar_maps/pgd/'
 #save_folder = './figures/scalar_maps/domain{0}/{1}/{2}/'.format(
 #        domain_nb, model, var_name)
-if add_smc_obs:
-    save_folder = f'./figures/scalar_maps/{model}_vs_smc/{var_name}/{ilevel}/{zoom_on}/'
-    if ilevel > 6:
-        raise ValueError(f"""Height of model level and of observation stations
-                         are significantly different:
-                         - SMC stations: 2-10m
-                         - model: {gv.layers_height_MNH_LIAISE[ilevel]}m""")
-else:
-    save_folder = f'./figures/scalar_maps/{model}/{var_name}/{ilevel}/'
+
+save_folder = f'./figures/planier/{var_name}/{ilevel}/'
 ##############################################
 
 wanted_month = str(pd.Timestamp(wanted_date).month).zfill(2)  # format with 2 figures
@@ -77,35 +78,30 @@ lon_range = prop['lon_range']
 figsize = prop['figsize']
 # OR: #locals().update(gv.zoom_domain_prop[zoom_on])
 
-if cbar_loc == 'bottom':
-    figsize = (figsize[0]-2, figsize[1]+1)
-    cbar_frac = 0.05
-else:
-    cbar_frac = 0.15  # default value
+skip_barbs = 12
+barb_length = 7
+
 
 if add_smc_obs:
-    alpha = 0.4
-    if zoom_on == 'marinada':
-        barb_length_coeff = 1.2
-    else:
-        barb_length_coeff = 1.1
+    alpha = 0.4  # transparency of barbs
 else:
-    alpha = 0.9
+    alpha = 0.5
 
 # size of font on figure
 plt.rcParams.update({'font.size': 11})
 
-filename = tools.get_simu_filepath(model, wanted_date,
-                                   global_simu_folder=gv.global_simu_folder)
+# filename = tools.get_simu_filepath(model, wanted_date,
+#                                    global_simu_folder=gv.global_simu_folder)
 
+filename = '/home/lunelt/Data/mnh_run/PLANI.1.SEG01.013.nc'
+pgd_filename = '/home/lunelt/Data/mnh_run/PGD_1KM.nc'
 # load dataset, default datetime okay as pgd vars are all the same along time
 ds = xr.open_dataset(filename)
 #ds1 = xr.open_dataset(
 #        gv.global_simu_folder + \
 #        '2.01_pgds_irr/PGD_400M_CovCor_v26_ivars.nc')
 
-
-# DIAGs
+#%% DIAGs
 ds1 = tools.subset_ds(ds, 
                       zoom_on=zoom_on,
                       nb_indices_exterior=5,
@@ -116,11 +112,12 @@ ds1 = tools.subset_ds(ds,
 ds1 = tools.center_uvw(ds1)
 
 ds1['WS'], ds1['WD'] = tools.calc_ws_wd(ds1['UT'], ds1['VT'])
+#TI
+ds1['TI'] = np.sqrt(1.5*ds1['TKET'])/ds1['WS']
 
 #ds_diag = tools.diag_lowleveljet_height_5percent(ds1[['WS', 'ZS']])
 
-#%%
-subset_ds = ds1[['WS', 'ZS', 'TKET', 'HBLTOP']]
+# subset_ds = ds1[['WS', 'ZS', 'TKET', 'HBLTOP']]
 
 #ds1['DIV'] = mcalc.divergence(ds1['UT'], ds1['VT'])
 #
@@ -151,12 +148,34 @@ var2d = var2d.where(~(var2d == 999))
 
 
 #%% PLOT OF VAR_NAME
+
+if figsize is None:
+    xaxis_dist = float(ds.ni.max() - ds.ni.min())  # in km
+    yaxis_dist = float(ds.nj.max() - ds.nj.min())  # in km
+    scale = 1/20000
+    figsize = (xaxis_dist*scale*1.2, yaxis_dist*scale)
+    
+if cbar_loc == 'bottom':
+    figsize = (figsize[0]-2, figsize[1]+1)
+    cbar_frac = 0.05
+else:
+    cbar_frac = 0.15  # default value
+
+
 fig1 = plt.figure(figsize=figsize)
 
 cmap = plt.cm.get_cmap(color_map).copy()
+
 if var_name == 'ZS':
     vmin=0.1
     cmap.set_under('c')  # for plotting the sea in cyan
+
+if var_name == 'TKET':
+    norm_cm=mpl.colors.LogNorm(vmin=0.01, vmax=vmax)  # for TKE
+else:
+    norm_cm=mpl.colors.Normalize(vmin=vmin, vmax=vmax)  # default normalization
+
+
 
 # --- COLORMAP
 #plt.contourf(var2d.longitude, var2d.latitude, var2d,
@@ -165,18 +184,10 @@ if var_name == 'ZS':
 plt.pcolormesh(var2d.longitude, var2d.latitude, var2d,
 #               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
                cmap=cmap,
+               norm=norm_cm,
 #               extend = 'both',  #highlights the min and max in edges values
-               vmin=vmin, vmax=vmax,
+               # vmin=vmin, vmax=vmax,
                )
-
-#plt.imshow(var2d.longitude, var2d.latitude, var2d,
-##               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
-#               cmap=color_map,
-##               levels=np.linspace(vmin, vmax, (vmax-vmin)*4+1), # fixed colorbar
-##               extend = 'both',  #highlights the min and max in edges values
-#               vmin=vmin, vmax=vmax,
-#               levels=20
-#               )
 
 #cbar = plt.colorbar(boundaries=[vmin, vmax])
 cbar = plt.colorbar(location=cbar_loc,
@@ -185,7 +196,7 @@ cbar = plt.colorbar(location=cbar_loc,
                     )
 
 try:
-    cbar.set_label(var2d.long_name)
+    cbar.set_label(var_name_long)
 except AttributeError:
     cbar.set_label(var_name)
 
@@ -230,40 +241,15 @@ if add_winds or add_pgf:
                  )
 
 #%% STATION PLOT
-    
+plot_barb_wind_obs = False
+
 if add_smc_obs:
     ax = plt.gca()
     
-    # --- with SMC data of liaise database ---
-#    stations_2m = ['VH', 'WK', 'V1', 'WB', 'VM', 'WX', 'WA', 'WC', 'V8', 'XI',
-#                   'XM', 'WL', 'UM', 'WI', 'VE']
-#    stations_10m = ['VK', 'C6', 'C7', 'C8', 'D1', 'XD', 'XR', 'XA', 'VP', 'VB','VQ']
-#    stations_unk = ['YJ', 'CW', 'MR', 'VM', 'WV', 'VD', 'YD', 'XX', 'YJ', ]
-#    stations_all = stations_2m + stations_10m + stations_unk
-#    
-#    for station in stations_all:
-#        # get data
-#        datafolder = gv.global_data_liaise + '/SMC/22_stations_liaise/'
-#        filename = f'LIAISE_{station}_SMC_MTO-1MN_L0_{wanted_date[:8]}_V01.nc'
-#        try:
-#            obs = xr.open_dataset(datafolder + filename)
-#            # find closest time
-#            obs['time_dist'] = np.abs(obs.time - pd.Timestamp(wanted_date).to_datetime64())
-#            obs_t = obs.where(obs['time_dist'] == obs['time_dist'].min(), 
-#                              drop=True).squeeze()
-#        except (FileNotFoundError, ValueError):
-#            continue
-#        
-#        obs_t['UT'], obs_t['VT'] = tools.calc_u_v(obs_t['WS'], obs_t['WD'])
-#    
-#        # plot station
-#        location = StationPlot(ax, obs['lon'], obs['lat'])
-#        location.plot_barb(obs_t['UT'], obs_t['VT'],
-#                           pivot='middle',
-#                           length=barb_length*barb_length_coeff,     #length of barbs
-#                           sizes={'emptybarb':0.1},
-#                           barb_increments=barb_size_increments[barb_size_option]
-#                           )
+    if var_name == 'T2M_ISBA':
+        var_name_obs = 'T_kelvin'
+    else:
+        var_name_obs = var_name
         
     # --- with global SMC data ---
     datafolder = gv.global_data_liaise + '/SMC/ALL_stations_july/'
@@ -300,25 +286,26 @@ if add_smc_obs:
                 # --- plot station data ---
                 if (lon_range[0] < obs['lon'] < lon_range[1] and \
                     lat_range[0] < obs['lat'] < lat_range[1]):
-                    # Create the station object and set the location of it
-                    location = StationPlot(ax, obs['lon'], obs['lat'])
-                    # plot the wind
-                    location.plot_barb(
-                        obs_t['UT'].data, obs_t['VT'].data,
-                           pivot='tip',  # 'tip' or 'middle'
-                           length=barb_length*barb_length_coeff,     #length of barbs
-                           sizes={'emptybarb':0.1},
-                           barb_increments=barb_size_increments[barb_size_option]
-                           )
+                    if plot_barb_wind_obs:
+                        # Create the station object and set the location of it
+                        location = StationPlot(ax, obs['lon'], obs['lat'])
+                        # plot the wind
+                        location.plot_barb(
+                            obs_t['UT'].data, obs_t['VT'].data,
+                               pivot='tip',  # 'tip' or 'middle'
+                               length=barb_length*barb_length_coeff,     #length of barbs
+                               sizes={'emptybarb':0.1},
+                               barb_increments=barb_size_increments[barb_size_option]
+                               )
+                        # add wind measurement height if different from 10m
+                        if wind_height != 10:
+                            ax.text(obs['lon']+0.008, obs['lat']-0.016, 
+                                     wind_height, 
+                                     fontsize=7)
                     # plot a scalar variable in the circle
                     ax.scatter(obs['lon'], obs['lat'],
-                                color=cmap((obs_t[var_name]-vmin)/(vmax-vmin)),
+                                color=cmap((obs_t[var_name_obs]-vmin)/(vmax-vmin)),
                                 edgecolors='k', s=obs_circle_size)
-                    # add wind measurement height if different from 10m
-                    if wind_height != 10:
-                        ax.text(obs['lon']+0.008, obs['lat']-0.016, 
-                                 wind_height, 
-                                 fontsize=7)
 #                    # plot a scalar variable in the circle
 #                    ax.scatter(obs['lon'], obs['lat'],
 #                                color=cmap((obs_t[var_name]-vmin)/(vmax-vmin)),
@@ -333,8 +320,7 @@ if add_smc_obs:
                     print(e)
                 continue
         
-    # --- with Els Plans data ---
-    site = 'elsplans'
+    # --- with Els Plans and Cendrosa data ---
     for site in ['elsplans', 'cendrosa']:
         if site == 'elsplans':
             datafolder = gv.global_data_liaise + '/elsplans/mat_50m/5min_v4/'
@@ -387,75 +373,55 @@ if add_smc_obs:
                 obs_t['P_pa'], obs_t['T_kelvin'])
         
         # Create the station object and set the location of it
-        location = StationPlot(ax, gv.sites[site]['lon'], gv.sites[site]['lat'])
+        
         # plot the wind
-        location.plot_barb(
-            obs_t['UT'].data, obs_t['VT'].data,
-               pivot='tip',  # 'tip' or 'middle'
-               length=barb_length*barb_length_coeff,     #length of barbs
-               sizes={'emptybarb':0.1},
-               barb_increments=barb_size_increments[barb_size_option]
-               )
+        if plot_barb_wind_obs:
+            location = StationPlot(ax, gv.sites[site]['lon'], gv.sites[site]['lat'])
+            location.plot_barb(
+                obs_t['UT'].data, obs_t['VT'].data,
+                   pivot='tip',  # 'tip' or 'middle'
+                   length=barb_length*barb_length_coeff,     #length of barbs
+                   sizes={'emptybarb':0.1},
+                   barb_increments=barb_size_increments[barb_size_option]
+                   )
         # plot a scalar variable in the circle
         ax.scatter(gv.sites[site]['lon'], gv.sites[site]['lat'],
-                    color=cmap((obs_t[var_name]-vmin)/(vmax-vmin)),
+                    color=cmap((obs_t[var_name_obs]-vmin)/(vmax-vmin)),
                     edgecolors='k', s=obs_circle_size)
         # state that this station was plotted
         print(f'{site} plotted')
-    
-    # --- with La Cendrosa data ---
 
 
 # --- IRRIGATED, SEA and COUNTRIES BORDERS
 
-if domain_nb == 2:
-    pgd = xr.open_dataset(
-        gv.global_simu_folder + \
-        '2.01_pgds_irr/PGD_400M_CovCor_v26_ivars.nc')
-elif domain_nb == 1:
-    pgd = xr.open_dataset(
-        gv.global_simu_folder + \
-        '2.01_pgds_irr/PGD_2KM_CovCor_v26_ivars.nc')
-
-# Irrigation borders
-##from scipy.ndimage.filters import gaussian_filter
-##sigma = 0.1     #default is 0.1
-##irr_covers = gaussian_filter(pgd.COVER369.data, sigma)
-#irr_covers = pgd.COVER369.data
-#plt.contour(pgd.longitude.data, 
-#            pgd.latitude.data, 
-#            irr_covers,
-#            levels=0,   #+1 -> number of contour to plot 
-#            linestyles='solid',
-#            linewidths=1.5,
-#            colors='g'
-##            colors=['None'],
-##            hatches='-'
-#            )
+pgd = xr.open_dataset(pgd_filename)
 
 # Sea borders
-sea_covers = pgd.COVER001.data
-plt.contour(pgd.longitude.data, 
-            pgd.latitude.data, 
-            sea_covers,
-            levels=0,   #+1 -> number of contour to plot 
-            linestyles='solid',
-            linewidths=1.,
-            colors='w'
-    #        colors=['None'],
-    #        hatches='-'
-            )
+if sea_borders:
+    sea_covers = pgd.COVER001.data
+    plt.contour(pgd.longitude.data, 
+                pgd.latitude.data, 
+                sea_covers,
+                levels=0,   #+1 -> number of contour to plot 
+                linestyles='solid',
+                linewidths=2,
+                colors='w'
+        #        colors=['None'],
+        #        hatches='-'
+                )
 
 #France borders
-sf = shapefile.Reader("TM-WORLD-BORDERS/TM_WORLD_BORDERS-0.3.sph")
-shapes=sf.shapes()
-france = shapes[64].points
-france_df = pd.DataFrame(france, columns=['lon', 'lat'])
-france_S = france_df[france_df.lat < 43.35]
-france_SW = france_S[france_S.lon < 2.95]
-plt.plot(france_SW.lon, france_SW.lat,
-         color='k',
-         linewidth=1)
+if france_borders:
+    sf = shapefile.Reader("TM-WORLD-BORDERS/TM_WORLD_BORDERS-0.3.sph")
+    shapes=sf.shapes()
+    france = shapes[64].points
+    france_df = pd.DataFrame(france, columns=['lon', 'lat'])
+    # france_temp = france_df[france_df.lat < 43.35]
+    # france_subset = france_temp[france_S.lon < 2.95]
+    france_subset = france_df
+    plt.plot(france_subset.lon, france_subset.lat,
+             color='k',
+             linewidth=1)
 
 
 # --- ISOLINES FOR ALTI
@@ -473,26 +439,7 @@ plt.contour(isoalti.longitude.data,
 
 # --- POINTS SITES
 
-points = [
-        'cendrosa',
-#        'ponts',
-          'elsplans', 
-#          'irta-corn',
-          'lleida', 
-#          'zaragoza',
-#          'puig formigosa', 
-#          'tossal_baltasana', 
-#          'tossal_gros', 
-          'coll_lilla',
-          'serra_tallat',
-          'torredembarra',
-#          'tossal_torretes', 
-#       'moncayo', 'tres_mojones', 
-#          'guara', 'caro', 'montserrat', 'joar',
-#          'V1', 'WL', 'C6',
-          ]
-
-sites = {key:gv.whole[key] for key in points}
+sites = {key:gv.whole[key] for key in sites_to_plot}
 
 for site in sites:
     if add_smc_obs and site in ['elsplans', 'cendrosa', 'V1', 'WL', 'C6',]:
@@ -505,14 +452,14 @@ for site in sites:
                     )
     # print site name on fig:
     try:
-        sitename = sites[site]['acronym']  # 'acronym', 'longname'
+        sitename = sites[site]['longname']  # 'acronym', 'longname'
     except KeyError:
         sitename = site
         
     plt.text(sites[site]['lon']+0.01,
              sites[site]['lat']+0.01, 
              sitename, 
-             fontsize=12)
+             fontsize=14)
 
 # --- AREAS FOR MARINADA STUDY
 if marinada_areas:
@@ -539,7 +486,6 @@ if marinada_areas:
     #             fontstyle='italic')
 
 
-
 # --- FIGURE OPTIONS and ZOOM
     
 if len(varNd.shape) == 2:
@@ -548,6 +494,8 @@ if len(varNd.shape) == 2:
 elif len(varNd.shape) == 3:
     plot_title = '{0} - {1} for simu {2} at {3}m'.format(
         wanted_date, var_name, model, var2d.level.round())
+    
+plot_title = f'{var_name} at {var2d.level.round()}m'
 
 plt.title(plot_title)
 plt.xlabel('longitude', fontsize=12)
@@ -555,6 +503,8 @@ plt.ylabel('latitude', fontsize=12)
 
 plt.ylim(lat_range)
 plt.xlim(lon_range)
+
+plt.subplots_adjust(left=0.1, right=1, top=0.90, bottom=0.1)
 
 if save_plot:
     tools.save_figure(plot_title, save_folder)

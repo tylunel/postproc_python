@@ -21,10 +21,10 @@ import os
 model = 'irrswi1_d1'
 domain_nb = 1
 
-ilevel = 53   #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
+ilevel = 3  #0 is Halo, 1:2m, 2:6.1m, 3:10.5m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070, 66:2930
 
 # Datetime
-wanted_date = '20210716-2300'
+wanted_date = '20210722-1200'
 
 speed_plane = 'horiz'  # 'horiz': horizontal normal wind, 'verti' for W
 
@@ -33,13 +33,20 @@ if speed_plane == 'verti':
     vmin_cbar = -vmax_cbar
     cmap_name = 'seismic'
 elif speed_plane == 'horiz':
-    vmax_cbar = 30
+    vmax_cbar = 15
     vmin_cbar = 0
     cmap_name = 'BuPu'
 
-zoom_on = None  #None for no zoom, 'urgell', 'liaise'
+zoom_on = 'urgell-paper'  #None for no zoom, 'urgell', 'liaise'
 
-add_smc_obs = False
+add_smc_obs = True
+
+save_plot = True
+save_folder = f'./figures/winds/{model}/{speed_plane}/{ilevel}/zoom_{zoom_on}/'
+
+barb_size_option = 'standard'  # 'weak_winds' or 'standard'
+isoalti_list = [600]
+###########################################
 
 if add_smc_obs:
     alpha = 0.4
@@ -49,13 +56,6 @@ if add_smc_obs:
         barb_length_coeff = 1.1
 else:
     alpha = 0.9
-
-save_plot = True
-save_folder = f'./figures/winds/{model}/{speed_plane}/{ilevel}/zoom_{zoom_on}/'
-
-barb_size_option = 'standard'  # 'weak_winds' or 'standard'
-
-###########################################
 
 if add_smc_obs and ilevel > 6:
     raise ValueError(f"""Height of model level and of observation stations
@@ -68,6 +68,7 @@ barb_size_description = gv.barb_size_description
 
 prop = gv.zoom_domain_prop[zoom_on]
 skip_barbs = prop['skip_barbs']
+skip_barbs = 2
 barb_length = prop['barb_length']
 lat_range = prop['lat_range']
 lon_range = prop['lon_range']
@@ -137,7 +138,8 @@ plt.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs],
           alpha=alpha,
           )
 plt.annotate(barb_size_description[barb_size_option],
-             xy=(0.1, 0.02),
+             fontsize=9,
+             xy=(0.1, 0.015),
              xycoords='subfigure fraction'
              )
 
@@ -192,6 +194,19 @@ france_SW = france_S[france_S.lon < 2.95]
 plt.plot(france_SW.lon, france_SW.lat,
          color='k',
          linewidth=1)
+
+
+# --- ISOLINES FOR ALTI
+# contour line of isoaltitude
+isoalti = ds1['ZS']
+plt.contour(isoalti.longitude.data, 
+            isoalti.latitude.data, 
+            isoalti,
+            levels=isoalti_list,   #+1 -> number of contour to plot 
+            linestyles=':',
+            linewidths=1.,
+            colors='k',
+            )
 
 #%% POINTS SITES
 
@@ -265,7 +280,7 @@ if add_smc_obs:
     # --- with global SMC data ---
     datafolder = gv.global_data_liaise + '/SMC/ALL_stations_july/'
     for filename in os.listdir(datafolder):
-#        filename = 'C6.nc'
+        # filename = 'C6.nc'
         file_path = os.path.join(datafolder, filename)
         if os.path.isfile(file_path):
             try:
@@ -279,28 +294,39 @@ if add_smc_obs:
                 # keep the data closest to wanted datetime
                 obs_t = obs.where(obs['time_dist'] == obs['time_dist'].min(), 
                                   drop=True).squeeze()
-                obs_t['UT'], obs_t['VT'] = tools.calc_u_v(obs_t['VV10'], obs_t['DV10'])
-            except (FileNotFoundError, ValueError):
-                continue
+                # get height of wind measurement
+                wind_height = int((obs_t['obs_wind_height'].data))
+                obs_t['UT'], obs_t['VT'] = tools.calc_u_v(
+                    obs_t[f'VV{wind_height}'], obs_t[f'DV{wind_height}'])
             
-        # plot station
-        print(filename)
-        try:
-            # Create the station object and set the location of it
-            location = StationPlot(ax, obs['lon'], obs['lat'])
-            # plot the wind
-            location.plot_barb(
-                    obs_t['UT'].data, obs_t['VT'].data,
-                   pivot='tip',  # 'tip' or 'middle'
-                   length=barb_length*barb_length_coeff,     #length of barbs
-                   sizes={'emptybarb':0.1},
-                   barb_increments=barb_size_increments[barb_size_option]
-                   )
-            # plot a scalar variable in the circle
-#            plt.scatter(obs['lon'], obs['lat'])
-        except ValueError:
-            print(f"Data not found for {obs['station_name']}")
-            continue
+                # --- plot station data ---
+                if (lon_range[0] < obs['lon'] < lon_range[1] and \
+                    lat_range[0] < obs['lat'] < lat_range[1]):
+                    
+                    # Create the station object and set the location of it
+                    location = StationPlot(ax, obs['lon'], obs['lat'])
+                    # plot the wind
+                    location.plot_barb(
+                            obs_t['UT'].data, obs_t['VT'].data,
+                           pivot='tip',  # 'tip' or 'middle'
+                           length=barb_length*barb_length_coeff,     #length of barbs
+                           sizes={'emptybarb':0.1},
+                           barb_increments=barb_size_increments[barb_size_option]
+                           )
+                    
+                    if wind_height != 10:
+                        ax.text(obs['lon']+0.008, obs['lat']-0.016, 
+                                 wind_height, 
+                                 fontsize=7)
+                    print(f'{filename} plotted')
+                    
+            except (FileNotFoundError, ValueError, IndexError, TypeError) as e:
+                print(f"Error for {obs['station_name']}:")
+                if hasattr(e, 'message'):
+                    print(e.message)
+                else:
+                    print(e)
+                continue
                 
                 
 
@@ -313,14 +339,12 @@ if speed_plane == 'verti':
 plt.xlabel('longitude')
 plt.ylabel('latitude')
         
-plot_title = '{4} wind at {0}m on {1} for simu {2} zoomed on {3}'.format(
+
+plot_title = '{0}m wind - {1} - {2}'.format(
         np.round(level_agl, decimals=1), 
         pd.to_datetime(ws_layer.time.values).strftime('%Y-%m-%dT%H%M'),
-        model,
-        zoom_on,
-        speed_plane)
+        model)
 plt.title(plot_title)
-
 
 if zoom_on is not None:
     # plt.ylim([ws_layer.latitude.min(), ws_layer.latitude.max()])
@@ -329,5 +353,11 @@ if zoom_on is not None:
     plt.ylim(lat_range)
     plt.xlim(lon_range)
 
+save_title = '{4} wind at {0}m on {1} for simu {2} zoomed on {3}'.format(
+        np.round(level_agl, decimals=1), 
+        pd.to_datetime(ws_layer.time.values).strftime('%Y-%m-%dT%H%M'),
+        model,
+        zoom_on,
+        speed_plane)
 if save_plot:
-    tools.save_figure(plot_title, save_folder)
+    tools.save_figure(save_title, save_folder)

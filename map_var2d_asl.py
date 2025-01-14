@@ -17,11 +17,11 @@ import os
 ###############################################
 model = 'irr_d1'
 
-wanted_date = '20210716-1200'
+wanted_date = '20210721-1200'
 
 color_map = 'jet'    # BuPu, coolwarm, viridis, RdYlGn, jet
 
-var_name = 'THT'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
+var_name = 'PRES'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
 vmin=None  # None if unknown
 vmax=None
 
@@ -35,53 +35,25 @@ if alti_type == 'asl':  # needs costly interpolation
 
 zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
 
-save_plot = True
+save_file_asl = True
+save_plot = False
 save_folder = f'./figures/scalar_maps/{model}/{alti_type}/{var_name}/'
 
 ##############################################
 
-domain_nb = int(model[-1])
+prop = gv.zoom_domain_prop[zoom_on]
+skip_barbs = prop['skip_barbs']
+barb_length = prop['barb_length']
+lat_range = prop['lat_range']
+lon_range = prop['lon_range']
+figsize = prop['figsize']
 
-if zoom_on == 'liaise':
-    skip_barbs = 2 # 1/skip_barbs will be printed
-    barb_length = 5.5
-    lat_range = [41.45, 41.8]
-    lon_range = [0.7, 1.2]
-    figsize=(9,7)
-elif zoom_on == 'urgell':
-    skip_barbs = 2 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [41.1, 42.1]
-    lon_range = [0.2, 1.7]
-    figsize=(11,9)
-elif zoom_on == 'urgell-paper':
-    skip_barbs = 6 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [41.37, 41.92]
-    lon_range = [0.6, 1.4]
-    figsize=(9,7)
-elif zoom_on == 'd2':
-    skip_barbs = 3 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [40.8106, 42.4328]
-    lon_range = [-0.6666, 1.9364]
-    figsize=(11,9)
-elif zoom_on == None:
-    skip_barbs = 8 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    if domain_nb == 1:
-        figsize=(13,7)
-    elif domain_nb == 2:
-        figsize=(10,7)
 
-#if domain_nb == 1:
-filename = tools.get_simu_filename(model, wanted_date)
-#else:
-#    filename = tools.get_simu_filename_old(model, wanted_date)
+filename = tools.get_simu_filepath(model, wanted_date)
 
 # load dataset, default datetime okay as pgd vars are all the same along time
 ds = xr.open_dataset(filename)
-
+ds = tools.subset_ds(ds, zoom_on=zoom_on)
 #ds = ds[['PRES', 'ZS']]
 
 #%% DATA SELECTION and ZOOM
@@ -100,24 +72,25 @@ elif len(varNd.shape) == 3:
         # filter the outliers
         #var2d = var2d.where(var2d <= vmax)
     elif alti_type == 'asl':
-        new_var_name = '{0}_{1}m'.format(var_name, h_alti)
+        new_var_name = '{0}_{1}m_asl'.format(var_name, h_alti)
         nc_filename_out = filename + '_' + new_var_name
         
         if os.path.exists(nc_filename_out):    
             var2d = xr.open_dataset(nc_filename_out)[new_var_name]
         else:
-            print("Interpolation and creation of file: ", nc_filename_out)
+            print("Interpolation at altitude (asl) ", h_alti)
             var2darray = tools.interp_iso_asl(h_alti, ds, var_name)
             
-            # Convert from numpy array to xr.Dataarray
-            ds = ds.rename({'T2M_TEB': new_var_name})
-            ds[new_var_name].data = var2darray
-            var2d = ds[new_var_name].assign_attrs({'long_name': new_var_name,
-                                                   'comment': new_var_name})
+            var2d = var2darray.rename(new_var_name).assign_attrs(
+                {'long_name': new_var_name, 'comment': new_var_name})
+
             var2d = var2d.squeeze()
-            # Save new field as netCDF to load it faster next time
-            nc_filename_out = filename + '_' + new_var_name
-            var2d.to_netcdf(nc_filename_out)
+            
+            if save_file_asl:
+                print("Creation of file: ", nc_filename_out)
+                # Save new field as netCDF to load it faster next time
+                nc_filename_out = filename + '_' + new_var_name
+                var2d.to_netcdf(nc_filename_out)
         
     
 
@@ -138,6 +111,8 @@ cbar.set_label(var2d.long_name)
 #cbar.set_clim(vmin, vmax)
 
 #%% IRRIGATED, SEA and COUNTRIES BORDERS
+
+domain_nb = int(model[-1])
 
 if domain_nb == 2:
     pgd = xr.open_dataset(
@@ -190,9 +165,11 @@ plt.plot(france_SW.lon, france_SW.lat,
 
 #%% POINTS SITES
 
-points = ['cendrosa', 'elsplans', 'puig formigosa', 'tossal baltasana', 
-          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
-          'guara', 'caro', 'montserrat', 'joar',]
+points = ['cendrosa', 'elsplans', 'zaragoza', 'lleida',
+          # 'puig_formigosa', 'tossal_baltasana', 
+          # 'tossal_torretes', 'moncayo', 'tres_mojones', 
+          # 'guara', 'caro', 'montserrat', 'joar',
+          ]
 sites = {key:gv.whole[key] for key in points}
 
 for site in sites:
