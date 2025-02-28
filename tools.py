@@ -16,11 +16,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import xarray as xr
 # from metpy.units import units
-#import metpy.calc as mcalc
+# import metpy.calc as mcalc
+# import metpy.constants as constants
 import re
 import global_variables as gv
 #from datetime import datetime as dt
-from shapely.geometry import Point
+# from shapely.geometry import Point
 #from difflib import SequenceMatcher
 import warnings
 import epygram
@@ -376,10 +377,11 @@ def get_simu_filepath_old(model, date='20210722-1200',
 
 
 def get_simu_filepath(
-        model, wanted_date='20210722-1200', 
+        model, wanted_date, 
         output_type='backup',  # backup, output or diachronic (=000)
         global_simu_folder=gv.global_simu_folder,
         verbose=False,
+        error_processing='error',
         ):
     """
     Returns the whole string for filename and path. 
@@ -395,16 +397,26 @@ def get_simu_filepath(
         filename: str, full path and filename
     """
     pd_date = pd.Timestamp(wanted_date)
-    seg_nb = str(pd_date.day)
     
-    name_rules = gv.filename_simu_name_rules[model][output_type]
+    if model in gv.simu_folders.keys():
+        local_simu_folder = gv.simu_folders[model]
+    else:
+        local_simu_folder = model
+    
+    if model in gv.filename_simu_name_rules.keys():
+        name_rules = gv.filename_simu_name_rules[model][output_type]
+    else:  # default values
+        name_rules = gv.filename_simu_name_rules['default'][output_type]
     
     # Suffixes
     out_suffix = name_rules['out_suffix']
     file_suffix = name_rules['file_suffix']
     # SEG number
-    if name_rules['seg_nb'] == '01':
+    if name_rules['seg_nb'] == 'day':
+        seg_nb = str(pd_date.day)
+    else:
         seg_nb = name_rules['seg_nb']
+    
     # Output number
     if name_rules['output_nb'] == 'HH':
         output_nb = pd_date.strftime('%H')
@@ -412,7 +424,29 @@ def get_simu_filepath(
         output_freq = 10
         minute_total_day = pd_date.minute + pd_date.hour*60
         output_nb = str(int(minute_total_day/output_freq))
+    elif name_rules['output_nb'] == 'H-2.5x2':
+        output_freq = 30
+        start_offset = 150    # in min
+        minute_total_day = pd_date.minute + pd_date.hour*60
+        minute_total_simu = minute_total_day - start_offset
+        output_nb = str(int(minute_total_simu/output_freq))
+    elif name_rules['output_nb'] == 'H-3x2':
+        output_freq = 30
+        start_offset = 180    # in min
+        minute_total_day = pd_date.minute + pd_date.hour*60
+        minute_total_simu = minute_total_day - start_offset
+        output_nb = str(int(minute_total_simu/output_freq))
+    elif name_rules['output_nb'] == 'H+12':
+        output_freq = 60
+        start_offset = -720    # in min
+        minute_total_day = pd_date.minute + pd_date.hour*60
+        minute_total_simu = minute_total_day - start_offset
+        output_nb = str(int(minute_total_simu/output_freq))
+    else:
+        output_nb = name_rules['output_nb']
     
+    if int(output_nb) < 0:
+        raise KeyError('No corresponding simu files (output number not existing)')
     # Midnight case
     if output_nb == "00":
         output_nb = "24"
@@ -429,11 +463,12 @@ def get_simu_filepath(
             file_suffix=file_suffix,
             out_suffix=out_suffix)
     
-    filepath = global_simu_folder + gv.simu_folders[model] + filename
+    filepath = global_simu_folder + local_simu_folder + filename
     
     #check if nomenclature of filename is ok
     if output_type in ['backup', 'output']:
-        check_filename_datetime(filepath, wanted_date)
+        check_filename_datetime(filepath, wanted_date, 
+                                error_processing=error_processing)
     
     if verbose:
         print(filepath)
@@ -680,7 +715,7 @@ def open_ukmo_mast(datafolder, filename, create_netcdf=True, remove_modi=True,
     #removes flags corresponding to each measure
     os.system('''
     cd {0}
-    sed -i -e 's/|//g' -e 's/D//g' -e 's/X//g' -e 's/m//g' {2}
+    sed -i -e 's/|//g' -e 's/D//g' -e 's/X//g' -e 's/m//g' {1}
     sed -i 's/ \+ /\t/g' {2}
     '''.format(datafolder, filename, filename_modi))
     
@@ -1018,7 +1053,7 @@ def extract_profile_lidar(wanted_date, site='planier',
 
     """
     
-    if site not in ['planier']:
+    if site not in ['planier', 'salin-giraud']:
         print('No lidar data available for this site')
         return None
     
@@ -1053,6 +1088,8 @@ def extract_profile_lidar(wanted_date, site='planier',
     # add 3d TKE:
     lidar_data_dict['tke'] = lidar_data_dict['tke_along'] + \
         lidar_data_dict['tke_cross'] + lidar_data_dict['tke_verti']
+    lidar_data_dict['tke_horiz'] = lidar_data_dict['tke_along'] + \
+        lidar_data_dict['tke_cross']
     
     return lidar_data_dict
 
@@ -1271,22 +1308,9 @@ def compute_errors(y_ref, y_to_eval, x_ref=None, x_to_eval=None,
 
 def moving_average(arr, window_size = 3):
     """computes a moving average on the array given"""
-    i = 0
-    moving_averages = []
-    # if windows_size in odd
-    window_side = int((window_size - 1)/2)
-    for i in range(len(arr)):
-        if i < window_side or i >= (len(arr) - window_side):
-            moving_averages.append(arr[i])
-#        elif i >= len(arr) - window_side:
-        else:
-            # Calculate the average of current window
-            window_average = round(np.sum(arr[i-window_side:i+1+window_side]) / window_size, 2)
-            # append
-            moving_averages.append(window_average)
-        i += 1
-      
-    return np.array(moving_averages)
+    ret = np.cumsum(arr, dtype=float)
+    ret[window_size:] = ret[window_size:] - ret[:-window_size]
+    return ret[window_size - 1:] / window_size
 
 def nearest(items, pivot):
     """ 
@@ -1588,23 +1612,30 @@ def get_indices_of_lat_lon(ds, lat, lon, verbose=True):
     opti_reached = False
     n = 0  #count of iteration
     while opti_reached is False:
-        if (np.abs(lon_dat[index_lat, index_lon] - lon) > \
-            np.abs(lon_dat[index_lat, index_lon+1] - lon) ):
-            index_lon = index_lon+1
-        elif (np.abs(lon_dat[index_lat, index_lon] - lon) > \
-            np.abs(lon_dat[index_lat, index_lon-1] - lon) ):
-            index_lon = index_lon-1
-        elif (np.abs(lat_dat[index_lat, index_lon] - lat) > \
-            np.abs(lat_dat[index_lat+1, index_lon] - lat) ):
-            index_lat = index_lat+1
-        elif (np.abs(lat_dat[index_lat, index_lon] - lat) > \
-            np.abs(lat_dat[index_lat-1, index_lon] - lat) ):
-            index_lat = index_lat-1
-        elif n > 20:
-            raise ValueError("""loop does not converge, 
-                             check manually for indices.""")
-        else:
-            opti_reached = True
+        try:
+            if (np.abs(lon_dat[index_lat, index_lon] - lon) > \
+                np.abs(lon_dat[index_lat, index_lon+1] - lon) ):
+                index_lon = index_lon+1
+            elif (np.abs(lon_dat[index_lat, index_lon] - lon) > \
+                np.abs(lon_dat[index_lat, index_lon-1] - lon) ):
+                index_lon = index_lon-1
+            elif (np.abs(lat_dat[index_lat, index_lon] - lat) > \
+                np.abs(lat_dat[index_lat+1, index_lon] - lat) ):
+                index_lat = index_lat+1
+            elif (np.abs(lat_dat[index_lat, index_lon] - lat) > \
+                np.abs(lat_dat[index_lat-1, index_lon] - lat) ):
+                index_lat = index_lat-1
+            elif n > 20:
+                raise ValueError("""loop does not converge, 
+                                 check manually for indices.""")
+            else:
+                opti_reached = True
+        except IndexError:
+            print("""Indices not precise because IndexError
+                  (probably too close to boundaries of domain)""")
+            print("For lat={0}, lon={1} : index_lat={2}, index_lon={3}".format(
+                lat, lon, index_lat, index_lon))
+            return index_lat, index_lon
     if verbose:
         print("For lat={0}, lon={1} : index_lat={2}, index_lon={3}".format(
             lat, lon, index_lat, index_lon))
@@ -1687,7 +1718,7 @@ def get_surface_type(site, domain_nb, model='irr',
                                  '1.11_std_d1d2_21-24/LIAIS.1.SEG22.012.nc')
     
     # get indices of sites in ds
-    index_lat, index_lon = indices_of_lat_lon(ds, 
+    index_lat, index_lon = get_indices_of_lat_lon(ds, 
                                               gv.sites[site]['lat'], 
                                               gv.sites[site]['lon'])
     
@@ -1838,12 +1869,12 @@ def get_line_coords(data,
     """
     # get ni, nj values (distance to borders of first domain in m)
     # for Start site
-    index_lat_start, index_lon_start = indices_of_lat_lon(data, *start_pt, 
-                                                          verbose=verbose)
+    index_lat_start, index_lon_start = get_indices_of_lat_lon(data, *start_pt, 
+                                                              verbose=verbose)
     ni_start = data.ni[index_lon_start].values     # ni corresponds to longitude
     nj_start = data.nj[index_lat_start].values     # nj corresponds to latitude
     # for End site
-    index_lat_end, index_lon_end = indices_of_lat_lon(data, *end_pt,
+    index_lat_end, index_lon_end = get_indices_of_lat_lon(data, *end_pt,
                                                       verbose=verbose)
     ni_end = data.ni[index_lon_end].values     # ni corresponds to longitude
     nj_end = data.nj[index_lat_end].values     # nj corresponds to latitude
@@ -1916,10 +1947,10 @@ def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[],
         #     lat_range = lat_range
         #     lon_range = lon_range
         
-    nj_min, ni_min = indices_of_lat_lon(ds, 
+    nj_min, ni_min = get_indices_of_lat_lon(ds, 
                                         np.min(lat_range), np.min(lon_range),
                                         verbose=False)
-    nj_max, ni_max = indices_of_lat_lon(ds, 
+    nj_max, ni_max = get_indices_of_lat_lon(ds, 
                                         np.max(lat_range), np.max(lon_range),
                                         verbose=False)
     
@@ -1940,6 +1971,7 @@ def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[],
                         nj=np.arange(nj_min, nj_max))
     
     return ds_subset.squeeze()
+
 
 def center_uvw(data, data_type='wind', budget_type='UU', varname_bu='PRES'):
     """
@@ -1997,6 +2029,100 @@ def center_uvw(data, data_type='wind', budget_type='UU', varname_bu='PRES'):
     data_new = data_new.squeeze()
     
     return data_new
+
+
+def flux_pt_to_mass_pt(ds, only_basic_vars=True, 
+                       basic_vars = [
+                           'UT', 'VT', 'WT',
+                           'UMME', 'VMME', 'WMME',
+                           'latitude_f', 'longitude_f',], 
+                       verbose=True):
+    """
+    Change flux point coordinates of dataset into mass point coordinates.
+    Done through interpolation between flux points.
+    Generalization of center_uvw() function.
+    
+    parameter:
+        ds: xarray.dataset
+    """
+    
+    for var in list(ds.keys()):
+        if only_basic_vars and var not in basic_vars:
+            continue
+        
+        # NOT WORKING
+#        for coord in ['nj_v', 'nj_u', 'ni_v', 'ni_u', 'level_w']:
+#            new_coord = coord[:-2]
+#            ds[var] = ds[var].interp(coords={coord:ds[new_coord].values}).rename(
+#                {coord: new_coord})
+#            if verbose:
+#                print(f"{var}: coordinates '{coord}' changed to '{new_coord}'")
+            
+        # change coordinates for 'nj_v' flux points
+        if 'nj_v' in list(ds[var].coords):
+            ds[var] = ds[var].interp(nj_v=ds.nj.values).rename(
+                {'nj_v': 'nj'})
+            if verbose:
+                print(f"{var}: coordinates 'nj_v' changed to 'nj'")
+        
+        # change coordinates for 'ni_v' flux points
+        if 'ni_v' in list(ds[var].coords):
+            ds[var] = ds[var].interp(ni_v=ds.ni.values).rename(
+                {'ni_v': 'ni'})
+            if verbose:
+                print(f"{var}: coordinates 'ni_v' changed to 'ni'")
+        
+        # change coordinates for 'ni_u' flux points
+        if 'ni_u' in list(ds[var].coords):
+            ds[var] = ds[var].interp(ni_u=ds.ni.values).rename(
+                {'ni_u': 'ni'})
+            if verbose:
+                print(f"{var}: coordinates 'ni_u' changed to 'ni'")
+        
+        # change coordinates for 'nj_u' flux points
+        if 'nj_u' in list(ds[var].coords):
+            ds[var] = ds[var].interp(nj_u=ds.nj.values).rename(
+                {'nj_u': 'nj'})
+            if verbose:
+                print(f"{var}: coordinates 'nj_u' changed to 'nj'")
+        
+        # change coordinates for '_w' flux points
+        if 'level_w' in list(ds[var].coords):
+            ds[var] = ds[var].interp(level_w=ds.level.values).rename(
+                {'level_w': 'level'})
+            if verbose:
+                print(f"{var}: coordinate 'level_w' changed to 'level'")
+    
+        # ALT coordinate badly encoded ('level_w not defnied as coords)
+        if var == 'ALT':
+            ds[var] = ds[var].interp(level_w=ds.level.values).rename(
+                {'level_w': 'level'})
+            if verbose:
+                print(f"{var}: coordinate 'level_w' changed to 'level'")
+    
+    # remove flux coordinates
+    try:
+        ds_new = ds.drop(['latitude_u', 'longitude_u', 'ni_u', 'nj_u',
+                      'latitude_v', 'longitude_v', 'ni_v', 'nj_v',
+                      'level_w',
+                      'latitude_f', 'longitude_f',
+                      ])
+    except ValueError:
+        try:
+            ds_new = ds.drop(['latitude_u', 'longitude_u', 'ni_u', 'nj_u',
+                          'latitude_v', 'longitude_v', 'ni_v', 'nj_v',
+                          'level_w',
+                          ])
+        except:
+            if verbose:
+                print("no old coordinate dropped - error during ds.drop()")
+            ds_new = ds
+    except:
+        if verbose:
+            print("no old coordinate dropped - error during ds.drop()")
+        ds_new = ds
+
+    return ds_new
 
 
 def interp_iso_asl(alti_asl, ds, varname, verbose=True):
@@ -2127,80 +2253,6 @@ def interp_iso_agl(alti_agl, ds_asl, varname, verbose=True):
                 res_layer[j,i] = f(asl_grid[j,i])
     
     return res_layer
-
-def flux_pt_to_mass_pt(ds, verbose=True):
-    """
-    Change flux point coordinates of dataset into mass point coordinates.
-    Done through interpolation between flux points.
-    Generalization of center_uvw() function.
-    
-    parameter:
-        ds: xarray.dataset
-    """
-    for var in list(ds.keys()):
-        
-        # NOT WORKING
-#        for coord in ['nj_v', 'nj_u', 'ni_v', 'ni_u', 'level_w']:
-#            new_coord = coord[:-2]
-#            ds[var] = ds[var].interp(coords={coord:ds[new_coord].values}).rename(
-#                {coord: new_coord})
-#            if verbose:
-#                print(f"{var}: coordinates '{coord}' changed to '{new_coord}'")
-            
-        # change coordinates for 'nj_v' flux points
-        if 'nj_v' in list(ds[var].coords):
-            ds[var] = ds[var].interp(nj_v=ds.nj.values).rename(
-                {'nj_v': 'nj'})
-            if verbose:
-                print(f"{var}: coordinates 'nj_v' changed to 'nj'")
-        
-        # change coordinates for 'ni_v' flux points
-        if 'ni_v' in list(ds[var].coords):
-            ds[var] = ds[var].interp(ni_v=ds.ni.values).rename(
-                {'ni_v': 'ni'})
-            if verbose:
-                print(f"{var}: coordinates 'ni_v' changed to 'ni'")
-        
-        # change coordinates for 'ni_u' flux points
-        if 'ni_u' in list(ds[var].coords):
-            ds[var] = ds[var].interp(ni_u=ds.ni.values).rename(
-                {'ni_u': 'ni'})
-            if verbose:
-                print(f"{var}: coordinates 'ni_u' changed to 'ni'")
-        
-        # change coordinates for 'nj_u' flux points
-        if 'nj_u' in list(ds[var].coords):
-            ds[var] = ds[var].interp(nj_u=ds.nj.values).rename(
-                {'nj_u': 'nj'})
-            if verbose:
-                print(f"{var}: coordinates 'nj_u' changed to 'nj'")
-        
-        # change coordinates for '_w' flux points
-        if 'level_w' in list(ds[var].coords):
-            ds[var] = ds[var].interp(level_w=ds.level.values).rename(
-                {'level_w': 'level'})
-            if verbose:
-                print(f"{var}: coordinate 'level_w' changed to 'level'")
-    
-        # ALT coordinate badly encoded ('level_w not defnied as coords)
-        if var == 'ALT':
-            ds[var] = ds[var].interp(level_w=ds.level.values).rename(
-                {'level_w': 'level'})
-            if verbose:
-                print(f"{var}: coordinate 'level_w' changed to 'level'")
-    
-    # remove flux coordinates
-    try:
-        ds_new = ds.drop(['latitude_u', 'longitude_u', 'ni_u', 'nj_u',
-                      'latitude_v', 'longitude_v', 'ni_v', 'nj_v',
-                      'level_w'
-                      ])
-    except:
-        if verbose:
-            print("no old coordinate dropped - error during ds.drop()")
-        ds_new = ds
-
-    return ds_new
 
 
 def agl_to_asl_coords(ds_agl, alti_asl_arr=np.arange(25,1000,25)):
@@ -2375,6 +2427,9 @@ def save_figure(plot_title, save_folder='./figures/', verbose=True):
     """
     Save the plot
     """
+    if save_folder[-1] != '/':
+        save_folder = save_folder + '/'
+    
     #split the save_folder name at each /
     for i in range(2, len(save_folder.split('/'))):
         # recreate the path step by step and check its existence at each step.
@@ -2389,7 +2444,7 @@ def save_figure(plot_title, save_folder='./figures/', verbose=True):
     filename = filename.replace('/', 'over')
     plt.savefig(save_folder + '/' + str(filename), dpi=300)
     if verbose:
-        print('figure {0} saved in {1}'.format(plot_title, save_folder))
+        print('figure {0} saved in {1}'.format(filename, save_folder))
         
 
 #%% Diagnostics
@@ -2708,6 +2763,22 @@ def calc_u_v(ws, wd):
 
 
 def calc_thetav(theta, spec_humidity):
+    """
+    Function computing the virtual potential temperature.
+
+    Parameters
+    ----------
+    theta :  float, array, 
+        potential temperature [K]
+    spec_humidity : float, array
+        specific humidity [kg/kg]
+
+    Returns
+    -------
+    float, array, ..
+        virtual potential temperature
+
+    """
     return theta + 0.61*spec_humidity*theta
 
 
@@ -2819,6 +2890,36 @@ def height_to_pressure_std(height, p0=101325):
     Rd = R / Md  # dry_air_gas_constant
     
     return p0 * (1 - (gamma / t0) * height) ** (g / (Rd * gamma))
+
+
+def pressure_to_height_std(pressure, p0=101325):
+    r"""Convert pressure data to height using the U.S. standard atmosphere [NOAA1976]_.
+
+    The implementation uses the formula outlined in [Hobbs1977]_ pg.60-61.
+
+    Parameters
+    ----------
+    pressure:
+        Atmospheric pressure in Pa
+
+    Returns
+    -------
+        Corresponding height value(s) in m
+
+    Notes
+    -----
+    .. math:: Z = \frac{T_0}{\Gamma}[1-\frac{p}{p_0}^\frac{R\Gamma}{g}]
+
+    """
+    t0 = 288  #kelvin
+    gamma = 0.0065  #'K/m'
+    g = 9.81  #m/s-2
+    R = 8.314462618  #'J / mol / K' - molar gas constant
+    Md = 28.96546e-3  # 'kg / mol' - dry_air_molecular_weight
+    Rd = R / Md  # dry_air_gas_constant
+    
+    return (t0 / gamma) * (1 - (pressure / p0)**(Rd * gamma / g))
+
 
 
 def exner_function(pressure, reference_pressure = 100000):
@@ -3347,20 +3448,17 @@ def diag_lowleveljet_height(ds, top_layer_agl=1000, wind_var='WS',
     It is considered to be the height above at which the maximum speed of the jet
     is reduced by 5%.
     
-    ds must contain ZS variable (ds['ZS'])
-    
     Parameters:
-        - new_height_var: nariable name that will be added in the output data
+        ds: xr.Dataset, 
+            coming from MesoNH (must contain ZS variable (ds['ZS']))
+        
+        new_height_var: string,
+            nariable name that will be added in the output data
     
 
     """
     ds[new_height_var] = ds['ZS']*0
     
-#    length = len(ds.ni)
-    
-#    dict_coords = {}
-#    for i, co in enumerate(coords):
-#        dict_coords[co] = data['ZS'].shape[i]
     coords = ds['ZS'].dims
     coords_value = {}
     for index, x in np.ndenumerate(ds['ZS']):
@@ -3370,15 +3468,11 @@ def diag_lowleveljet_height(ds, top_layer_agl=1000, wind_var='WS',
             coords_value[coord] = index[i]
         
         column = ds.isel(coords_value)
-        
-    # OLD CODE
-#    for i, ni in enumerate(ds.ni):
-#        print(f'i = {i}/{length}')
-#        for j, nj in enumerate(ds.nj):
-#        column = ds.isel(nj=j, ni=i)
     
-        column['dWSdz'] = xr.DataArray(coords={'level':ds.level}, data=np.gradient(column[wind_var]))
-        column['d2WSd2z'] = xr.DataArray(coords={'level':ds.level}, data=np.gradient(column['dWSdz']))
+        column['dWSdz'] = xr.DataArray(coords={'level': ds.level}, 
+                                       data=np.gradient(column[wind_var]))
+        column['d2WSd2z'] = xr.DataArray(coords={'level': ds.level}, 
+                                         data=np.gradient(column['dWSdz']))
         
         column = column.where(column.level<top_layer_agl, drop=True)
         
@@ -3413,16 +3507,353 @@ def diag_lowleveljet_height(ds, top_layer_agl=1000, wind_var='WS',
         
     return ds
 
+
+def diag_lowleveljet(wind_speed_profile, 
+                     falloff_abs_threshold=2,
+                     falloff_rel_threshold=0.25,
+                     max_height=220,
+                     max_height_on_local_minima_as_well=True):
+    """
+    Finds the lowest low-level jet in the wind speed profile.
+
+    Parameters:
+    wind_speed_profile: pd.DataFrame 
+        with height as index and wind speed as values.
+        
+    falloff_abs_threshold: float, default is 2 (according to [1, 2])
+    
+    falloff_rel_threshold: float, default is 0.25 (according to [1, 2])
+    
+    max_height: float
+        Maximum height above which no LLJ is search for
+    
+    max_height_on_local_minima_as_well: Bool
+        Apply the maximum height to the search of a minimum value above the LLJ
+        Allows to be more comparable to observations for which no data
+        is available above a certain max height
+
+    Returns:
+    tuple: (height, speed) 
+        height and wind speed of the lowest low-level jet, 
+        or (nam, nan) if no jet is found.
+        
+    refs:
+    [1] Thiébaut M., Vonta L., Benzo C., Guinot F., 
+    Characterization of the offshore wind dynamics for wind energy production 
+    in the Gulf of Lion, Western Mediterranean Sea, 2024
+    [2] P. Baas, F.C. Bosveld, H. Klein Baltink, A.A.M. Holtslag, 
+    A climatology of nocturnal low-level jets at Cabauw, 
+    J. Appl. Meteorol. Climatol. 48 (8) (2009) 1627–1642
+    
+    """
+    # convert ot pd.DataFrame:
+    wind_speed_profile = pd.DataFrame(wind_speed_profile)
+    # keep lowest part
+    # wind_speed_profile = wind_speed_profile[wind_speed_profile.index <= max_height]
+    # Ensure the index is formatted as float
+    wind_speed_profile.index = wind_speed_profile.index.astype(float)
+    # Ensure the DataFrame is sorted by height
+    wind_speed_profile = wind_speed_profile.sort_index()
+    
+    # Convert the wind speed profile to a list of tuples (height, speed)
+    profile_list = list(wind_speed_profile.itertuples(index=True, name=None))
+
+# i += 1  # use to debug
+    # Iterate through the profile to find the lowest low-level jet
+    # if profile_list[0][1] < profile_list[1][1]:  # implicit condition of  [1]
+    for i in range(0, len(profile_list)-1):
+    # for i in range(len(profile_list)-1):
+        height, ws = profile_list[i]
+        # prev_height, prev_speed = profile_list[i - 1]
+        above_height, above_ws = profile_list[i + 1]
+        
+        if height > max_height:
+            return (np.nan, np.nan)
+
+        # Check if the current speed is a local maximum
+        if ws > above_ws:
+            for di in range(1, len(profile_list)-i):
+                above_height, above_ws = profile_list[i + di]
+                
+                if max_height_on_local_minima_as_well & (above_height > max_height):
+                    return (np.nan, np.nan)
+                
+                falloff = ws - above_ws
+                # Check if the speed above is at least 2 m/s less
+                # Check if the falloff is 25% of the jet wind speed value
+                if (falloff > falloff_abs_threshold) & \
+                    (falloff > falloff_rel_threshold * above_ws):
+                    return (height, ws)
+
+    return (np.nan, np.nan)
+
+
+def diag_abl_top(profile, method='Ri_bulk'):
+    """
+    Parameters
+    ----------
+    profile : TYPE
+        DESCRIPTION.
+    method : TYPE, optional
+        DESCRIPTION. The default is 'Ri_bulk'.
+
+    Returns
+    -------
+    abl_top : TYPE
+        DESCRIPTION.
+
+    """
+    if method=='Ri_bulk':
+        return abl_top_from_bulk_ri()
+    
+    
+def abl_top_from_bulk_ri(height, bulk_richardson_number, 
+                         bri_threshold=0.25, interp='linear'):
+    """
+    Calculate atmospheric boundary layer height with the
+    bulk Richardson number method.
+    
+    Adapted from metpy.calc (units removed and interpolation added)
+    
+    Parameters
+    ----------
+    height: 
+        Atmospheric height profile
+            
+    bulk_richardson_number:
+        Atmospheric bulk richardson number profile
+            
+    bri_threshold: float,
+        Threshold to exceed to get boundary layer top. Defaults to 0.25. 
+    
+    Returns
+    -------
+    Boundary layer height
+    
+    Notes
+    -----
+    It is the height where the bulk Richardson number exceeds a given threshold.
+    It is well suited for unstable conditions. See [Stull88, VH96, Sei00, Col14, Guo16]. 
+    
+    """
+    # removal of heights without valid Ri (nan, typically first level)
+    z = height[~np.isnan(bulk_richardson_number)]
+    bulk_richardson_number = bulk_richardson_number[~np.isnan(bulk_richardson_number)]
+
+    if len(np.where(bulk_richardson_number>bri_threshold)[0]) > 0:
+        blh_index = np.where(bulk_richardson_number>bri_threshold)[0][0]
+        
+        if interp is None:
+            blh = z[blh_index]
+        elif interp == 'linear':
+            blh = np.interp(bri_threshold, 
+                      bulk_richardson_number[[blh_index-1, blh_index]],
+                      z[[blh_index-1, blh_index]])
+    else:
+        blh = np.nan
+
+    return blh
+
+
+def abl_top_from_tke(height_profile, tke_profile, 
+                     tke_threshold=0.001, interp='linear'):
+    """
+    Calculate atmospheric boundary layer height 
+    from the turbulent kinetic energy profile
+
+    Parameters
+    ----------
+    height_profile: array-like
+        Atmospheric height profile
+            
+    tke_profile: array-like
+        Atmospheric tke profile
+    
+    tke_threshold: float,
+        Threshold below which turbulence is consider null 
+        (It is rarely actually null in models for stability reasons)
+    
+    Returns
+    -------
+    float: Boundary layer height
+
+    Notes
+    -----          
+    It is the lowest height where the tke is below a given threshold (close to zero)
+    """
+    free_tropo_indices = np.where(tke_profile < tke_threshold)[0]
+    if len(free_tropo_indices) == 0:  # case blh above the profile
+        blh = np.nan
+    else:
+        blh_index = free_tropo_indices[0]
+    
+        if blh_index == 0: # case no tke, even close to the surface
+            blh = np.nan
+        else:
+            if interp is None:
+                blh = height_profile[blh_index]
+            elif interp == 'linear':
+                blh = height_profile[blh_index-1] + \
+                    (height_profile[blh_index] - height_profile[blh_index-1]) * \
+                    (tke_threshold - tke_profile[blh_index-1]) / \
+                    (tke_profile[blh_index]-tke_profile[blh_index-1])
+            
+    # blh = np.clip(blh, 0, 3000)
+        
+    return blh
+
+
+def abl_top_from_potential_temperature(height, potential_temperature):
+    """Calculate atmospheric boundary layer height from the
+    potential temperature gradient
+
+    
+    Parameters
+    ----------
+    height: array-like
+        Atmospheric height profile
+            
+    potential_temperature: array-like
+        Atmospheric potential temperature profile
+    
+    Returns
+    -------
+    float: Boundary layer height
+
+    Notes
+    -----          
+    It is the height where the potential temperature gradient reaches a maximum.
+    See [Stull88, HL06, SD10].
+    
+    """
+    # - with metpy.calc.tools.first_derivative:
+    # dthetadz = first_derivative(potential_temperature, x=height)
+    
+    # - with np.gradient:
+    dthetadz = np.gradient(potential_temperature, height)
+    
+    return height[np.argmax(dthetadz)] 
+
+
+def bulk_richardson_number(height, potential_temperature, u, v, q=None,
+                           b=100, ustar=0, vertical_dim=0):
+    """Calculate the bulk Richardson number.
+    
+    See [VH96], eq. (3):
+    .. math::   Ri = (g/\theta) * \frac{(\Delta z)(\Delta \theta)}
+             {\left(\Delta u)^2 + (\Delta v)^2 + b(u_*)^2}
+    
+    Parameters
+    ----------
+    height: array-like
+        Profile of atmospheric height
+            
+    potential_temperature: array-like 
+        Profile of atmospheric (ideally virtual) potential temperature
+            
+    u: array-like
+        Profile of wind component in the X (East-West) direction
+            
+    v: array-like
+        Profile of wind component in the Y (North-South) direction
+    
+    q: array-like, default is None
+        specific humidity profile
+    
+    b: float, optional
+        Coefficient, defaults to 100 based on [VH96]
+    
+    ustar: float, 
+        Friction velocity, represent contribution of surface friction
+        If =0, the bulk Ri is only representative of convective cases
+        
+    Returns
+    -------
+        Profile of bulk Richardson number
+    """
+    g = 9.80665  # [m/s^2]
+    
+    u[0], v[0] = 0, 0  #it is needed to represent the no-slip condition
+    
+    if q is None:
+        # VIRTUAL potential temperature considered
+        theta_profile = potential_temperature
+    else:
+        # Potential temperature only considered
+        theta_profile = calc_thetav(potential_temperature, q)
+        
+    Dtheta = theta_profile - theta_profile[0]
+    Du = u - u[0]
+    Dv = v - v[0]
+    Dz = height - height[0]
+    
+    ri = (g/theta_profile[0]) * (Dtheta*Dz) / (Du**2 + Dv**2 + b*ustar**2)
+    
+    return ri
+
+def gradient_richardson_number(height, potential_temperature, u, v, 
+                               q=None, pres=None,
+                               b=100, ustar=0,):
+    """Calculate the bulk Richardson number.
+    
+    See [VH96], eq. (3):
+    .. math::   Ri = (g/\theta) * \frac{(\Delta z)(\Delta \theta)}
+             {\left(\Delta u)^2 + (\Delta v)^2 + b(u_*)^2}
+    
+    Parameters
+    ----------
+    height: array-like
+        Profile of atmospheric height corresponding to the coordinates of
+        potential_temperature, u, v
+            
+    potential_temperature: array-like 
+        Profile of atmospheric (ideally virtual) potential temperature
+            
+    u: array-like
+        Profile of wind component in the X (East-West) direction
+            
+    v: array-like
+        Profile of wind component in the Y (North-South) direction
+        
+    Returns
+    -------
+        Profile of gradient Richardson number
+    """
+    g = 9.80665  # [m/s^2]
+    
+    # u[0], v[0] = 0, 0  #it is needed to represent the no-slip condition
+    
+    if q is None:
+        # VIRTUAL potential temperature considered
+        theta_profile = potential_temperature
+    else:
+        # Potential temperature only considered
+        theta_profile = calc_thetav(potential_temperature, q)
+    
+    if pres is None:
+        pres = height_to_pressure_std(height)
+
+    temp_profile = temperature_from_potential_temperature(
+        pres, theta_profile)
+    
+    dthetadz = np.gradient(theta_profile, height)
+    dudz = np.gradient(u, height)
+    dvdz = np.gradient(v, height)    
+    
+    ri_grad = (g/temp_profile[0]) * dthetadz / (dudz**2 + dvdz**2)
+    
+    return ri_grad
+
     
 #%% Deprecated functions
 def indices_of_lat_lon(ds, lat, lon, verbose=True):
     raise NameError("Deprecated function, use get_indices_of_lat_lon() instead")
 
 def line_coords(data, 
-                 start_pt = (41.6925905, 0.9285671), # cendrosa
-                 end_pt = (41.590111, 1.029363), #els plans
-                 nb_indices_exterior=10,
-                 verbose=True):
+                start_pt = (41.6925905, 0.9285671), # cendrosa
+                end_pt = (41.590111, 1.029363), #els plans
+                nb_indices_exterior=10,
+                verbose=True):
     raise NameError("Deprecated function, use get_line_coords() instead")
     
 def psy_ta_rh(tdb, rh, p_atm=101325):

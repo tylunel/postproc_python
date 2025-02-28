@@ -14,75 +14,80 @@ import pandas as pd
 import global_variables as gv
 
 ###############################################
-models = ['irr_d1', 'std_d1']
-folder_res = 'diff_irr_std'
-domain_nb = 1
+models = [
+    '1_planier_0105/02_1km/', 
+    '1_planier_0105/04_1km_COARE/',
+    ]
+folder_res = 'diff_1km-1km_COARE'
 
-wanted_date = '20210729-2300'
+wanted_date = '20230105-2300'
 
 color_map = 'coolwarm'    # jet, seismic, BuPu, coolwarm, viridis, RdYlGn, 
-
-var_name = 'THT'   #LAI_ISBA, ZO_ISBA, PATCHP7, ALBNIR_S, MSLP, TG1_ISBA, RAINF_ISBA, CLDFR
-vmin=-5
-vmax=-vmin
+var_name = 'WS'
 
 # level, only useful if var 3D
 ilevel = 10  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m
 
 zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
 
+# Topo features
+sea_borders = True
+france_borders = False
+sites_to_plot = [
+    'planier',
+    'marseille',
+    ]
+isoalti_list = [200, 400, 600,]
+
+# Winds
 add_winds = True
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
+# Save
 save_plot = True
-save_folder = './figures/scalar_maps/{0}/{1}/'.format(folder_res, var_name)
+save_folder = './figures/scalar_maps/{0}/{1}/{2}/'.format(
+    folder_res, var_name, ilevel)
+
+vmax_dict = {
+    'HU2M_SEA': 0.01,
+    'T2M_SEA': 1,
+    'RI_SEA': 1,
+    'WS': 1,
+    'WSME': 1,
+    'TKET': 0.5,
+    }
+vmax = vmax_dict[var_name]
+vmin = -vmax
 
 ##############################################
 
-if zoom_on == 'liaise':
-    skip_barbs = 2 # 1/skip_barbs will be printed
-    barb_length = 5.5
-    lat_range = [41.45, 41.8]
-    lon_range = [0.7, 1.2]
-    figsize=(9,7)
-elif zoom_on == 'urgell':
-    skip_barbs = 2 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [41.1, 42.1]
-    lon_range = [0.2, 1.7]
-    figsize=(11,9)
-elif zoom_on == 'urgell-paper':
-    skip_barbs = 6 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [41.37, 41.92]
-    lon_range = [0.6, 1.4]
-    figsize=(9,7)
-elif zoom_on == 'd2':
-    skip_barbs = 3 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    lat_range = [40.8106, 42.4328]
-    lon_range = [-0.6666, 1.9364]
-    figsize=(11,9)
-elif zoom_on == None:
-    skip_barbs = 8 # 1/skip_barbs will be printed
-    barb_length = 4.5
-    if domain_nb == 1:
-        figsize=(13,7)
-    elif domain_nb == 2:
-        figsize=(10,7)
+prop = gv.zoom_domain_prop[zoom_on]
+skip_barbs = prop['skip_barbs']
+barb_length = prop['barb_length']
+lat_range = prop['lat_range']
+lon_range = prop['lon_range']
+figsize = prop['figsize']
 
 #%% LOAD DATA
 
 var_layer = {}
 
 for model in models:
-#for var_name in ['T2M_ISBA', 'TEMP']:
-#    model='irr_d2'
-    filename = tools.get_simu_filename(model, wanted_date,
-                                       )
+
+    filename = tools.get_simu_filepath(
+        model, wanted_date, global_simu_folder=gv.global_simu_folder)
     
     # load dataset, default datetime okay as pgd vars are all the same along time
-    ds1 = xr.open_dataset(filename)
+    ds = xr.open_dataset(filename)
+    
+    #%% DIAG
+    ds1 = tools.subset_ds(ds, 
+                          zoom_on=zoom_on,
+                          nb_indices_exterior=5,
+                          )
+    ds1 = tools.flux_pt_to_mass_pt(ds1, only_basic_vars=False)
+    ds1['WS'], ds1['WD'] = tools.calc_ws_wd(ds1['UT'], ds1['VT'])
+    # ds1['WSME'], ds1['WDME'] = tools.calc_ws_wd(ds1['UMME'], ds1['VMME'])
     
     #%% DATA SELECTION and ZOOM
     varNd = ds1[var_name]
@@ -100,41 +105,46 @@ for model in models:
     #var2d = var2d.where(var2d <= vmax)
 
     var_layer[model] = var2d
-#    var_layer[var_name] = var2d
 
 
 var_diff = var_layer[models[0]] - var_layer[models[1]]
-#var_diff = var_layer['T2M_ISBA'] - var_layer['TEMP'] -273.15
+var_diff.coords.update(var_layer[models[0]].coords)
 
 #%% PLOT OF VAR_NAME
+
+if figsize is None:
+    xaxis_dist = float(ds.ni.max() - ds.ni.min())  # in km
+    yaxis_dist = float(ds.nj.max() - ds.nj.min())  # in km
+    scale = 1/20000
+    figsize = (xaxis_dist*scale*1.2, yaxis_dist*scale)
 
 fig1 = plt.figure(figsize=figsize)
 
 plt.contourf(var_diff.longitude, var_diff.latitude, var_diff,
 #plt.pcolormesh(var_diff.longitude, var_diff.latitude, var_diff,
 #               cbar_kwargs={"orientation": "horizontal", "shrink": 0.7}
-               cmap=color_map,
-               vmin=vmin, vmax=vmax,
-#               levels=20
-               )
+             cmap=color_map,
+             vmin=vmin, vmax=vmax,
+             levels=40
+             )
 
 cbar = plt.colorbar(boundaries=[vmin, vmax])
-cbar.set_label(var2d.long_name)
+try:
+    cbar.set_label(var2d.long_name)
+except AttributeError:
+    cbar.set_label(var2d.name)
 #cbar.set_clim(vmin, vmax)
-
-
 
 #%% WIND BARBS
 
 barb_size_increments = gv.barb_size_increments
 barb_size_description = gv.barb_size_description
 
-
 if add_winds:
-    X = ds1.longitude
-    Y = ds1.latitude
-    U = ds1.UT[0, ilevel, :,:]
-    V = ds1.VT[0, ilevel, :,:]
+    X = ds.longitude
+    Y = ds.latitude
+    U = ds.UT[0, ilevel, :,:]
+    V = ds.VT[0, ilevel, :,:]
     
     plt.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs], 
               U[::skip_barbs, ::skip_barbs], V[::skip_barbs, ::skip_barbs],
@@ -152,92 +162,81 @@ if add_winds:
                  xycoords='subfigure fraction'
                  )
 
-#%% IRRIGATED, SEA and COUNTRIES BORDERS
+#%% TOPO FEATURES
 
-if domain_nb == 2:
-    pgd = xr.open_dataset(
-        gv.global_simu_folder + \
-        '2.01_pgds_irr/PGD_400M_CovCor_v26_ivars.nc')
-elif domain_nb == 1:
-    pgd = xr.open_dataset(
-        gv.global_simu_folder + \
-        '2.01_pgds_irr/PGD_2KM_CovCor_v26_ivars.nc')
+pgd_filename = f'/home/lunelt/Data/mnh_run/{model}/PGD_1KM.nc'
+pgd = xr.open_dataset(pgd_filename)
 
-#Irrigation borders
-#from scipy.ndimage.filters import gaussian_filter
-#sigma = 0.1     #default is 0.1
-#irr_covers = gaussian_filter(pgd.COVER369.data, sigma)
-irr_covers = pgd.COVER369.data
-plt.contour(pgd.longitude.data, 
-            pgd.latitude.data, 
-            irr_covers,
-            levels=0,   #+1 -> number of contour to plot 
-            linestyles='solid',
+# --- Sea borders
+if sea_borders:
+    sea_covers = pgd.COVER001.data
+    plt.contour(pgd.longitude.data, 
+                pgd.latitude.data, 
+                sea_covers,
+                levels=0,   #+1 -> number of contour to plot 
+                linestyles='solid',
+                linewidths=2,
+                colors='w'
+        #        colors=['None'],
+        #        hatches='-'
+                )
+
+# --- France borders
+if france_borders:
+    sf = shapefile.Reader("TM-WORLD-BORDERS/TM_WORLD_BORDERS-0.3.sph")
+    shapes=sf.shapes()
+    france = shapes[64].points
+    france_df = pd.DataFrame(france, columns=['lon', 'lat'])
+    # france_temp = france_df[france_df.lat < 43.35]
+    # france_subset = france_temp[france_S.lon < 2.95]
+    france_subset = france_df
+    plt.plot(france_subset.lon, france_subset.lat,
+             color='k',
+             linewidth=1)
+
+# --- ISOLINES FOR ALTI
+# contour line of isoaltitude
+isoalti = ds['ZS']
+plt.contour(isoalti.longitude.data, 
+            isoalti.latitude.data, 
+            isoalti,
+            levels=isoalti_list,   #+1 -> number of contour to plot 
+            linestyles=':',
             linewidths=1.,
-            colors='g'
-#            colors=['None'],
-#            hatches='-'
+            colors='k',
             )
 
-#Sea borders
-sea_covers = pgd.COVER001.data
-plt.contour(pgd.longitude.data, 
-            pgd.latitude.data, 
-            sea_covers,
-            levels=0,   #+1 -> number of contour to plot 
-            linestyles='solid',
-            linewidths=1.,
-            colors='k'
-    #        colors=['None'],
-    #        hatches='-'
-            )
-
-#France borders
-sf = shapefile.Reader("TM-WORLD-BORDERS/TM_WORLD_BORDERS-0.3.sph")
-shapes=sf.shapes()
-france = shapes[64].points
-france_df = pd.DataFrame(france, columns=['lon', 'lat'])
-france_S = france_df[france_df.lat < 43.35]
-france_SW = france_S[france_S.lon < 2.95]
-plt.plot(france_SW.lon, france_SW.lat,
-         color='k',
-         linewidth=1)
-
-#%% POINTS SITES
-
-points = ['cendrosa', 'elsplans', 'puig formigosa', 'tossal baltasana', 
-          'tossal gros', 'tossal torretes', 'moncayo', 'tres mojones', 
-          'guara', 'caro', 'montserrat', 'joar',]
-sites = {key:gv.whole[key] for key in points}
+# --- POINTS SITES
+sites = {key:gv.whole[key] for key in sites_to_plot}
 
 for site in sites:
     plt.scatter(sites[site]['lon'],
                 sites[site]['lat'],
                 color='k',
-                s=10        #size of markers
+                s=12        #size of markers
                 )
-    if site == 'elsplans':
-        plt.text(sites[site]['lon']-0.1,
-                 sites[site]['lat']-0.03, 
-                 site, 
-                 fontsize=9)
-    else:
-        plt.text(sites[site]['lon']+0.01,
-                 sites[site]['lat']+0.01, 
-                 site, 
-                 fontsize=9)
+    # print site name on fig:
+    try:
+        sitename = sites[site]['longname']  # 'acronym', 'longname'
+    except KeyError:
+        sitename = site
+        
+    plt.text(sites[site]['lon']+0.01,
+             sites[site]['lat']+0.01, 
+             sitename, 
+             fontsize=14)
 
 
 #%% FIGURE OPTIONS and ZOOM
-#if len(varNd.shape) == 2:
-plot_title = '{0} - {1} diff between {2} and {3}'.format(
+if len(varNd.shape) == 2:
+    plot_title = '{0} - {1} diff \nbetween {2} and {3}'.format(
     wanted_date, var_name, models[0], models[1])
-#elif len(varNd.shape) == 3:
-#    plot_title = '{0} - {1} diff between {2} and {3} at {4}m'.format(
-##        wanted_date, var_name, models[0], models[1], var2d.level.round())
-#        wanted_date, var_name, models[0], models[1], var2d.level_w.round())
+elif len(varNd.shape) == 3:
+    plot_title = '{0} - {1} diff between {2} and {3} at {4}m'.format(
+        wanted_date, var_name, models[0], models[1], var2d.level.round())
+        # wanted_date, var_name, models[0], models[1], var2d.level_w.round())
 
-plt.title(plot_title)
+plt.suptitle(plot_title)
 
 if zoom_on is None:
     plt.ylim([var2d.latitude.min(), var2d.latitude.max()])
@@ -246,6 +245,6 @@ else:
     plt.ylim(lat_range)
     plt.xlim(lon_range)
 
-
 if save_plot:
-    tools.save_figure(plot_title, save_folder)
+    save_title = f'{wanted_date} - {var_name} diff'
+    tools.save_figure(save_title, save_folder)

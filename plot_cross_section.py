@@ -11,28 +11,33 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import xarray as xr
 import tools
-import metpy.calc as mcalc
+# import metpy.calc as mcalc
 import global_variables as gv
 import matplotlib as mpl
+from matplotlib import ticker
 from shapely.geometry import Point, LineString
 
 ########## Independant parameters ###############
 
-# Simulation to show: 'irr' or 'std'
-model = 'irrswi1_d1'
+model = '1_planier_0105/02_1km'
+# model = '1_planier_0105/05_1km_noEDKF_3DTKE'
+# model = '1_planier_0105/06_1km_noEDKF'
+# model = '1_planier_0105/07_1km_3DTKE'
+# model = '1_planier_0105/021_200m'
+# model = '1_planier_0105/022_40m'
 
 # Datetime
-wanted_date = '20210716-1900'
+wanted_date = '20230105-0900'
 
-varname_colormap = 'WS'
+varname_colormap = 'TOT_TKE'
 varname_contourmap = 'THTV'
 
 # Surface variable to show below the section
-subplot_type = 'distance'
+subplot_type = 'surface_var'  #'surface_var', 'distance'
 # only useful if subplot_type=='surface_var' (ex: WG2_ISBA, H, LE, etc)
-surf_var = 'LE_ISBA'   
-surf_var_label = 'LE_ISBA'
-vmin_surf_var, vmax_surf_var = -100, 500
+surf_var = 'RI'   
+surf_var_label = 'RI'
+vmin_surf_var, vmax_surf_var = -0.025, 0.025
 
 # Set type of wind representation: 'verti_proj' or 'horiz'
 wind_visu = 'verti_proj'
@@ -40,25 +45,25 @@ wind_visu = 'verti_proj'
 # altitude ASL or height AGL: 'asl' or 'agl'
 alti_type = 'asl'
 # maximum level (height AGL) to plot
-toplevel = 1500
+toplevel = 1300
 
 # where to place the cross section
-nb_points_beyond = 5
-site_start = 'cendrosa'
-site_end = 'torredembarra'
+nb_points_beyond = 2
+site_start = 'carry'
+site_end = 'planier'
 
 # sites different from start and end, to project on the x-axis
 # sites_to_project = ['elsplans', 'serra_tallat', 'coll_lilla']  
-sites_to_project = []  
+sites_to_project = ['carry']  
 
 # Arrow/barbs esthetics:
-skip_barbs_x = 2
+skip_barbs_x = 4
 skip_barbs_y = 10    #if 1: 1barb/10m, if 5: 1barb/50m, etc
-arrow_size = 1.2  #works for arrow and barbs
+arrow_size = 0.7  #works for arrow and barbs
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
 # Save the figure
-figsize = (12,7)
+figsize = (9,4)
 save_plot = True
 save_folder = f'./figures/cross_sections/{model}/section_{site_start}_{site_end}/{wind_visu}/{varname_colormap}_{varname_contourmap}/'
 
@@ -70,7 +75,10 @@ minmax_dict = {
     'WS': {'vmin': 1, 'vmax': 12, 'colormap':'BuPu'},
     'THT': {'vmin': 306, 'vmax': 314,'colormap':'OrRd'},
     'THTV': {'vmin': 292, 'vmax': 312, 'colormap':'OrRd'},
-    'TKET': {'vmin': 0.05, 'vmax': 3, 'colormap':'OrRd'},
+    'TKET': {'vmin': 0.01, 'vmax': 3, 'colormap':'magma_r'},
+    'TKEMME': {'vmin': 0.01, 'vmax': 3, 'colormap':'magma_r'},
+    'TOT_TKE': {'vmin': 0.01, 'vmax': 3, 'colormap':'magma_r'},
+    'RES_TKE_FRAC': {'vmin': 0, 'vmax': 1, 'colormap':'coolwarm'},
     'RVT': {'vmin': 0, 'vmax': 0.02, 'colormap':'OrRd'},
     'WT': {'vmin': -1.5, 'vmax': 1.5, 'colormap':'coolwarm'},
     'MSLP3D': {'vmin': None, 'vmax': None, 'colormap':'coolwarm'},
@@ -80,8 +88,17 @@ minmax_dict = {
 vmin = minmax_dict[varname_colormap]['vmin']
 vmax = minmax_dict[varname_colormap]['vmax']
 colormap = minmax_dict[varname_colormap]['colormap']
+# -- Colorscale linear
 norm_cm=mpl.colors.Normalize(vmin=vmin, vmax=vmax)
-#norm_cm=mpl.colors.LogNorm(vmin=vmin, vmax=vmax)  # for TKE
+levels = np.linspace(vmin, vmax, 20)
+# levels = np.linspace(vmin, vmax, vmax-vmin+1)  # to have 1 unit per color variation
+# -- Colorscale log
+# norm_cm=mpl.colors.LogNorm(vmin=vmin, vmax=vmax)  # for TKE
+# levels = 20
+# -- Colorscale unknown
+if None in [vmin, vmax]:
+    levels = 10
+
 
 vmin_contour = minmax_dict[varname_contourmap]['vmin']
 vmax_contour = minmax_dict[varname_contourmap]['vmax']
@@ -91,9 +108,7 @@ barb_size_increments = gv.barb_size_increments
 barb_size_description = gv.barb_size_description
 
 # Filename to open
-filename = tools.get_simu_filepath(model, wanted_date,
-                                   file_suffix='dg', 
-                                   out_suffix='')
+filename = tools.get_simu_filepath(model+'/', wanted_date, output_type='backup')
 # OR:
 #filename = '/home/lunelt/Data/temp_outputs/LIAIS.1.SEG03.009.nc'
 
@@ -113,23 +128,40 @@ if gv.whole[site_start]['lon'] > gv.whole[site_end]['lon']:
 
 # pre-processing of data
 ds_sub = tools.subset_ds(ds, 
-                  lat_range = [start[0], end[0]], 
-                  lon_range = [start[1], end[1]],
-                  nb_indices_exterior=nb_points_beyond)    
-ds_subcen = tools.center_uvw(ds_sub)
+                         lat_range = [start[0], end[0]], 
+                         lon_range = [start[1], end[1]],
+                         nb_indices_exterior=nb_points_beyond) 
+
+# ds_subcen = tools.flux_pt_to_mass_pt(ds_sub, only_basic_vars=False)
+ds_subcen = tools.flux_pt_to_mass_pt(
+    ds_sub, only_basic_vars=True,
+    basic_vars=['UT', 'VT', 'WT', 
+                'UMME', 'VMME', 'WMME',
+                'U2ME', 'V2ME', 'W2ME',
+                ],
+    )
 
 # Computation of other diagnostic variable
-ds_subcen['DIV'] = mcalc.divergence(ds_subcen['UT'], ds_subcen['VT'])
+# ds_subcen['DIV'] = mcalc.divergence(ds_subcen['UT'], ds_subcen['VT'])
 ds_subcen['WS'], ds_subcen['WD'] = tools.calc_ws_wd(ds_subcen['UT'], ds_subcen['VT'])
+try:
+    ds_subcen['THTV'] = ds_subcen['THT']*(1 + 0.61*ds_subcen['RVT'] - (ds_subcen['MRR']+ds_subcen['MRC'])/1000)
+except KeyError:
+    ds_subcen['THTV'] = ds_subcen['THT']*(1 + 0.61*ds_subcen['RVT'])
+# ds_subcen['MSLP3D'] = tools.calc_mslp(ds)
+ds_subcen['RES_TKE'] = 0.5* (ds_subcen['U2ME'] + ds_subcen['V2ME'] + ds_subcen['W2ME'])
+ds_subcen['SBG_TKE'] = ds_subcen['TKEMME']
+ds_subcen['TOT_TKE'] = ds_subcen['SBG_TKE'] + ds_subcen['RES_TKE']
+ds_subcen['RES_TKE_FRAC'] = ds_subcen['RES_TKE']/ds_subcen['TOT_TKE']
+ds_subcen['TOT_TI'] = np.sqrt(1.5*ds_subcen['TOT_TKE'])/ds_subcen['WS']
 
-ds_subcen['THTV'] = ds_subcen['THT']*(1 + 0.61*ds_subcen['RVT'] - (ds_subcen['MRR']+ds_subcen['MRC'])/1000)
-ds_subcen['MSLP3D'] = tools.calc_mslp(ds)
 
-
-data_reduced = ds_subcen[['UT', 'VT', 'WT', 'ZS', 'ALT',
-#                   'TEMP', 'PRES', 'HBLTOP',
-#                   'DENS', 'DIV', 'WS', 'WD',
-               varname_colormap, varname_contourmap, surf_var]]
+data_reduced = ds_subcen[[
+    'UT', 'VT', 'WT', 'ZS', 
+    # 'ALT',
+#    'TEMP', 'PRES', 'HBLTOP',
+#    'DENS', 'DIV', 'WS', 'WD',
+    varname_colormap, varname_contourmap, surf_var]]
 
 
 data = data_reduced
@@ -138,8 +170,8 @@ data = data_reduced
 
 #%% CREATE SECTION LINE
 
-line = tools.line_coords(data, start, end, 
-                         nb_indices_exterior=nb_points_beyond)
+line = tools.get_line_coords(data, start, end, 
+                             nb_indices_exterior=nb_points_beyond)
 ni_range = line['ni_range']
 nj_range = line['nj_range']
 slope = line['slope']
@@ -150,7 +182,7 @@ else:
     angle = np.arctan(slope)
     
 data['WPROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'], 
-                                       data.level, angle)
+                                         data.level, angle)
 
 #%% INTERPOLATION
 
@@ -215,9 +247,9 @@ Xmesh = xr.DataArray(X, dims=['level', 'i_sect'])
 #create alti mesh (eq. to Y)
 if alti_type == 'asl': 
     #compute altitude ASL from height AGL, and transpose (eq. Y)
-    alti = section_ds['ALT']
+    # alti = section_ds['ALT']
     #old: (issue)
-    #alti = section_ds.ZS[:, 0] + section_ds.level
+    alti = section_ds.ZS[:, 0] + section_ds.level
     alti = alti.T
     #for plot
     ylabel = 'altitude a.s.l. [m]'
@@ -231,23 +263,20 @@ elif alti_type == 'agl':  # TO CORRECT for strectched grid with var 'ALT'
 
 ### 1.1. Color map (pcolor or contourf)
 data1 = section_ds[varname_colormap]
-#cm = ax[0].pcolormesh(Xmesh,
-#                      alti,
-#                      data1.T,
-#                      cmap=colormap,
-#                      norm=norm_cm,  # for logscale of colormap
-##                      vmin=vmin, vmax=vmax
-#                      )
-if None in [vmin, vmax]:
-    levels = 10
-else:
-    levels = np.linspace(vmin, vmax, 10)
-    levels = np.linspace(vmin, vmax, vmax-vmin+1)  # to have 1 unit per color variation
-    
+# cm = ax[0].pcolormesh(Xmesh,
+#                       alti,
+#                       data1.T,
+#                       cmap=colormap,
+#                       norm=norm_cm,  # for logscale of colormap
+#                       # vmin=vmin, vmax=vmax
+#                       )
+
 cm = ax[0].contourf(Xmesh,
                     alti,
                     data1.T, 
                     cmap=colormap,  # 'OrRd', 'coolwarm'
+                    # norm=norm_cm,  # for logscale of colormap
+                    # locator=ticker.LogLocator(),
                     levels=levels,
                     extend = 'both',  #highlights the min and max in different color
                     )
@@ -273,7 +302,7 @@ else:
     cont = ax[0].contour(Xmesh,
                          alti,
                          data2.T,
-                         cmap='copper_r',  #viridis_r, copper_r
+                         cmap='viridis_r',  #viridis_r, copper_r
 #                         colors='r',
 #                         levels=np.arange(vmin_contour, vmax_contour),
                          levels=np.linspace(vmin_contour, 
@@ -358,62 +387,46 @@ ax[0].set_ylabel(ylabel)
 
 
 ### 2. Subplot of surface characteristic ---
-#
-#data_soil = section_ds[surf_var][:, :2]  #keep 2 equivalent levels for plot
-#p9 = ax[1].pcolor(data_soil.i_sect, 
-#                  data_soil.level, 
-#                  data_soil.transpose(), 
-#                  cmap='YlGn',
-#                  vmin=vmin_surf_var, vmax=vmax_surf_var
-#                  )
-## create colorbar dedicated to the subplot
-#divider = make_axes_locatable(ax[1])
-#cax = divider.append_axes('right', size='2%', pad=0.05)
-#cbar2 = fig.colorbar(p9, cax=cax, orientation='vertical')
-##cbar2.set_label(surf_var_label)
-#cbar2.set_label('[m³/m³]')
-#
-##ax[1].set_xticks(ticks = data_soil.i_sect.values[::9],
-##                 labels = (data_soil.i_sect.values * \
-##                           line['nij_step']/1000)[::9].round(decimals=1)
-##                 )
-#transect_length = (line['index_distance'] + 2*nb_points_beyond)*line['nij_step']/1000  # length in km
-#labels_arr = np.arange(0, transect_length, 10, dtype=int)
-#tick_pos = labels_arr / (line['nij_step']/1000)
-#ax[1].set_xticks(ticks = tick_pos,
-#                 labels = labels_arr
-#                 )
-#ax[1].set_xlabel('distance [km]')
-#
-#ax[1].set_yticks([])
-##ax[1].set_ylabel(surf_var)
-#ax[1].set_ylabel('soil moisture')
 
 if subplot_type == 'surface_var':
-    labels_arr = np.arange(0,100,10)
+    
+    surfplot = ax[1].pcolor(
+        section_ds.i_sect, 
+        section_ds[surf_var][:,:2].level, 
+        section_ds[surf_var][:,:2].transpose(), 
+        cmap='seismic_r',
+        vmin=vmin_surf_var, vmax=vmax_surf_var
+        )
+    # create colorbar dedicated to the subplot
+    divider = make_axes_locatable(ax[1])
+    cax = divider.append_axes('right', size='2%', pad=0.05)
+    cbar2 = fig.colorbar(surfplot, cax=cax, orientation='vertical')
+    cbar2.set_label('RI')
+    
+    # labels_arr = np.arange(0, 100, 10)
+    transect_length = (line['index_distance'] + 2*nb_points_beyond)*line['nij_step']/1000  # length in km
+    labels_arr = np.arange(0, transect_length, 5)
     tick_pos = labels_arr/ (line['nij_step']/1000)
     ax[1].set_xticks(ticks = tick_pos,
                      labels = labels_arr
                      )
     ax[1].set_xlabel('distance [km]')
-    
     ax[1].set_yticks([])
-    #ax[1].set_ylabel(surf_var)
-    ax[1].set_ylabel('soil moisture')
+    ax[1].set_ylabel(surf_var)
     
 if subplot_type == 'distance':
     # remove the surface subplot
     fig.delaxes(ax[1])
     
     # get index of torredembarra in abscisse_sites
-    torredembarra_ind = list(abscisse_sites.values()).index('torredembarra')
+    distance_ref_ind = list(abscisse_sites.values()).index('carry')
     # get corresponding abscisse for torredembarra
-    torredembarra_xval = list(abscisse_sites.keys())[torredembarra_ind]
+    distance_ref_xval = list(abscisse_sites.keys())[distance_ref_ind]
     
     def ftest(x):
-        return -(x - torredembarra_xval) * (line['nij_step']/1000)
+        return -(x - distance_ref_xval) * (line['nij_step']/1000)
     def ftest_recip(x):
-        return -(x/(line['nij_step']/1000) + torredembarra_xval)
+        return -(x/(line['nij_step']/1000) + distance_ref_xval)
     
     # add secondary axis
     secax = ax[0].secondary_xaxis(-0.1, functions=(ftest, ftest_recip))
@@ -427,8 +440,8 @@ plot_title = 'Cross section on {0}-{1}-{2}'.format(
 #plot_title = 'Cross section of ABL between irrigated and rainfed areas on July 22 at 12:00 - {0}'.format(
 #        model)
 #plot_title = 'Cross section on July 22 at 12:00 - {0}'.format(model)
-ax[0].set_title(plot_title)
-#fig.suptitle(plot_title)
+# ax[0].set_title(plot_title)
+fig.suptitle(plot_title)
 
 if save_plot:
     tools.save_figure(plot_title, save_folder)

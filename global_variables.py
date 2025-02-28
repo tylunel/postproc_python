@@ -10,7 +10,8 @@ Gathers global variables for use in scripts.
 # global_simu_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
 #global_simu_folder = '/media/lunelt/7C2EB31F2EB2D0FE/Tanguy/'
 #global_temp_folder = '/home/lunelt/Data/temp_outputs/'
-global_simu_folder = '/home/lunelt/Data/mnh_run/'
+# global_simu_folder = '/home/lunelt/Data/mnh_run/'
+global_simu_folder = '/cnrm/phynh/NO_SAVE/lunelt/'
 
 #global_data_liaise = '/cnrm/surface/lunelt/data_LIAISE/'
 global_data_liaise = '/home/lunelt/Data/data_LIAISE/'
@@ -20,7 +21,8 @@ global_data_nemo = '/home/lunelt/Data/data_NEMO/'
 simu_folders = {
         'irr_d2': '2.17_irr_d2_21-22_bugfix/',
         'irrswi1_d1': '8.16_irrswi1_d1_15-30_bugfix/',
-        '1_0105_1km': '1_0105_1km/',
+        # '1_0105_1km': '1_0105_1km/',
+        '1_0105_1km': '1_planier_0105/01_1km/',
         'temp': '',
          }
 
@@ -35,13 +37,23 @@ format_filename_simu = {
         'std_d2': 'LIAIS.1.S{seg_nb}{output_nb_2f}.001{file_suffix}.nc',
         'irrswi1_d1': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
         '1_0105_1km': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '1_planier_0105/01_1km_DIF/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '1_planier_0105/02_1km/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '1_planier_0105/04_1km_COARE/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '1_planier_0105/05_1km_noEDKF_3DTKE/': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '1_planier_0105/06_1km_noEDKF/': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '1_planier_0105/07_1km_3DTKE/': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '1_planier_0105/021_200m/': 'PLANI.1.D2S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '1_planier_0105/022_40m/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '2_planier_0122/04_1km_COARE/': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '3_planier_0127/04_1km_COARE/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
         }
 # Apply .format() after corresponding string
 # ex: format_filename_simu_new['std_d2'].format(seg_nb=22, output_nb_2f=12, output_nb_2f='012', file_suffix='dg')
 # format_filename_simu_wildcards = {key:val.format(seg_nb='??', output_nb_2f='??', output_nb_2f='012', file_suffix='dg') if ...}
 
 filename_simu_name_rules = {
-    '1_0105_1km': {
+    'default': {
         'backup': {
             'seg_nb': '01',
             'out_suffix': '',
@@ -52,13 +64,200 @@ filename_simu_name_rules = {
             'seg_nb': '01',
             'out_suffix': '.OUT',
             'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
-            'file_suffix': '',}
+            'file_suffix': '',
             },
         'diachronic': {
             'seg_nb': '01',
             'output_nb': '000',
             'file_suffix': '',
-            'out_suffix': ''}
+            'out_suffix': '',
+            }
+        },
+    '1_planier_0105/02_1km/': {
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'HH',  # ex: 12h -> 012 or 12
+            'file_suffix': '',
+            },
+        'output': {
+            'seg_nb': '01',
+            'out_suffix': '.OUT',
+            'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
+            'file_suffix': '',
+            },
+        'diachronic': {
+            'seg_nb': '01',
+            'output_nb': '000',
+            'file_suffix': '',
+            'out_suffix': ''},
+        },
+    '1_planier_0105/04_1km_COARE/': {
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'HH',  # ex: 12h -> 012 or 12
+            'file_suffix': '',
+            },
+        'output': {
+            'seg_nb': '01',
+            'out_suffix': '.OUT',
+            'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
+            'file_suffix': '',
+            },
+        'diachronic': {
+            'seg_nb': '01',
+            'output_nb': '000',
+            'file_suffix': '',
+            'out_suffix': ''},
+        },
+    '2_planier_0122/04_1km_COARE/': {
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'HH',  # ex: 12h -> 012 or 12
+            'file_suffix': '',
+            },
+        'output': {
+            'seg_nb': '01',
+            'out_suffix': '.OUT',
+            'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
+            'file_suffix': '',
+            },
+        'diachronic': {
+            'seg_nb': '01',
+            'output_nb': '000',
+            'file_suffix': '',
+            'out_suffix': ''},
+        },
+    '3_planier_0127/04_1km_COARE/': {
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'H+12',  # ex: 12h -> 012 or 12
+            'file_suffix': '',
+            },
+        'output': {
+            'seg_nb': '01',
+            'out_suffix': '.OUT',
+            'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
+            'file_suffix': '',
+            },
+        'diachronic': {
+            'seg_nb': '01',
+            'output_nb': '000',
+            'file_suffix': '',
+            'out_suffix': ''},
+        },
+    '1_planier_0105/05_1km_noEDKF_3DTKE': {
+            'backup': {
+                'seg_nb': '01',
+                'out_suffix': '',
+                'output_nb': 'HH',  # ex: 12h -> 012 or 12
+                'file_suffix': '',
+                },
+            'output': {
+                'seg_nb': '01',
+                'out_suffix': '.OUT',
+                'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
+                'file_suffix': '',
+                },
+            'diachronic': {
+                'seg_nb': '01',
+                'output_nb': '000',
+                'file_suffix': '',
+                'out_suffix': ''},
+            },
+    '1_planier_0105/06_1km_noEDKF': {
+            'backup': {
+                'seg_nb': '01',
+                'out_suffix': '',
+                'output_nb': 'HH',  # ex: 12h -> 012 or 12
+                'file_suffix': '',
+                },
+            'output': {
+                'seg_nb': '01',
+                'out_suffix': '.OUT',
+                'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
+                'file_suffix': '',
+                },
+            'diachronic': {
+                'seg_nb': '01',
+                'output_nb': '000',
+                'file_suffix': '',
+                'out_suffix': ''},
+            },
+    '1_planier_0105/07_1km_3DTKE': {
+            'backup': {
+                'seg_nb': '01',
+                'out_suffix': '',
+                'output_nb': 'HH',  # ex: 12h -> 012 or 12
+                'file_suffix': '',
+                },
+            'output': {
+                'seg_nb': '01',
+                'out_suffix': '.OUT',
+                'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
+                'file_suffix': '',
+                },
+            'diachronic': {
+                'seg_nb': '01',
+                'output_nb': '000',
+                'file_suffix': '',
+                'out_suffix': ''},
+            },
+    '1_planier_0105/021_200m/': {
+            'backup': {
+                'seg_nb': '01',
+                'out_suffix': '',
+                'output_nb': 'H-2.5x2',  #ex: 04h30m = 4.5h - 2.5 = 2 x 2 = 004
+                'file_suffix': '',
+                },
+            'output': {
+                'seg_nb': '01',
+                'out_suffix': '.OUT',
+                'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
+                'file_suffix': '',
+                },
+            'diachronic': {
+                'seg_nb': '01',
+                'output_nb': '000',
+                'file_suffix': '',
+                'out_suffix': '',
+                },
+            },
+    '1_planier_0105/022_40m/': {
+            'backup': {
+                'seg_nb': '01',
+                'out_suffix': '',
+                'output_nb': 'H-3x2',  #ex: 04h30m = 4.5h - 3 = 1.5 x 2 = 003
+                'file_suffix': '',
+                },
+            'output': {
+                'seg_nb': '01',
+                'out_suffix': '.OUT',
+                'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
+                'file_suffix': '',
+                },
+            'diachronic': {
+                'seg_nb': '01',
+                'output_nb': '000',
+                'file_suffix': '',
+                'out_suffix': '',
+                },
+            },
+    
+    }
+
+pgd_filename_dict = {
+    '1_planier_0105/02_1km': 'PGD_1KM.nc',
+    '1_planier_0105/022_40m': 'PGD_40M.nc',
+    '1_planier_0105/021_200m': 'PGD_200M.nc',
+    '1_planier_0105/05_1km_noEDKF_3DTKE': 'PGD_1KM.nc',
+    '1_planier_0105/06_1km_noEDKF': 'PGD_1KM.nc',
+    '1_planier_0105/07_1km_3DTKE': 'PGD_1KM.nc',
+    '2_planier_0122/04_1km_COARE': 'PGD_1KM.nc',
+    '3_planier_0127/04_1km_COARE': 'PGD_1KM.nc',
     }
 
 #%%------- Sites, location, towns, areas --------
@@ -68,7 +267,13 @@ sites = {
         'lon': 5.22981,   # rounded
         'alt': 0,
         'longname': 'Ile du Planier',
-        'acronym': 'Pl.'},
+        'acronym': 'Pl.'},    
+    'salin-giraud': {
+        'lat': 43.4105,  # rounded
+        'lon': 4.7322,   # rounded
+        'alt': 0,
+        'longname': 'Salin de Giraud',
+        'acronym': 'S.d.G.'},
     'marignane': {
         'lat': 43.43693,  # rounded
         'lon': 5.21777,   # rounded
@@ -85,6 +290,16 @@ towns = {
     'marseille_old_port': {
         'lat': 43.29444,
         'lon': 5.36879},
+    'miramas': {
+        'lat': 43.55773,
+        'lon': 5.017482,
+        'longname': 'Miramas',},
+    'carry': {
+        # 'lat': 43.32741,  # real
+        # 'lon': 5.158355,  # real
+        'lat': 43.34,  # adapted to coast in MNH 40m
+        'lon': 5.15,
+        'longname': 'Carry-le-Rouet',},
     'nimes': {
         'lat': 43.8534,
         'lon': 4.4151},
@@ -159,12 +374,41 @@ zoom_domain_prop = {
         'lon_range': [-0.6666, 1.9364],
         'figsize': (11,9),
         },
+    'eastern_gulf_lion': {   # = planier_1km
+        'skip_barbs': 8, # 1/skip_barbs will be printed
+        'barb_length': 5.5,
+        'lat_range': [42.6, 43.9],
+        'lon_range': [4.4, 6.1],
+        'figsize': (9,8),
+        },
+    'planier_1km': {        # = eastern_gulf_lion
+        'skip_barbs': 8, # 1/skip_barbs will be printed
+        'barb_length': 5.5,
+        'lat_range': [42.6, 43.9],
+        'lon_range': [4.4, 6.1],
+        'figsize': (9,8),
+        },
+    'planier_200m': {
+        'skip_barbs': 10, # 1/skip_barbs will be printed
+        'barb_length': 5.5,
+        'lat_range': [43.05, 43.44],
+        'lon_range': [4.95, 5.55],        
+        # 'lon_range': [5.1, 5.5],
+        'figsize': (9,8),
+        },
+    'planier_40m': {
+        'skip_barbs': 25, # 1/skip_barbs will be printed
+        'barb_length': 5,
+        'lat_range': [43.18, 43.38],
+        'lon_range': [5.11, 5.31],
+        'figsize': (8,9),
+        },
     None: {
         'skip_barbs': 8,
         'barb_length': 4.5,
         'lat_range': [None, None],
         'lon_range': [None, None],
-        'figsize': None,
+        'figsize': (8,8),
         },
 #    skip_barbs = 8 # 1/skip_barbs will be printed
 #    barb_length = 4.5
@@ -298,6 +542,66 @@ layers_height_MNH_LIAISE = [
      8903.94,   9679.17,    10528.06,   11457.58,   12475.42,# 80, ...,
      13589.95,  14810.35,   16118.23,   17458.23,   18798.23
      ]
+
+layers_height_MNH_LES = [
+    -2.0,   2.0,    6.1,    10.5,   15.,    # 0, 1, 2, 3, 4
+     20.0,  25.2,   30.5,   36.,    42,     # 5, 6, 7, 8, 9
+     48.5,  55.5,   63.,    71.0,   80,     # 10, 11, 12, 13, 14,
+     90,    100,    110,    120,    130,    # 15, 16, 17, 18, 19,
+     140,   150,    160,    170,    180,    # 20,21,22,23,24,
+     190,   200,    210,    220,    232,
+     246,   262,    280,    300,    322,
+     348,   378,    412,    450,    490,
+     530,   570,    610,    650,    690,
+     730,   770,    810,    850,    890,
+     930,   970,    1010,   1050,   1090,
+     1130,  1170,   1210,   1250,   1290,
+     1330,  1370,   1410,   1450,   1490,
+     1530,  1570,   1610,   1650,   1690,
+     1730,  1770,   1810,   1850,   1890,
+     1930,  1970,   2010,   2060,   2120,
+     2190,  2290,   2400,   2530,   2780,
+     2950,  3150,   3380,   3630,   3910,  
+     4220,  4570,   4970,   5420,   5900,   
+     6420,  6960,   7550,   8196,   8904,   
+     9680,  10530,  11458,  12475,  13590, 
+     14810,  16120,   17460,   
+     # 18800,
+     ]
+
+layers_height_MNH_LES_2 = [
+    -2.0,   2.0,    6.1,    10.5,   15.,    # 0, 1, 2, 3, 4
+     20.0,  25.2,   30.5,   36.,    42,     # 5, 6, 7, 8, 9
+     48.5,  55.5,   63.,    71.0,   80,     # 10, 11, 12, 13, 14,
+     90,    101,    113,    126,    140,    # 15, 16, 17, 18, 19,
+     155,   172,    190,    # 20,21,22,23,24,
+     210,   232,    256,    282,    310,
+     340,   373,    410,    
+     460,    500,   540,   580,    620,    660,    700,
+     740,   780,    820,    860,    900,
+     940,   980,    1020,   1060,   1100,
+     1140,  1180,   1220,   1260,   1300,
+     1340,  1380,   1420,   1460,   1500,
+     1540,  1580,   1620,   1660,   1700,
+     1740,  1780,   1820,   1860,   1900,
+     1945,  1995,   2050,   2115,   2190,  
+     2290,  2400,   2530,   2780,
+     2950,  3150,   3380,   3630,   3910,  
+     4220,  4570,   4970,   5420,   5900,   
+     6420,  6960,   7550,   8196,   8904,   
+     9680,  10530,  11458,  12475,  13590, 
+     14810,  16120,   17460,   
+     # 18800,
+     ]
+
+def create_stretched_grid(heightlow=2, distheightlow=4, stretch=0.08, length=40):
+    res = [heightlow]
+    height = heightlow
+    for i in range(length-1):
+        distheightlow = distheightlow + distheightlow*stretch
+        height = height + distheightlow
+        res.append(height)
+    return res
 
 # grid not true, depends on pressure    
 level_height_AROME_mean = {
