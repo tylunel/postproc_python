@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue Jan 21 17:03:48 2025
+Corrected version of clustering
+Gives different results than first classification !!!!
 
 @author: lunelt
 """
 
 import pandas as pd
+pd.options.mode.copy_on_write = True
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy
 from sklearn.cluster import KMeans
-from sklearn import datasets
+# from sklearn import datasets
 from sklearn.metrics.pairwise import euclidean_distances
 
 import global_variables as gv
@@ -20,41 +22,65 @@ global_data_nemo = gv.global_data_nemo
 site = 'planier'
 
 df = pd.read_pickle(f'{global_data_nemo}/{site}/metocean_conditions_planier.pickle')
+
+#%% Tri des données pour garder celles avec bonne corrélation AROME vs OBS
+# keep only cases where arome and obs agree enough
 df['arome_wd_error_140'] = ((df['arome_wd_140'] - df['wd_140']) + 180) % 360 - 180
 df = df[df['arome_wd_error_140'].abs() < 20]
 df['arome_ws_error_140'] = (df['arome_ws_140'] - df['ws_140'])
 df = df[df['arome_ws_error_140']/df['arome_ws_140'] < 0.5]
-
-df['arome_tke_error_140'] = df['arome_tke_140'] - df['tke_140']
+# df['arome_tke_error_140'] = df['arome_tke_140'] - df['tke_140']
 # df = df.dropna()
 
-#TODO: switch to ri_bulk for analysis
-
+#%% Standardisation des données
+# ri_bulk for analysis seems best
 df['stability_class_ri_bulk'] = df['arome_ri_bulk_140']
 # classification of stability based on doi.org/10.5194/wes-7-221-2022 - Table 4
+
 # class Very Unstable 
-df['stability_class_ri_bulk'].where(
-    ~(df['arome_ri_bulk_140'] < -0.023), 
-    1, inplace=True)
+df['stability_class_ri_bulk'] = df['stability_class_ri_bulk'].where(
+    ~(df['arome_ri_bulk_140'] < -0.023), 1)
 # class Unstable 
-df['stability_class_ri_bulk'].where(
+df['stability_class_ri_bulk'] = df['stability_class_ri_bulk'].where(
     ~(np.logical_and(-0.023 < df['arome_ri_bulk_140'],
-                     df['arome_ri_bulk_140'] < -0.0036)),
-    2, inplace=True)
+                     df['arome_ri_bulk_140'] < -0.0036)), 2)
 # class Neutral 
-df['stability_class_ri_bulk'].where(
+df['stability_class_ri_bulk'] = df['stability_class_ri_bulk'].where(
     ~(np.logical_and(-0.0036 < df['arome_ri_bulk_140'],
-                     df['arome_ri_bulk_140'] < 0.0072)),
-    3, inplace=True)
+                     df['arome_ri_bulk_140'] < 0.0072)), 3)
 # class Stable 
-df['stability_class_ri_bulk'].where(
+df['stability_class_ri_bulk'] = df['stability_class_ri_bulk'].where(
     ~(np.logical_and(0.0072 < df['arome_ri_bulk_140'],
-                     df['arome_ri_bulk_140'] < 0.084)),
-    4, inplace=True)
+                     df['arome_ri_bulk_140'] < 0.084)), 4)
 # class Very Stable 
-df['stability_class_ri_bulk'].where(
-    ~(0.084 < df['arome_ri_bulk_140']),
-    5, inplace=True)
+df['stability_class_ri_bulk'] = df['stability_class_ri_bulk'].where(
+    ~(0.084 < df['arome_ri_bulk_140']), 5)
+
+
+# # OLD - raise FutureWarning
+# # class Very Unstable 
+# df['stability_class_ri_bulk'].where(
+#     ~(df['arome_ri_bulk_140'] < -0.023), 
+#     1, inplace=True)
+# # class Unstable 
+# df['stability_class_ri_bulk'].where(
+#     ~(np.logical_and(-0.023 < df['arome_ri_bulk_140'],
+#                      df['arome_ri_bulk_140'] < -0.0036)),
+#     2, inplace=True)
+# # class Neutral 
+# df['stability_class_ri_bulk'].where(
+#     ~(np.logical_and(-0.0036 < df['arome_ri_bulk_140'],
+#                      df['arome_ri_bulk_140'] < 0.0072)),
+#     3, inplace=True)
+# # class Stable 
+# df['stability_class_ri_bulk'].where(
+#     ~(np.logical_and(0.0072 < df['arome_ri_bulk_140'],
+#                      df['arome_ri_bulk_140'] < 0.084)),
+#     4, inplace=True)
+# # class Very Stable 
+# df['stability_class_ri_bulk'].where(
+#     ~(0.084 < df['arome_ri_bulk_140']),
+#     5, inplace=True)
 
 df['hour'] = df.index.hour
 
@@ -74,16 +100,29 @@ vars_clustering = [
     # 'nebul_marignane',
     'stability_class_ri_bulk'
     ]
+
 df_subset = df[vars_clustering]
 
 for var in vars_clustering:
     if var in ['arome_tke_140', 'arome_ws_140', 'tke_140', 'ws_140']:
-        df_subset[var] = (df_subset[var] - df_subset[var].mean())/df_subset[var].std()
+        # df_subset[var] = (df_subset[var] - df_subset[var].mean())/df_subset[var].std()
+        df_subset[var] = (df[var] - df[var].mean()) / df[var].std()
+        # mean = df[var].mean()
+        # stdev = df[var].std()
+        # df_subset[var] = (df[var] - mean) / stdev
     
     elif var in ['arome_wd_140', 'wd_140']:
-        df_subset[var] = ((df_subset[var] - scipy.stats.circmean(df_subset[var], high=360, low=0)) / \
-                          scipy.stats.circstd(df_subset[var], high=360, low=0))
-#%%
+        # df_subset[var] = (  # old: ERROR (mean not close to zero, because lack of modulo)
+        #     (df_subset[var] - scipy.stats.circmean(df_subset[var], high=360, low=0)) / \
+        #     scipy.stats.circstd(df_subset[var], high=360, low=0))
+        # df_subset[var] = (
+        #     (((df_subset[var] - scipy.stats.circmean(df_subset[var], high=360, low=0)) + 180) % 360 - 180) / \
+        #      scipy.stats.circstd(df_subset[var], high=360, low=0))
+        df_subset[var] = (
+            (((df[var] - scipy.stats.circmean(df[var], high=360, low=0)) + 180) % 360 - 180) / \
+             scipy.stats.circstd(df[var], high=360, low=0))
+
+#%% Remove timestamp with missing measurement values
 if 'tke_140' in vars_clustering:
     df = df[~df_subset['tke_140'].isna()]
     
@@ -109,7 +148,7 @@ df_subset = df_subset.dropna()
 
 
 #%% Application de KMeans
-kmeans = KMeans(n_clusters = 4)
+kmeans = KMeans(n_clusters=4, random_state=10)
 kmeans.fit(df_subset)
 
 df['cluster'] = kmeans.labels_
@@ -124,7 +163,7 @@ for i_cluster in np.unique(kmeans.labels_):
 plt.figure()
 xvar = 'arome_tke_140'
 yvar = 'stability_class_ri_bulk'
-colormap = np.array(["red", "green", "blue", 'k', 'orange'])
+colormap = np.array(["red", "green", "blue", 'orange', 'k', ])
 for i_cluster in np.unique(kmeans.labels_):
     df_clus = df[df['cluster'] == i_cluster]
     plt.scatter(df_clus[xvar], 
@@ -134,6 +173,24 @@ for i_cluster in np.unique(kmeans.labels_):
                     i_cluster, len(np.where(kmeans.labels_ == i_cluster)[0])),
                 # c = colormap[df_subset['stability_class_ri_grad']], 
                 s=10)
+plt.xlabel(xvar)
+plt.ylabel(yvar)
+plt.legend()
+plt.show()
+
+plt.figure()
+xvar = 'arome_ws_140'
+yvar = 'arome_wd_140'
+colormap = np.array(["red", "green", "blue", 'orange', 'k', ])
+for i_cluster in np.unique(kmeans.labels_):
+    df_clus = df[df['cluster'] == i_cluster]
+    plt.scatter(df_clus[xvar], 
+                df_clus[yvar]+0.1*i_cluster,
+                c = colormap[i_cluster],
+                label='cluster {0} / size {1}'.format(
+                    i_cluster, len(np.where(kmeans.labels_ == i_cluster)[0])),
+                # c = colormap[df_subset['stability_class_ri_grad']], 
+                s=1)
 plt.xlabel(xvar)
 plt.ylabel(yvar)
 plt.legend()
@@ -155,7 +212,7 @@ keys_list = [
     'tke_140',
     'ws_140',
     'wd_140',
-    'arome_tke_error_140',
+    # 'arome_tke_error_140',
     'arome_ri_bulk_140',
     # 'arome_abl_top_ri',
     # 'sst_planier',
@@ -203,13 +260,8 @@ for i_cluster in np.unique(kmeans.labels_):
                 cluster_features_norm[i_cluster][new_key] = np.round(
                     df_clus_subset[key].std(), 2)
 
-#%% Draft
-# df_reftest = pd.DataFrame({'ws': [2], 'wd':[4]})
-# df_test = pd.DataFrame({'ws': [3,4,5], 'wd':[6,8,10]})
 
-# euclidean_distances(df_reftest, df_test)
-
-#%% find most typical representative of each cluster
+#%% Most typical event representative of each cluster
 
 # df_subset['cluster'] = kmeans.labels_  # already done above
 df_ref = pd.DataFrame(cluster_features_norm)
@@ -222,23 +274,25 @@ for i_cluster in np.unique(kmeans.labels_):
     df_clus_all = df[df['cluster'] == i_cluster]
     df_clus_subset_all = df_subset[df_subset['cluster'] == i_cluster]
     df_respecting_conditions = (df_clus_subset_all['cluster'] == i_cluster)
-    # ---- add conditions on date of interest:
+    
+    # ---- Add conditions on date of interest:
     # -- month:
     # df_clus_subset = df_clus_subset_all[df_clus_all.index.month > 1]  # removes indexes not respecting the conditions
-    df_respecting_conditions = df_respecting_conditions.where(  # do not remove False value
-        (df_clus_all.index.month > 0), other=False)
+    # df_respecting_conditions = df_respecting_conditions.where(  # do not remove False value
+    #     (df_clus_all.index.month > 1), other=False)
     # -- condition on agreement between arome and measures
-    df_respecting_conditions = df_respecting_conditions.where(
-        (df_clus_all['arome_wd_error_140'] < 20), other=False)
+    # df_respecting_conditions = df_respecting_conditions.where(
+    #     (df_clus_all['arome_wd_error_140'] < 20), other=False)
     # -- condition on low nebulosity
     df_respecting_conditions = df_respecting_conditions.where(
         (df_clus_all['nebul_marignane'] < 2), other=False)
     # -- condition on hour, to be close from the analysis time (every 3h, rest is interpolation)
-    df_respecting_conditions = df_respecting_conditions.where(
-        np.logical_or((df_clus_all.index.hour % 3 == 0), 
-                      ((df_clus_all.index.hour+1) % 3 == 0)),
-        other=False)
+    # df_respecting_conditions = df_respecting_conditions.where(
+    #     np.logical_or((df_clus_all.index.hour % 3 == 0), 
+    #                   ((df_clus_all.index.hour+1) % 3 == 0)),
+    #     other=False)
     # -----------------------------------
+    
     df_clus_subset = df_clus_subset_all[df_respecting_conditions]
     df_clus_subset = df_clus_subset.drop(columns=['cluster'])
     
@@ -254,3 +308,16 @@ for i_cluster in np.unique(kmeans.labels_):
         # if key == 'dist':
         #     continue
         print(key, ' : ', float(prop_event[key]))
+        
+#%% Extra - Wind rose at 140m
+
+# from windrose import WindroseAxes
+
+# ax = WindroseAxes.from_ax()
+# # AROME
+# ax.bar(df['arome_wd_140'], df['arome_ws_140'], 
+#        normed=True, opening=0.8, edgecolor="white", nsector=32)
+# # OBS
+# ax.bar(df['wd_140'], df['ws_140'], 
+#        normed=True, opening=0.8, edgecolor="white", nsector=32)
+# ax.set_legend()

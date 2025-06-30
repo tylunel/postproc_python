@@ -22,32 +22,33 @@ from shapely.geometry import Point, LineString
 ########## Independant parameters ###############
 
 # Simulation to show: 'irr' or 'std'
-model = 'irrswi1_d1'
-
-# Datetime
-wanted_date = '20210716-2300'
+# model = '1_planier_0105/02_1km_3L/'
+model = '2_planier_0122/04_1km_COARE'
 
 budget_type = 'UV'
 
-var_name_bu_list_dict = {  # includes only physical and most significant terms 
-        'TK': ['DISS', 'TR', 'ADV', 'DP', 'TP', ],
-        'TH': ['VTURB', 'MAFL', 'ADV', 'RAD', 'DISSH'],
-        'RV': ['VTURB', 'MAFL', 'ADV',],
-        'VV': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
-        'UU': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
-        'WW': ['VTURB', 'GRAV', 'PRES', 'ADV',],
-        'PROJ': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],  #is combination of UU an VV
-        'UV': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],  #eq. to PROJ
-        }
+# Datetime
+wanted_date = '20230122-0700'
 
+var_name_bu_list_dict = {  # includes only physical and most significant terms 
+    'TK': ['DISS', 'TR', 'ADV', 'DP', 'TP', ],
+    'TH': ['VTURB', 'MAFL', 'ADV', 'RAD', 'DISSH'],
+    'RV': ['VTURB', 'MAFL', 'ADV',],
+    'VV': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
+    'UU': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],
+    'WW': ['VTURB', 'GRAV', 'PRES', 'ADV',],
+    'PROJ': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],  #is combination of UU an VV
+    'UV': ['COR', 'VTURB', 'MAFL', 'PRES', 'ADV'],  #eq. to PROJ
+    }
 var_name_bu_list = var_name_bu_list_dict[budget_type]
 
-var_name_bu = 'PRES'
 # --- nb_var is used by run_day_multi_var.sh:
-#nb_var = 5
-#var_name_bu = var_name_bu_list[nb_var]
+# nb_var = 5
+# var_name_bu = var_name_bu_list[nb_var]
+# --- or define it directly:
+var_name_bu = 'MAFL'
 
-varname_contourmap = 'THTV'
+varname_contourmap = 'TKET'
 
 colormap='coolwarm'
 
@@ -98,10 +99,8 @@ minmax_dict = {
 vmin_contour = minmax_dict[varname_contourmap]['vmin']
 vmax_contour = minmax_dict[varname_contourmap]['vmax']
 
-
-
 # Surface variable to show below the section
-surf_var = 'LE_ISBA'
+surf_var = 'TSRAD'
 surf_var_label = surf_var
 
 # Set type of wind representation: 'verti_proj' or 'horiz'
@@ -113,14 +112,16 @@ alti_type = 'asl'
 toplevel = 1500
 
 # where to place the cross section
-nb_points_beyond = 0
-site_start = 'cendrosa'
-site_end = 'torredembarra'
+nb_points_beyond = 15
+site_start = 'carry'
+site_end = 'planier'
 
-sites_to_project = ['elsplans', 'serra_tallat', 'coll_lilla']
+sites_to_project = [
+    # 'carry',
+    ]
 
 # Arrow/barbs esthetics:
-skip_barbs_x = 2
+skip_barbs_x = 4
 skip_barbs_y = 5    #if 1: 1barb/10m, if 5: 1barb/50m, etc
 arrow_size = 1.2  #works for arrow and barbs
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
@@ -132,12 +133,9 @@ save_plot = True
 save_folder = f'./figures/cross_sections/{model}/section_{site_start}_{site_end}/{vector_visu}/{budget_type}_{var_name_bu}/'
 
 ###########################################
-#domain to consider: 1 or 2
-domain_nb = int(model[-1])
 
 barb_size_increments = gv.barb_size_increments
 barb_size_description = gv.barb_size_description
-
 
 end = (gv.whole[site_end]['lat'], gv.whole[site_end]['lon'])
 start = (gv.whole[site_start]['lat'], gv.whole[site_start]['lon'])
@@ -146,14 +144,16 @@ if gv.whole[site_start]['lon'] > gv.whole[site_end]['lon']:
     raise ValueError("site_start must be west of site_end")
 
 
-filepath = tools.get_simu_filepath(model, wanted_date, file_suffix='dg',
-                                   out_suffix='')
-ds = xr.open_dataset(filepath)
+filename = tools.get_simu_filepath(model, wanted_date, 
+                                   output_type='backup')
+ds = xr.open_dataset(filename)
 
 day = pd.Timestamp(wanted_date).day
 hour = pd.Timestamp(wanted_date).hour
 
-filename_bu = gv.global_simu_folder + gv.simu_folders[model] + f'LIAIS.1.SEG{day}.000.nc'
+# filename_bu = gv.global_simu_folder + gv.simu_folders[model] + f'LIAIS.1.SEG{day}.000.nc'
+filename_bu = tools.get_simu_filepath(model, wanted_date, 
+                                      output_type='diachronic')
 
 if budget_type in ['PROJ', 'UV']:
     ds_bu = tools.open_multiple_budget_file(filename_bu).isel(time_budget=hour)
@@ -163,9 +163,12 @@ else:
     ds_bu = tools.open_budget_file(filename_bu, budget_type).isel(time_budget=hour)
 
 # Computation of other diagnostic variable
-ds = tools.center_uvw(ds)
+ds = tools.flux_pt_to_mass_pt(ds, only_basic_vars=True)
 ds['WS'], ds['WD'] = tools.calc_ws_wd(ds['UT'], ds['VT'])
-ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'] - (ds['MRR']+ds['MRC'])/1000)
+try:
+    ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'] - (ds['MRR']+ds['MRC'])/1000)
+except KeyError:
+    ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'])
 
 #try:
 #    data_reduced = ds[['UT', 'VT', 'WT', 'ZS',
@@ -173,8 +176,8 @@ ds['THTV'] = ds['THT']*(1 + 0.61*ds['RVT'] - (ds['MRR']+ds['MRC'])/1000)
 #                   'DENS', 'DIV', 'WS', 'WD',
 #                   varname_colormap, varname_contourmap, surf_var]]
 #except:
-data_reduced = ds[['UT', 'VT', 'WT', 'WS', 'ZS', 'THT',
-                   'HBLTOP',
+data_reduced = ds[['UT', 'VT', 'WT', 'WS', 'ZS', 'THT', 'THTV',
+                   # 'HBLTOP',
                    surf_var, 
                    varname_contourmap
            ]]
@@ -185,15 +188,12 @@ data_redsub = tools.subset_ds(data_reduced,
 
 data = data_redsub
 
-
 if budget_type in ['PROJ', 'UV']:
     data_bu = ds_bu[[f'{var_name_bu}_VAL', f'{var_name_bu}_DIR',
                      f'{var_name_bu}_VV', f'{var_name_bu}_UU']]
 else:
     data_bu = ds_bu[[var_name_bu,]]
     
-
-
 
 #get total maximum height of relief on domain
 max_ZS = data['ZS'].max()
@@ -204,23 +204,23 @@ else:
     
     
 #%% BULK RI and FROUDE
-g = 9.81  #m/s2
-data['RI_BULK'] = ((g/data['THTV'])*(data['THTV'] - data['THTV'].isel(level=1))*data['level']) / \
-    (data['UT']**2 + data['VT']**2)
-data['FROUDE'] = 1/np.sqrt(data['RI_BULK'])
+# g = 9.81  #m/s2
+# data['RI_BULK'] = ((g/data['THTV'])*(data['THTV'] - data['THTV'].isel(level=1))*data['level']) / \
+#     (data['UT']**2 + data['VT']**2)
+# data['FROUDE'] = 1/np.sqrt(data['RI_BULK'])
 
-site = 'elsplans'
-ilat, ilon = tools.indices_of_lat_lon(
-        data, gv.sites[site]['lat'], gv.sites[site]['lon'], verbose=True)
-elsplans = data.isel(nj=ilat, ni=ilon)  # elsplans
-# Fr=1 around ilevel=38 - 530m - for date='20210716-1500' / Fr lower higher
-elsplans.isel(level=38)
+# site = 'elsplans'
+# ilat, ilon = tools.indices_of_lat_lon(
+#         data, gv.sites[site]['lat'], gv.sites[site]['lon'], verbose=True)
+# elsplans = data.isel(nj=ilat, ni=ilon)  # elsplans
+# # Fr=1 around ilevel=38 - 530m - for date='20210716-1500' / Fr lower higher
+# elsplans.isel(level=38)
     
 
 #%% STANDARD DATA
 ### -- create section line
 
-line = tools.line_coords(data, start, end, 
+line = tools.get_line_coords(data, start, end, 
                          nb_indices_exterior=nb_points_beyond)
 ni_range = line['ni_range']
 nj_range = line['nj_range']
@@ -254,7 +254,7 @@ data['WPROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'],
 #                                     upper_bound=1)
 
 ### -- interpolate on line
-print('section interpolation on {0} points (~1sec/pt)'.format(len(ni_range)))
+print('section interpolation on {0} points (~100ms/pt)'.format(len(ni_range)))
 for i, ni in enumerate(ni_range):
     nj=nj_range[i]
     #interpolation of all variables on ni_range
@@ -287,7 +287,7 @@ section_ds = xr.concat(section, dim="i_sect")
 #%% BUDGET DATA
 ### -- create section line
 
-line_bu = tools.line_coords(data_bu, start, end, 
+line_bu = tools.get_line_coords(data_bu, start, end, 
                          nb_indices_exterior=nb_points_beyond)
 ni_range_bu = line_bu['ni_range']
 nj_range_bu = line_bu['nj_range']
@@ -416,7 +416,8 @@ else:
     cont = ax[0].contour(Xmesh,
                          alti,
                          data2.T,
-                         levels=np.linspace(vmin_contour, vmax_contour, vmax_contour-vmin_contour+1),
+                         levels=np.linspace(vmin_contour, vmax_contour, 
+                                            vmax_contour-int(vmin_contour)+1),
                          cmap='copper_r'  #viridis_r, copper_r
                          )
     ax[0].clabel(cont, cont.levels, inline=True, fontsize=10)
@@ -558,16 +559,14 @@ if subplot_type == 'distance':
     fig.delaxes(ax[1])
     
     # get index of torredembarra in abscisse_sites
-#    torredembarra_ind = list(abscisse_sites.values()).index('coma_ruga')
-    torredembarra_ind = list(abscisse_sites.values()).index('torredembarra')
-
+    distance_ref_ind = list(abscisse_sites.values()).index('carry')
     # get corresponding abscisse for torredembarra
-    torredembarra_xval = list(abscisse_sites.keys())[torredembarra_ind]
+    distance_ref_xval = list(abscisse_sites.keys())[distance_ref_ind]
     
     def ftest(x):
-        return -(x - torredembarra_xval) * (line['nij_step']/1000)
+        return -(x - distance_ref_xval) * (line['nij_step']/1000)
     def ftest_recip(x):
-        return -(x/(line['nij_step']/1000) + torredembarra_xval)
+        return -(x/(line['nij_step']/1000) + distance_ref_xval)
     
     # add secondary axis
     secax = ax[0].secondary_xaxis(-0.1, functions=(ftest, ftest_recip))

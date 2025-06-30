@@ -18,39 +18,57 @@ import global_variables as gv
 ########## Independant parameters ###############
 
 # Simulation to show: 'irr' or 'std'
-models_list = ['irr_d1', 'std_d1']
+models_list = [
+    '1_planier_0105/02_1km/', 
+    '1_planier_0105/04_1km_COARE/',
+    ]
+var_name = 'THT'
+var_name_contour = 'RVT'
+
 # Surface variable to show below the section
-surf_var = 'WG2_ISBA'
-surf_var_label = 'Q_vol_soil'
+surf_var = 'TSRAD'
 # Set type of wind representation: 'verti_proj' or 'horiz'
 wind_visu = 'verti_proj'
 # Datetime
-wanted_date = '20210717-2300'
+wanted_date = '20230105-2300'
 # altitude ASL or height AGL: 'asl' or 'agl'
 alti_type = 'asl'
 # maximum level (height AGL) to plot
-toplevel = 2500
+toplevel = 1500
 
 # where to place the cross section
 nb_points_beyond = 10
-site_start = 'cendrosa'
-site_end = 'torredembarra'
-
+site_start = 'miramas'
+site_end = 'planier'
 
 # Arrow/barbs esthetics:
-skip_barbs_x = 2
+skip_barbs_x = 3
 skip_barbs_y = 10
-arrow_size = 1.5  #works for arrow and barbs
+arrow_size = 2  #works for arrow and barbs
 barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
-
 
 # Save the figure
 figsize = (15,9)
 save_plot = True
 
-folder_res = 'diff_{0}_{1}'.format(models_list[0], models_list[1])
-save_folder = './figures/cross_sections/{0}/section_{1}_{2}/{3}/'.format(
-        folder_res, site_start, site_end, wind_visu)
+models_list_noendslash = [model[:-1] for model in models_list if model[-1]=='/']
+models_list_short = [model.split('/')[-1] for model in models_list_noendslash]
+folder_res = 'diff_{0}_vs_{1}'.format(models_list_short[0], models_list_short[1])
+
+save_folder = './figures/cross_sections/{0}/section_{1}_{2}/{3}/{4}/'.format(
+        folder_res, site_start, site_end, (var_name+'-'+var_name_contour), wind_visu)
+
+vmax_dict = {
+    'HU2M_SEA': 0.01,
+    'T2M_SEA': 1,
+    'RI_SEA': 1,
+    'WS': 1,
+    'WSME': 1,
+    'TKET': 0.4,
+    'THT': 2,
+    }
+vmax = vmax_dict[var_name]
+vmin = -vmax
 
 
 ###########################################
@@ -68,33 +86,33 @@ barb_size_description = {
 end = (gv.whole[site_end]['lat'], gv.whole[site_end]['lon'])
 start = (gv.whole[site_start]['lat'], gv.whole[site_start]['lon'])
 
-
 section_ds = {}
 
 for model in models_list:
     # Dependant parameters
-    filename = tools.get_simu_filename(model, wanted_date, 
+    filename = tools.get_simu_filepath(model, wanted_date, 
     #                                      domain=domain_nb,
     #                                      file_suffix='001dg'
                                           )
     
     #load file
     data_perso = xr.open_dataset(filename)
-    data_reduced = data_perso[['THT', 'RVT', 'UT', 'VT', 'WT', 'ZS',
-                               'TEMP', 'PRES',
+    data_reduced = data_perso[['THT', 'RVT', 'TKET', 'UT', 'VT', 'WT', 'ZS',
+                               # 'TEMP', 'PRES',
                                surf_var]]
     data = data_reduced
     
     
-    #%% Put variables U, V, W in the middle of the grid:
+    #-- Put variables U, V, W in the middle of the grid:
     
     # with external function:
-    data = tools.center_uvw(data)
+    # data = tools.center_uvw(data)
+    data = tools.flux_pt_to_mass_pt(data, only_basic_vars=True)
+    data = data.squeeze()
     
+    #-- CREATE SECTION LINE
     
-    #%% CREATE SECTION LINE
-    
-    line = tools.line_coords(data, start, end, 
+    line = tools.get_line_coords(data, start, end, 
                              nb_indices_exterior=nb_points_beyond)
     ni_range = line['ni_range']
     nj_range = line['nj_range']
@@ -106,9 +124,9 @@ for model in models_list:
         angle = np.arctan(slope)
         
     data['PROJ'] = tools.windvec_verti_proj(data['UT'], data['VT'], 
-                                           data.level, angle)
+                                            data.level, angle)
     
-    #%% INTERPOLATION
+    #-- INTERPOLATION
     
     section = []
     abscisse_coords = []
@@ -148,8 +166,17 @@ for model in models_list:
     #concatenation of all profile in order to create the 2D section dataset
     section_ds[model] = xr.concat(section, dim="i_sect")
 
+
+#%% DIFF computation
 section_diff = section_ds[models_list[0]] - section_ds[models_list[1]]
 section_diff['ZS'] = section_ds[models_list[0]]['ZS']
+
+#%% Computation of diagnostic variable
+    
+# section_diff['DENS'] = calc.density(
+#     section_diff['PRES']*units.hectopascal,
+#     section_diff['THT']*units.K, 
+#     section_diff['RVT']*units.gram/units.gram)
 
 #%% PLOT
 # create figure
@@ -181,16 +208,8 @@ elif alti_type == 'agl':
     #for plot
     ylabel = 'height AGL [m]'
     
-
-#%% Computation of diagnostic variable
-    
-section_diff['DENS'] = calc.density(
-    section_diff['PRES']*units.hectopascal,
-    section_diff['THT']*units.K, 
-    section_diff['RVT']*units.gram/units.gram)
-
 ### 1. Color map (pcolor or contourf)
-data1 = section_diff['THT']
+data1 = section_diff[var_name]
 #cm = ax[0].pcolormesh(Xmesh,
 #                      alti,
 #                      data1.T, 
@@ -200,22 +219,20 @@ cm = ax[0].contourf(Xmesh,
                     alti,
                     data1.T, 
                     cmap='seismic',
-                    levels=np.linspace(-5, 5, 11),  # to keep always same colorbar limits
+                    levels=np.linspace(vmin, vmax, 21),  # to keep always same colorbar limits
 #                    levels=20,
 #                    extend = 'both',  #highlights the min and max in different color
-                    vmin=-5, vmax=5,  # for THT
-#                    vmin=None, vmax=None,  # for adaptative colormap
-#                    vmin=800, vmax=1000,  # for PRES
+                    vmin=vmin, vmax=vmax,  # for THT
                     )
 #manage colorbar
 divider = make_axes_locatable(ax[0])
 cax = divider.append_axes('right', size='2%', pad=0.05)
 cbar = fig.colorbar(cm, cax=cax, orientation='vertical')
-cbar.set_label('theta [K]')
+cbar.set_label(var_name)
 
 
 ### 2. Contour map
-data2 = section_diff['RVT']
+data2 = section_diff[var_name_contour]
 cont = ax[0].contour(Xmesh,
                      alti,
                      data2.T)
@@ -280,14 +297,14 @@ ax[0].set_ylabel(ylabel)
 data_soil = section_diff[surf_var][:, :2]  #keep 2 equivalent levels for plot
 p9 = ax[1].pcolor(data_soil.i_sect, 
                   data_soil.level, 
-                  data_soil.transpose(), cmap='RdYlGn',
-                  vmin=-0.4, vmax=0.4
+                  data_soil.transpose(), cmap='coolwarm',
+                  vmin=-0.5, vmax=0.5
                   )
 # create colorbar dedicated to the subplot
 divider = make_axes_locatable(ax[1])
 cax = divider.append_axes('right', size='2%', pad=0.05)
 cbar2 = fig.colorbar(p9, cax=cax, orientation='vertical')
-cbar2.set_label(surf_var_label)
+cbar2.set_label(surf_var)
 
 ax[1].set_xticks(ticks = data_soil.i_sect.values[::9],
                  labels = (data_soil.i_sect.values * \
@@ -299,7 +316,7 @@ ax[1].set_yticks([])
 ax[1].set_ylabel(surf_var)
 
 # Global options
-plot_title = f'{wanted_date}_diff_{models_list[0]}-{models_list[1]}-{wind_visu}'
+plot_title = f'{wanted_date}_diff_{models_list_short[0]}-{models_list_short[1]}-{wind_visu}'
 fig.suptitle(plot_title)
 
 if save_plot:

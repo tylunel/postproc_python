@@ -416,8 +416,8 @@ plt.grid()
 # %% curve fit
 # ws_profile = lidar_data_dict
 
-h = np.array(ws_profile.index)
 ws = np.array(ws_profile.values)
+h = np.array(ws_profile.index)
 
 def func_powerlaw(h, alpha):
     return ws[0] * (h/h[0])**alpha

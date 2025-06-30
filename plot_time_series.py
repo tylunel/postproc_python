@@ -15,11 +15,11 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'C6'
+site = 'irta-corn'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'T'
+varname_obs = ''
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -40,14 +40,21 @@ varname_obs = 'T'
 # -- for SMC --
 # T
 
-varname_sim_list = ['T2M_ISBA']
-# T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
-# U_STAR, BOWEN
+varname_sim_list = ['LWU']
+# ex: T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9, U_STAR, BOWEN
+########################
+# Pour Pierre:
+# todo: température et humidité du sol (?): TG1P9 et WG1P9, LST,
+# done: T2M, H2M, 
+# todo: SWD SWU LWD LWU, 
+# todo: HBLTOP, 
+# todo: U10, V10
+####################"
 
 vmin, vmax = None, None
 
 #If varname_sim is 3D:
-ilevel =  10  #0 is Halo, 1->2m, 2->6.12m, 3->10.49m, 10 -> 50m
+ilevel =  3  #0 is Halo, 1->2m, 2->6.12m, 3->10.49m, 10 -> 50m
 
 figsize = (6, 2.5) #small for presentation: (6,6), big: (15,9), paper:(7, 7)
 plt.rcParams.update({'font.size': 11})
@@ -58,7 +65,7 @@ save_folder = './figures/time_series/{0}/'.format(site)
 
 models = [
         # 'std_d1',
-        'noirr_lai_d1',
+        # 'noirr_lai_d1',
         # 'irrlagrip30_d1',
         # 'irrlagrip30thld07_d1',
         'irrswi1_d1',
@@ -85,12 +92,12 @@ xmax = pd.Timestamp('20210716T00')
 ######################################################
 
 simu_folders = {key:gv.simu_folders[key] for key in models}
-father_folder = gv.global_simu_folder
+father_folder = gv.global_simu_folder_liaise
 
 date = '2021-07'
 
-colordict = gv.colordict
-styledict = gv.styledict
+colordict = gv.colordict_liaise
+styledict = gv.styledict_liaise
 
 
 #%% Dependant Parameters
@@ -189,9 +196,10 @@ else:  # SMC
     if add_irrig_time:
         print('add_irrig_time turned to False (absence of data at SMC stations')
         add_irrig_time = False
-    
-lat = gv.whole[site]['lat']
-lon = gv.whole[site]['lon']
+
+if models !=[]:
+    lat = gv.whole[site]['lat']
+    lon = gv.whole[site]['lon']
 
 
 #%% OBS: LOAD and COMPUTE SOME DIAGs
@@ -227,11 +235,11 @@ if varname_obs != '':
         obs['SEB_RESIDUE'] = obs['rn']-obs['lhf']-obs['shf']-obs['soil_heat_flux']
         obs['EVAP_FRAC'] = obs['lhf'] / (obs['lhf'] + obs['shf'])
         obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
-        for i in [1,2,3]:
-            obs['swi_{0}'.format(i)] = tools.calc_swi(
-                    obs['soil_moisture_{0}'.format(i)],
-                    gv.wilt_pt[site][i],
-                    gv.field_capa[site][i],) 
+        # for i in [1,2,3]:
+        #     obs['swi_{0}'.format(i)] = tools.calc_swi(
+        #             obs['soil_moisture_{0}'.format(i)],
+        #             gv.wilt_pt[site][i],
+        #             gv.field_capa[site][i],) 
     elif site in ['cendrosa']:
         # net radiation
         obs['rn'] = obs['swd'] + obs['lwd'] - obs['swup'] - obs['lwup']
@@ -241,27 +249,27 @@ if varname_obs != '':
         obs['SEB_RESIDUE'] = obs['rn']-obs['lhf_1']-obs['shf_1']-obs['soil_heat_flux']
         obs['EVAP_FRAC'] = obs['lhf_1'] / (obs['lhf_1'] + obs['shf_1'])
         obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
-        for i in [1,2,3]:
-            obs['swi_{0}'.format(i)] = tools.calc_swi(
-                    obs['soil_moisture_{0}'.format(i)],
-                    gv.wilt_pt[site][i],
-                    gv.field_capa[site][i],) 
+        # for i in [1,2,3]:
+        #     obs['swi_{0}'.format(i)] = tools.calc_swi(
+        #             obs['soil_moisture_{0}'.format(i)],
+        #             gv.wilt_pt[site][i],
+        #             gv.field_capa[site][i],) 
     elif site in ['irta-corn', 'irta-corn-real']:
-        for i in [1,2,3,4,5]:
-            site = 'irta-corn'
-            obs['swi_{0}'.format(i)] = tools.calc_swi(
-                    obs['VWC_{0}0cm_Avg'.format(i)],
-                    gv.wilt_pt[site][i],
-                    gv.field_capa[site][i],)
-        obs['Q_1_1_1'] = tools.psy_ta_rh(
-            obs['TA_1_1_1'], 
-            obs['RH_1_1_1'],
-            obs['PA']*1000)['hr']
+        # for i in [1,2,3,4,5]:
+        #     site = 'irta-corn'
+        #     obs['swi_{0}'.format(i)] = tools.calc_swi(
+        #             obs['VWC_{0}0cm_Avg'.format(i)],
+        #             gv.wilt_pt[site][i],
+        #             gv.field_capa[site][i],)
+        # obs['Q_1_1_1'] = tools.psy_ta_rh(
+        #     obs['TA_1_1_1'], 
+        #     obs['RH_1_1_1'],
+        #     obs['PA']*1000)['hr']
         obs['air_density'] = obs['PA']*1000/(287.05*(obs['TA_1_1_1']+273.15))
-        obs['U_STAR'] = np.sqrt(obs['TAU']/obs['air_density'])
-        obs['SEB_RESIDUE'] = obs['NETRAD']-obs['LE']-obs['H']-obs['G_plate_1_1_1']
-        obs['EVAP_FRAC'] = obs['LE'] / (obs['LE'] + obs['H'])
-        obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
+        # obs['U_STAR'] = np.sqrt(obs['TAU']/obs['air_density'])
+        # obs['SEB_RESIDUE'] = obs['NETRAD']-obs['LE']-obs['H']-obs['G_plate_1_1_1']
+        # obs['EVAP_FRAC'] = obs['LE'] / (obs['LE'] + obs['H'])
+        # obs['EVAP_FRAC_FILTERED'] = obs['EVAP_FRAC'].clip(min=0, max=1)
     elif site == 'elsplans':
         ## Flux calculations
         obs['H_2m'] = obs['WT_2m']*1200  # =Cp_air * rho_air
@@ -400,14 +408,15 @@ for  varname_sim in varname_sim_list:
 
         ds = tools.load_series_dataset(varname_sim_preproc, model,
                                        out_suffix=out_suffix,
-                                       file_suffix=file_suffix)
+                                       file_suffix=file_suffix,
+                                       global_simu_folder = father_folder)
         
         try:
-            index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
+            index_lat, index_lon = tools.get_indices_of_lat_lon(ds, lat, lon)
         except AttributeError:  #if the data does not have lat-lon data, merge with another that have it
             ds = tools.load_series_dataset(['H_ISBA',] + varname_sim_preproc, model)
             # and now, try again:
-            index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
+            index_lat, index_lon = tools.get_indices_of_lat_lon(ds, lat, lon)
         
         # Compute other diag variables
         if varname_sim == 'U_STAR':
@@ -438,7 +447,7 @@ for  varname_sim in varname_sim_list:
         ds = ds.rename({'record': 'time'})
             
         # find indices from lat,lon values 
-        index_lat, index_lon = tools.indices_of_lat_lon(ds, lat, lon)
+        index_lat, index_lon = tools.get_indices_of_lat_lon(ds, lat, lon)
         
         # keep variable of interest
         var_md = ds[varname_sim]
@@ -450,13 +459,14 @@ for  varname_sim in varname_sim_list:
         if kelvin_to_celsius:
             var_md = var_md - 273.15
         
-        # if len(var_md.shape) == 5:
-        #     var_1d = var_md[:, :, ilevel, index_lat, index_lon].data  #1st index is time, 2nd is ?, 3rd is Z,..
-        # elif len(var_md.shape) == 4:
-        #     var_1d = var_md[:, ilevel, index_lat, index_lon].data  #1st index is time, 2nd is Z,..
-        # elif len(var_md.shape) == 3:
-        #     var_1d = var_md[:, index_lat, index_lon].data
-        var_1d = var_md.isel(nj=index_lat, ni=index_lon)
+        if len(var_md.shape) == 5:
+            var_1d = var_md[:, :, ilevel, index_lat, index_lon].data  #1st index is time, 2nd is ?, 3rd is Z,..
+        elif len(var_md.shape) == 4:
+            var_1d = var_md[:, ilevel, index_lat, index_lon].data  #1st index is time, 2nd is Z,..
+        elif len(var_md.shape) == 3:
+            var_1d = var_md[:, index_lat, index_lon].data
+        # following doesn't work with flux points (ni_u, nj_u)
+        # var_1d = var_md.isel(nj=index_lat, ni=index_lon)
         
         # PLOT
         plt.plot(ds.time, var_1d, 
@@ -588,3 +598,32 @@ plt.xticks(rotation=30)
 if save_plot:
     tools.save_figure(plot_title, save_folder)
 #    tools.save_figure(plot_title, '/d0/images/lunelt/figures/')
+
+
+#%% TEMP post processing for SEBvar article
+# import scipy
+# # df_all  #do not touch
+# #or
+# df_all = pd.read_pickle('df_obs_wd')
+
+# df_noon1 = df_all[df_all.index.hour >= 11]
+# df_noon = df_noon1[df_noon1.index.hour <= 13]
+# df_noon_dayaverage = df_noon.groupby(pd.Grouper(freq='1D')).mean()
+
+# # df_noon_dayaverage
+# df_proc = df_noon_dayaverage
+
+# # standard mean:
+# df_mean = df_proc[['wd_cend', 'wd_prei']]
+# df_mean['mean_wd_std'] = df_proc.mean(axis=1)
+# df_mean['mean_wd_circ'] = df_proc.mean(axis=1)*0
+
+# for ind in df_proc.index:
+#     mean_wd = scipy.stats.circmean(df_proc.loc[ind],high=360)
+#     df_mean['mean_wd_circ'].loc[ind] = mean_wd
+
+# plt.figure()
+# plt.plot(df_mean['mean_wd_std'], label='normal_mean')
+# plt.plot(df_mean['mean_wd_circ'], label='circ_mean')
+# plt.legend()
+# plt.grid()

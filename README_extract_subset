@@ -1,0 +1,14 @@
+Ligne de commande pour centrer sur les quelques km autour de la cendrosa :
+ncks [-v LAI] -d latitude,41.65,41.74 -d longitude,0.85,1. c_gls_LAI300-RT6_[...].nc -O subset_name.nc
+
+ex pour obtenir le domaine fils (d2 - 400M) des simu:
+ncks -d lat,40.799,42.4335 -d lon,-0.6784,1.9580 c_gls_SWI1km_202107221200_CEURO_SCATSAR_V1.0.1.nc -O subset_d2_SWI1km_0722.nc
+
+ex pour obtenir le domaine recentré sur plana d'urgell et la campagne LIAISE:
+ncks -d lat,41.36,41.95 -d lon,0.33,1.33 c_gls_SWI1km_202107221200_CEURO_SCATSAR_V1.0.1.nc -O subset_liaise_SWI1km_0722.nc
+
+
+
+N.B.: name of coordinates can vary (latitude, lat, etc), check with ncdump -h [...].nc | more
+
+

@@ -30,7 +30,7 @@ max_height = 3000  # [m]
 # month = '01'
 # month_next = str(int(month)+1).zfill(2)
 # date_start, date_end = f'2023-{month}-01 00:15:00', f'2023-{month_next}-01 00:15:00'
-date_start, date_end = '2023-01-21 00:00:00', '2023-01-22 23:15:00'
+date_start, date_end = '2023-01-22 00:00:00', '2023-01-22 23:15:00'
 
 save_folder = '/home/lunelt/Data/data_NEMO/arome_profiles/'
 
@@ -72,22 +72,23 @@ for wanted_date in datetimes:
         try:
             temp = tools.extract_profile_arome(
                 site, wanted_date, varname, max_height=max_height, 
-                verbose=False)
+                verbose=True)
             verti_profile[varname] = temp[varname]
-            
-            # -- Save profile to pickle
-            datetime_formatted = wanted_date.strftime('%Y%m%d.%H')
-            filename_pickle = f"verti_profile_arome_{site}_{datetime_formatted}"
-            
-            # Format pd.DataFrame:
-            df = pd.DataFrame(verti_profile)
-            df.to_pickle(f'{save_folder}/{site}/{filename_pickle}.pickle')
-            # Format dict: (heavier than pd.DataFrame)
-            # with open(f'{save_folder}/{filename_pickle}.pickle', 'wb') as handle:
-            #     pickle.dump(verti_profile, handle)
-            #     print(f'{filename_pickle}.pickle saved in {save_folder}')
         except:
             continue
+            
+    # -- Save profile to pickle
+    datetime_formatted = wanted_date.strftime('%Y%m%d.%H')
+    filename_pickle = f"verti_profile_arome_{site}_{datetime_formatted}"
+    
+    # Format pd.DataFrame:
+    df = pd.DataFrame(verti_profile)
+    df.to_pickle(f'{save_folder}/{site}/{filename_pickle}.pickle')
+    # Format dict: (heavier than pd.DataFrame)
+    # with open(f'{save_folder}/{filename_pickle}.pickle', 'wb') as handle:
+    #     pickle.dump(verti_profile, handle)
+    #     print(f'{filename_pickle}.pickle saved in {save_folder}')
+
     
 
     

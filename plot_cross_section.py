@@ -19,17 +19,26 @@ from shapely.geometry import Point, LineString
 
 ########## Independant parameters ###############
 
-model = '1_planier_0105/02_1km'
+# model = '1_planier_0105/02_1km'
 # model = '1_planier_0105/05_1km_noEDKF_3DTKE'
 # model = '1_planier_0105/06_1km_noEDKF'
 # model = '1_planier_0105/07_1km_3DTKE'
 # model = '1_planier_0105/021_200m'
-# model = '1_planier_0105/022_40m'
+# model = '1_planier_0105/0221_40m'
+# model = '1_planier_0105/0211_40m'
+model = '2_planier_0122/04_1km_COARE'
+# model = '2_planier_0122/0411_40m'
+# model = '2_planier_0122/06_1km_UPDRAFTDIAG'
+# model = '3_planier_0127/04_1km_COARE'
+# model = '3_planier_0127/0411_40m'
+# model = 'std_d1'
 
+global_simu_folder=gv.global_simu_folder
+output_type='diag'
 # Datetime
-wanted_date = '20230105-0900'
+wanted_date = '20230122-0700'
 
-varname_colormap = 'TOT_TKE'
+varname_colormap = 'TKET'
 varname_contourmap = 'THTV'
 
 # Surface variable to show below the section
@@ -38,29 +47,31 @@ subplot_type = 'surface_var'  #'surface_var', 'distance'
 surf_var = 'RI'   
 surf_var_label = 'RI'
 vmin_surf_var, vmax_surf_var = -0.025, 0.025
-
+ 
 # Set type of wind representation: 'verti_proj' or 'horiz'
 wind_visu = 'verti_proj'
 
 # altitude ASL or height AGL: 'asl' or 'agl'
 alti_type = 'asl'
 # maximum level (height AGL) to plot
-toplevel = 1300
+toplevel = 900
 
 # where to place the cross section
-nb_points_beyond = 2
+nb_points_beyond = 3
 site_start = 'carry'
 site_end = 'planier'
 
 # sites different from start and end, to project on the x-axis
 # sites_to_project = ['elsplans', 'serra_tallat', 'coll_lilla']  
-sites_to_project = ['carry']  
+sites_to_project = [
+    # 'carry',
+    ]  
 
 # Arrow/barbs esthetics:
-skip_barbs_x = 4
+skip_barbs_x = 2
 skip_barbs_y = 10    #if 1: 1barb/10m, if 5: 1barb/50m, etc
 arrow_size = 0.7  #works for arrow and barbs
-barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
+barb_size_option = 'standard'  # 'weak_winds' or 'standard'
 
 # Save the figure
 figsize = (9,4)
@@ -70,49 +81,43 @@ save_folder = f'./figures/cross_sections/{model}/section_{site_start}_{site_end}
 plt.rcParams.update({'font.size': 11})
 ###########################################
 
-minmax_dict = {
-    'DIV': {'vmin': -0.0015, 'vmax': 0.0015, 'colormap':'coolwarm'},
-    'WS': {'vmin': 1, 'vmax': 12, 'colormap':'BuPu'},
-    'THT': {'vmin': 306, 'vmax': 314,'colormap':'OrRd'},
-    'THTV': {'vmin': 292, 'vmax': 312, 'colormap':'OrRd'},
-    'TKET': {'vmin': 0.01, 'vmax': 3, 'colormap':'magma_r'},
-    'TKEMME': {'vmin': 0.01, 'vmax': 3, 'colormap':'magma_r'},
-    'TOT_TKE': {'vmin': 0.01, 'vmax': 3, 'colormap':'magma_r'},
-    'RES_TKE_FRAC': {'vmin': 0, 'vmax': 1, 'colormap':'coolwarm'},
-    'RVT': {'vmin': 0, 'vmax': 0.02, 'colormap':'OrRd'},
-    'WT': {'vmin': -1.5, 'vmax': 1.5, 'colormap':'coolwarm'},
-    'MSLP3D': {'vmin': None, 'vmax': None, 'colormap':'coolwarm'},
-    None: {'vmin': None, 'vmax': None, 'colormap':'coolwarm'},
-    }
+vmin = gv.minmax_dict[varname_colormap]['vmin']
+vmax = gv.minmax_dict[varname_colormap]['vmax']
+vstep = gv.minmax_dict[varname_colormap]['vstep']
+colormap = gv.minmax_dict[varname_colormap]['colormap']
 
-vmin = minmax_dict[varname_colormap]['vmin']
-vmax = minmax_dict[varname_colormap]['vmax']
-colormap = minmax_dict[varname_colormap]['colormap']
+# -- modify by hand if necessary:
+# vmax = 5
+
 # -- Colorscale linear
-norm_cm=mpl.colors.Normalize(vmin=vmin, vmax=vmax)
-levels = np.linspace(vmin, vmax, 20)
+# norm_cm=mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+# levels = np.linspace(vmin, vmax, 12+1)
+levels = np.arange(vmin, vmax, vstep)
 # levels = np.linspace(vmin, vmax, vmax-vmin+1)  # to have 1 unit per color variation
 # -- Colorscale log
-# norm_cm=mpl.colors.LogNorm(vmin=vmin, vmax=vmax)  # for TKE
+# norm_cm=mpl.colors.LogNorm(vmin=vmin+0.01, vmax=vmax)  # for TKE
 # levels = 20
 # -- Colorscale unknown
 if None in [vmin, vmax]:
     levels = 10
 
-
-vmin_contour = minmax_dict[varname_contourmap]['vmin']
-vmax_contour = minmax_dict[varname_contourmap]['vmax']
+vmin_contour = gv.minmax_dict[varname_contourmap]['vmin']
+vmax_contour = gv.minmax_dict[varname_contourmap]['vmax']
+vstep_contour = gv.minmax_dict[varname_contourmap]['vstep']
+levels_contour = np.arange(vmin_contour, vmax_contour, vstep_contour)
 #vmin_contour, vmax_contour = None, None
 
 barb_size_increments = gv.barb_size_increments
 barb_size_description = gv.barb_size_description
 
 # Filename to open
-filename = tools.get_simu_filepath(model+'/', wanted_date, output_type='backup')
+filename = tools.get_simu_filepath(model, wanted_date, 
+                                   output_type=output_type,
+                                   global_simu_folder=global_simu_folder)
 # OR:
 #filename = '/home/lunelt/Data/temp_outputs/LIAIS.1.SEG03.009.nc'
 
-ds = xr.open_dataset(filename)
+ds = xr.open_dataset(filename,)
 
 # Coordinates of starting and ending points of the cross-section:
 end = (gv.whole[site_end]['lat'], gv.whole[site_end]['lon'])
@@ -138,9 +143,11 @@ ds_subcen = tools.flux_pt_to_mass_pt(
     basic_vars=['UT', 'VT', 'WT', 
                 'UMME', 'VMME', 'WMME',
                 'U2ME', 'V2ME', 'W2ME',
+                'MF_FRAC_UP', 'MF_W_UP', 'MF_U_UP', 'MF_V_UP',
                 ],
     )
 
+#%% DIAG
 # Computation of other diagnostic variable
 # ds_subcen['DIV'] = mcalc.divergence(ds_subcen['UT'], ds_subcen['VT'])
 ds_subcen['WS'], ds_subcen['WD'] = tools.calc_ws_wd(ds_subcen['UT'], ds_subcen['VT'])
@@ -149,15 +156,31 @@ try:
 except KeyError:
     ds_subcen['THTV'] = ds_subcen['THT']*(1 + 0.61*ds_subcen['RVT'])
 # ds_subcen['MSLP3D'] = tools.calc_mslp(ds)
-ds_subcen['RES_TKE'] = 0.5* (ds_subcen['U2ME'] + ds_subcen['V2ME'] + ds_subcen['W2ME'])
-ds_subcen['SBG_TKE'] = ds_subcen['TKEMME']
-ds_subcen['TOT_TKE'] = ds_subcen['SBG_TKE'] + ds_subcen['RES_TKE']
-ds_subcen['RES_TKE_FRAC'] = ds_subcen['RES_TKE']/ds_subcen['TOT_TKE']
-ds_subcen['TOT_TI'] = np.sqrt(1.5*ds_subcen['TOT_TKE'])/ds_subcen['WS']
+try:
+    ds_subcen['RES_TKE'] = 0.5* (ds_subcen['U2ME'] + ds_subcen['V2ME'] + ds_subcen['W2ME'])
+    ds_subcen['SBG_TKE'] = ds_subcen['TKEMME']
+    ds_subcen['TOT_TKE'] = ds_subcen['SBG_TKE'] + ds_subcen['RES_TKE']
+    ds_subcen['RES_TKE_FRAC'] = ds_subcen['RES_TKE']/ds_subcen['TOT_TKE']
+    ds_subcen['TOT_TI'] = np.sqrt(1.5*ds_subcen['TOT_TKE'])/ds_subcen['WS']
+except:
+    pass
 
+try:
+    # ds_subcen['TKE_MF_UP'] = \
+    #     ds_subcen['MF_FRAC_UP'] / (1 - ds_subcen['MF_FRAC_UP']) * \
+    #     (ds_subcen['MF_W_UP'] - ds_subcen['WT'])**2
+    ds_subcen['TKE_MF_UP'] = \
+        0.5*(ds_subcen['MF_FRAC_UP'] / (1 - ds_subcen['MF_FRAC_UP'])) * \
+        ((ds_subcen['MF_W_UP'] - ds_subcen['WT'])**2 + \
+         (ds_subcen['MF_U_UP'] - ds_subcen['UT'])**2 + \
+         (ds_subcen['MF_V_UP'] - ds_subcen['VT'])**2)
+    ds_subcen['TKE_EQ'] = ds_subcen['TKET'] + ds_subcen['TKE_MF_UP']
+except:
+    pass
 
 data_reduced = ds_subcen[[
-    'UT', 'VT', 'WT', 'ZS', 
+    'UT', 'VT', 'WT', 
+    'ZS', 
     # 'ALT',
 #    'TEMP', 'PRES', 'HBLTOP',
 #    'DENS', 'DIV', 'WS', 'WD',
@@ -305,9 +328,7 @@ else:
                          cmap='viridis_r',  #viridis_r, copper_r
 #                         colors='r',
 #                         levels=np.arange(vmin_contour, vmax_contour),
-                         levels=np.linspace(vmin_contour, 
-                                            vmax_contour, 
-                                            vmax_contour-vmin_contour+1),
+                         levels=levels_contour,
 #                         vmin=vmin, vmax=vmax,  # for adaptative colormap
                          )
     ax[0].clabel(cont, cont.levels, inline=True, fontsize=13)
@@ -401,7 +422,8 @@ if subplot_type == 'surface_var':
     divider = make_axes_locatable(ax[1])
     cax = divider.append_axes('right', size='2%', pad=0.05)
     cbar2 = fig.colorbar(surfplot, cax=cax, orientation='vertical')
-    cbar2.set_label('RI')
+    cbar2.ax.get_yaxis().set_ticks([vmin_surf_var, vmax_surf_var])
+    cbar2.set_label(surf_var_label)
     
     # labels_arr = np.arange(0, 100, 10)
     transect_length = (line['index_distance'] + 2*nb_points_beyond)*line['nij_step']/1000  # length in km
@@ -431,7 +453,6 @@ if subplot_type == 'distance':
     # add secondary axis
     secax = ax[0].secondary_xaxis(-0.1, functions=(ftest, ftest_recip))
     secax.set_xlabel('distance to the sea [km]')
-
 
 
 ### Global options

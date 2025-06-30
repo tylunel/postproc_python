@@ -6,13 +6,16 @@
 Gathers global variables for use in scripts. 
 """
 
-#%% ------- Some global folder paths -----------
-# global_simu_folder = '/cnrm/surface/lunelt/NO_SAVE/nc_out/'
+#%% ------- Models folder paths -----------
+# -- Harddisk
 #global_simu_folder = '/media/lunelt/7C2EB31F2EB2D0FE/Tanguy/'
-#global_temp_folder = '/home/lunelt/Data/temp_outputs/'
+# -- local simu
+global_simu_folder = '/home/lunelt/Data/data_NEMO/temp_model/'
 # global_simu_folder = '/home/lunelt/Data/mnh_run/'
-global_simu_folder = '/cnrm/phynh/NO_SAVE/lunelt/'
-
+# -- server simu
+global_simu_folder_liaise = '/cnrm/surface/lunelt/NO_SAVE/lustre_MNH_outputs/'
+# global_simu_folder = '/cnrm/phynh/NO_SAVE/lunelt/'
+# -- local data
 #global_data_liaise = '/cnrm/surface/lunelt/data_LIAISE/'
 global_data_liaise = '/home/lunelt/Data/data_LIAISE/'
 global_data_nemo = '/home/lunelt/Data/data_NEMO/'
@@ -21,6 +24,7 @@ global_data_nemo = '/home/lunelt/Data/data_NEMO/'
 simu_folders = {
         'irr_d2': '2.17_irr_d2_21-22_bugfix/',
         'irrswi1_d1': '8.16_irrswi1_d1_15-30_bugfix/',
+        'std_d1': '1.15_std_d1_15-30/',
         # '1_0105_1km': '1_0105_1km/',
         '1_0105_1km': '1_planier_0105/01_1km/',
         'temp': '',
@@ -36,237 +40,387 @@ format_filename_simu_wildcards = {
 format_filename_simu = {  
         'std_d2': 'LIAIS.1.S{seg_nb}{output_nb_2f}.001{file_suffix}.nc',
         'irrswi1_d1': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
-        '1_0105_1km': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        # '1_0105_1km': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
         '1_planier_0105/01_1km_DIF/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
         '1_planier_0105/02_1km/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
         '1_planier_0105/04_1km_COARE/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
         '1_planier_0105/05_1km_noEDKF_3DTKE/': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
         '1_planier_0105/06_1km_noEDKF/': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
         '1_planier_0105/07_1km_3DTKE/': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '1_planier_0105/022_200m_EDKF/': 'PLANI.1.D2S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
         '1_planier_0105/021_200m/': 'PLANI.1.D2S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
-        '1_planier_0105/022_40m/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '1_planier_0105/0221_40m/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '1_planier_0105/0211_40m/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
         '2_planier_0122/04_1km_COARE/': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
-        '3_planier_0127/04_1km_COARE/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        '2_planier_0122/0411_40m/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        # '2_planier_0122/0412_40m_bigD3/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        # '3_planier_0127/04_1km_COARE/': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        # '4_planier_0515/04_1km_COARE/': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        # '5_planier_1020/04_1km_COARE/': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',    
         }
 # Apply .format() after corresponding string
 # ex: format_filename_simu_new['std_d2'].format(seg_nb=22, output_nb_2f=12, output_nb_2f='012', file_suffix='dg')
 # format_filename_simu_wildcards = {key:val.format(seg_nb='??', output_nb_2f='??', output_nb_2f='012', file_suffix='dg') if ...}
 
-filename_simu_name_rules = {
+default_diachronic_name_rules = {
+    'seg_nb': '01',
+    'output_nb': '000',
+    'file_suffix': '',
+    'out_suffix': '',
+    }
+default_backup_name_rules = {
+    'seg_nb': '01',
+    'output_nb': 'H',
+    'file_suffix': '',
+    'out_suffix': '',
+    }
+default_output_name_rules = {
+    'seg_nb': '01',
+    'out_suffix': '.OUT',
+    'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
+    'file_suffix': '',
+    }
+
+simu_filenames_rules = {
     'default': {
-        'backup': {
-            'seg_nb': '01',
-            'out_suffix': '',
-            'output_nb': 'HH',  # ex: 12h -> 012 or 12
-            'file_suffix': '',
-            },
-        'output': {
-            'seg_nb': '01',
-            'out_suffix': '.OUT',
-            'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
-            'file_suffix': '',
-            },
-        'diachronic': {
-            'seg_nb': '01',
-            'output_nb': '000',
-            'file_suffix': '',
-            'out_suffix': '',
-            }
+        'simu_start': None,
+        'format': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': default_output_name_rules,
+        'diachronic': default_diachronic_name_rules
         },
-    '1_planier_0105/02_1km/': {
-        'backup': {
-            'seg_nb': '01',
-            'out_suffix': '',
-            'output_nb': 'HH',  # ex: 12h -> 012 or 12
-            'file_suffix': '',
-            },
-        'output': {
-            'seg_nb': '01',
-            'out_suffix': '.OUT',
-            'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
-            'file_suffix': '',
-            },
-        'diachronic': {
-            'seg_nb': '01',
-            'output_nb': '000',
-            'file_suffix': '',
-            'out_suffix': ''},
+    # ---- 1_planier_0105
+    '1_planier_0105/01_1km_DIF': {
+        'simu_start': '20230105-0000',
+        'format': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': None,
+        'diachronic': default_diachronic_name_rules
         },
-    '1_planier_0105/04_1km_COARE/': {
-        'backup': {
-            'seg_nb': '01',
-            'out_suffix': '',
-            'output_nb': 'HH',  # ex: 12h -> 012 or 12
-            'file_suffix': '',
-            },
-        'output': {
-            'seg_nb': '01',
-            'out_suffix': '.OUT',
-            'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
-            'file_suffix': '',
-            },
-        'diachronic': {
-            'seg_nb': '01',
-            'output_nb': '000',
-            'file_suffix': '',
-            'out_suffix': ''},
+    '1_planier_0105/02_1km': {
+        'simu_start': '20230105-0000',
+        'format': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': default_output_name_rules,
+        'diachronic': default_diachronic_name_rules
         },
-    '2_planier_0122/04_1km_COARE/': {
-        'backup': {
-            'seg_nb': '01',
-            'out_suffix': '',
-            'output_nb': 'HH',  # ex: 12h -> 012 or 12
-            'file_suffix': '',
-            },
-        'output': {
-            'seg_nb': '01',
-            'out_suffix': '.OUT',
-            'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
-            'file_suffix': '',
-            },
-        'diachronic': {
-            'seg_nb': '01',
-            'output_nb': '000',
-            'file_suffix': '',
-            'out_suffix': ''},
-        },
-    '3_planier_0127/04_1km_COARE/': {
-        'backup': {
-            'seg_nb': '01',
-            'out_suffix': '',
-            'output_nb': 'H+12',  # ex: 12h -> 012 or 12
-            'file_suffix': '',
-            },
-        'output': {
-            'seg_nb': '01',
-            'out_suffix': '.OUT',
-            'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
-            'file_suffix': '',
-            },
-        'diachronic': {
-            'seg_nb': '01',
-            'output_nb': '000',
-            'file_suffix': '',
-            'out_suffix': ''},
+    '1_planier_0105/04_1km_COARE': {
+        'simu_start': '20230105-0000',
+        'format': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': None,
+        'diachronic': default_diachronic_name_rules
         },
     '1_planier_0105/05_1km_noEDKF_3DTKE': {
-            'backup': {
-                'seg_nb': '01',
-                'out_suffix': '',
-                'output_nb': 'HH',  # ex: 12h -> 012 or 12
-                'file_suffix': '',
-                },
-            'output': {
-                'seg_nb': '01',
-                'out_suffix': '.OUT',
-                'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
-                'file_suffix': '',
-                },
-            'diachronic': {
-                'seg_nb': '01',
-                'output_nb': '000',
-                'file_suffix': '',
-                'out_suffix': ''},
-            },
+        'simu_start': '20230105-0000',
+        'format': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
     '1_planier_0105/06_1km_noEDKF': {
-            'backup': {
-                'seg_nb': '01',
-                'out_suffix': '',
-                'output_nb': 'HH',  # ex: 12h -> 012 or 12
-                'file_suffix': '',
-                },
-            'output': {
-                'seg_nb': '01',
-                'out_suffix': '.OUT',
-                'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
-                'file_suffix': '',
-                },
-            'diachronic': {
-                'seg_nb': '01',
-                'output_nb': '000',
-                'file_suffix': '',
-                'out_suffix': ''},
-            },
+        'simu_start': '20230105-0000',
+        'format': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
     '1_planier_0105/07_1km_3DTKE': {
-            'backup': {
-                'seg_nb': '01',
-                'out_suffix': '',
-                'output_nb': 'HH',  # ex: 12h -> 012 or 12
-                'file_suffix': '',
-                },
-            'output': {
-                'seg_nb': '01',
-                'out_suffix': '.OUT',
-                'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
-                'file_suffix': '',
-                },
-            'diachronic': {
-                'seg_nb': '01',
-                'output_nb': '000',
-                'file_suffix': '',
-                'out_suffix': ''},
+        'simu_start': '20230105-0000',
+        'format': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    '1_planier_0105/022_200m_EDKF': {
+        'simu_start': '20230105-0100',
+        'format': 'PLANI.1.D2S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'Hx2',  #ex: 04h30m = 4.5h - 2.5 = 2 x 2 = 004
+            'file_suffix': '',
             },
-    '1_planier_0105/021_200m/': {
-            'backup': {
-                'seg_nb': '01',
-                'out_suffix': '',
-                'output_nb': 'H-2.5x2',  #ex: 04h30m = 4.5h - 2.5 = 2 x 2 = 004
-                'file_suffix': '',
-                },
-            'output': {
-                'seg_nb': '01',
-                'out_suffix': '.OUT',
-                'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
-                'file_suffix': '',
-                },
-            'diachronic': {
-                'seg_nb': '01',
-                'output_nb': '000',
-                'file_suffix': '',
-                'out_suffix': '',
-                },
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    '1_planier_0105/021_200m': {
+        'simu_start': '20230105-0100',
+        'format': 'PLANI.1.D2S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'Hx2',  #ex: 04h30m = 4.5h - 1.5 = 3 x 2 = 007
+            'file_suffix': '',
             },
-    '1_planier_0105/022_40m/': {
-            'backup': {
-                'seg_nb': '01',
-                'out_suffix': '',
-                'output_nb': 'H-3x2',  #ex: 04h30m = 4.5h - 3 = 1.5 x 2 = 003
-                'file_suffix': '',
-                },
-            'output': {
-                'seg_nb': '01',
-                'out_suffix': '.OUT',
-                'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
-                'file_suffix': '',
-                },
-            'diachronic': {
-                'seg_nb': '01',
-                'output_nb': '000',
-                'file_suffix': '',
-                'out_suffix': '',
-                },
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    '1_planier_0105/0221_40m': {
+        'simu_start': '20230105-0200',
+        'format': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'H-1x2',  #ex: 04h30m = 4.5h - 3 = 1.5 x 2 = 003
+            'file_suffix': '',
             },
-    
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    '1_planier_0105/0211_40m': {
+        'simu_start': '20230105-0200',
+        'format': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'H-1x2',  #ex: 04h30m = 4.5h - 2 = 2.5 x 2 = 005
+            'file_suffix': '',
+            },
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    # ---- 2_planier_0122
+    '2_planier_0122/04_1km_COARE': {
+        'simu_start': '20230122-0000',
+        'format': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': {
+            'seg_nb': '01',
+            'out_suffix': '.OUT',
+            'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
+            'file_suffix': '',
+            },
+        'diachronic': default_diachronic_name_rules
+        },
+    '2_planier_0122/05_1km_RM17': {
+        'simu_start': '20230122-0000',
+        'format': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': {
+            'seg_nb': '01',
+            'out_suffix': '.OUT',
+            'output_nb': 'Hx6',  #ex: 01h10m = 1.166h -> x6 = 007
+            'file_suffix': '',
+            },
+        'diachronic': default_diachronic_name_rules
+        },
+    '2_planier_0122/06_1km_UPDRAFTDIAG': {
+        'simu_start': '20230122-0000',
+        'format': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': default_output_name_rules,
+        'diachronic': default_diachronic_name_rules
+        },
+    '2_planier_0122/041_200m': {
+        'simu_start': '20230122-0130',
+        'format': 'PLANI.1.D2S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'Hx2',  #ex: 04h30m = 4.5h - 1.5 = 3 x 2 = 007
+            'file_suffix': '',
+            },
+        'diachronic': default_diachronic_name_rules
+        },
+    '2_planier_0122/0411_40m': {
+        'simu_start': '20230122-0200',
+        'format': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'Hx2',  #ex: 03h30m = 3.5h - 2 = 1.5 x 2 = 003
+            'file_suffix': '',
+            },
+        'diag': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'Hx2',  #ex: 03h30m = 3.5h - 2 = 1.5 x 2 = 003
+            'file_suffix': 'dg',
+            },
+        'output': {
+            'seg_nb': '01',
+            'out_suffix': '.OUT',
+            'output_nb': 'H-2x6',  #ex: 03h10m = 3.166-2 = 1.166 -> x6 = 007
+            'file_suffix': '',
+            },
+        'diachronic': default_diachronic_name_rules
+        },
+    '2_planier_0122/0412_40m_bigD3': {
+        'simu_start': '20230122-0200',
+        'format': 'PLANI.1.D3S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'Hx2',
+            'file_suffix': '',
+            },
+        'output': {
+            'seg_nb': '01',
+            'out_suffix': '.OUT',
+            'output_nb': 'Hx6',
+            'file_suffix': '',
+            },
+        'diachronic': default_diachronic_name_rules
+        },
+    # ---- 3_planier_0127
+    '3_planier_0127/04_1km_COARE': {
+        'simu_start': '20230126-1200',
+        'format': 'PLANI.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    '3_planier_0127/0411_40m': {
+        'simu_start': '20230126-1400',
+        'format': 'PLANI.1.D3S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'Hx2',  #ex: 03h30m = 3.5h - 2 = 1.5 x 2 = 003
+            'file_suffix': '',
+            },
+        'diag': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'Hx2',  #ex: 03h30m = 3.5h - 2 = 1.5 x 2 = 003
+            'file_suffix': 'dg',
+            },
+        'output': {
+            'seg_nb': '01',
+            'out_suffix': '.OUT',
+            'output_nb': 'H-2x6',  #ex: 03h10m = 3.166-2 = 1.166 -> x6 = 007
+            'file_suffix': '',
+            },
+        'diachronic': default_diachronic_name_rules
+        },
+    # ---- 4_planier_0515
+    '4_planier_0515/04_1km_COARE': {
+        'simu_start': '20230514-1200',
+        'format': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    # ---- 5_planier_1020
+    '5_planier_1020/04_1km_COARE': {
+        'simu_start': '20231019-1200',
+        'format': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    '5_planier_1020/041_200m': {
+        'simu_start': '20231019-1330',
+        'format': 'PLANI.1.D2S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'Hx2',
+            'file_suffix': '',
+            },
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    # ---- 6_planier_1027
+    '6_planier_1027/04_1km': {
+        'simu_start': '20231017-0000',
+        'format': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    # ---- 7_planier_1017
+    '7_planier_1017/04_1km': {
+        'simu_start': '20231017-0000',
+        'format': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    '7_planier_1017/04_1km_COARE': {
+        'simu_start': '20231017-0000',
+        'format': 'PLANI.1.D1S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': default_backup_name_rules,
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    '7_planier_1017/041_200m': {
+        'simu_start': '20231017-0130',
+        'format': 'PLANI.1.D2S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'Hx2',
+            'file_suffix': '',
+            },
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    '7_planier_1017/0414_40m_eastD3': {
+        'simu_start': '20231017-0200',
+        'format': 'PLANI.1.D3S{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': '01',
+            'out_suffix': '',
+            'output_nb': 'Hx2',
+            'file_suffix': '',
+            },
+        'output': None,
+        'diachronic': default_diachronic_name_rules
+        },
+    # ---- LIAISE:
+    'irrswi1_d1': {
+        'simu_start': '20210714-0000',
+        'format': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': 'day',
+            'out_suffix': '',
+            'output_nb': 'hour',
+            'file_suffix': '',
+            },
+        'output': None,
+        'diachronic': default_diachronic_name_rules,
+        },
+    'std_d1': {
+        'simu_start': '20210714-0000',
+        'format': 'LIAIS.1.SEG{seg_nb}{out_suffix}.{output_nb_3f}{file_suffix}.nc',
+        'backup': {
+            'seg_nb': 'day',
+            'out_suffix': '',
+            'output_nb': 'hour',
+            'file_suffix': '',
+            },
+        'output': None,
+        'diachronic': default_diachronic_name_rules,
+        },
     }
 
 pgd_filename_dict = {
     '1_planier_0105/02_1km': 'PGD_1KM.nc',
-    '1_planier_0105/022_40m': 'PGD_40M.nc',
+    '1_planier_0105/0221_40m': 'PGD_40M.nc',
+    '1_planier_0105/0211_40m': 'PGD_40M.nc',
+    '1_planier_0105/022_200m_EDKF': 'PGD_200M.nc',
     '1_planier_0105/021_200m': 'PGD_200M.nc',
     '1_planier_0105/05_1km_noEDKF_3DTKE': 'PGD_1KM.nc',
     '1_planier_0105/06_1km_noEDKF': 'PGD_1KM.nc',
     '1_planier_0105/07_1km_3DTKE': 'PGD_1KM.nc',
     '2_planier_0122/04_1km_COARE': 'PGD_1KM.nc',
+    '2_planier_0122/0411_40m': 'PGD_40M.nc',
+    '2_planier_0122/0412_40m_bigD3': 'PGD_40M.nc',
     '3_planier_0127/04_1km_COARE': 'PGD_1KM.nc',
+    '4_planier_0515/04_1km_COARE': 'PGD_1KM.nc',
+    '5_planier_1020/04_1km_COARE': 'PGD_1KM.nc',
     }
 
 #%%------- Sites, location, towns, areas --------
 sites = {
+    # ---- NEMO:
     'planier': {
         'lat': 43.19885,  # rounded
         'lon': 5.22981,   # rounded
         'alt': 0,
-        'longname': 'Ile du Planier',
+        'longname': 'Le Planier',
         'acronym': 'Pl.'},    
     'salin-giraud': {
         'lat': 43.4105,  # rounded
@@ -280,6 +434,48 @@ sites = {
         'alt': 10,
         'longname': 'Marignane',
         'acronym': 'Ma.'},
+    
+    # ---- LIAISE:
+    'cendrosa': {
+    #                'lat': 41.6925905,  # precise real coordinates
+    #                'lon': 0.9285671,  # precise real coordinates
+        'lat': 41.69,  # rounded
+        'lon': 0.93,   # rounded
+        'alt': 240,
+        'longname': 'La Cendrosa',
+        'acronym': 'L.C.'},
+     'preixana': {
+         'lat': 41.59373,
+         'lon': 1.07250,
+         'alt': 354},
+     'elsplans': {
+    #                 'lat': 41.590111,  # precise real coordinates
+    #                 'lon': 1.029363,  # precise real coordinates
+         'lat': 41.590,  # rounded
+         'lon': 1.029,  # rounded
+         'alt': 334,
+         'longname': 'Els Plans',
+         'acronym': 'E.P.'},
+    #         'irta-corn': {
+    ##                       'lon': 0.805333},  # wrong position, but 100% irr zone in model irr_d1
+    #                         'lat': 41.5922,  # wrong position, but 100% irr zone in model
+     'irta-corn': {
+             'lat': 41.619079, # real position, but is not in 100% irr zone in model irr_d1
+             'lon': 0.875333,
+             'alt': 245,
+             'longname': 'IRTA corn field'},
+     'irta': {  # =irta-corn
+             'lat': 41.619079, 
+             'lon': 0.875333,
+             'alt': 245},
+     'verdu': {'lat': 41.595278,
+           'lon': 1.127222,
+           'alt': 412},
+     'ivars-lake': {'lat': 41.682018,
+              'lon': 0.946951,
+              'alt': 230},
+     'border_irrig_noirr': {'lat': 41.611898,
+                        'lon': 0.999708},
     }
          
 towns = {
@@ -339,7 +535,74 @@ output_freq_dict = {
     'irrswi1_d1': 30,
     }
 
-#%%------- Barbs properties dict --------
+# ---- LIAISE:
+colordict_liaise = {
+    'std_d1': 'r',
+    'irrswi1_d1': 'b',
+    'irrlagrip30_d1': 'orange',
+    'noirr_lai_d1': 'orange',
+    'obs': 'k'}
+styledict_liaise = {
+    'std_d1': '--',
+    'irrswi1_d1': '--',
+    'irrlagrip30_d1': '--',
+    'noirr_lai_d1': '--',
+    'obs': '-'}
+
+#%% ------- min/max/color dict of variables for Matplotlib
+minmax_dict = {
+    'DIV': {'vmin': -0.0015, 'vmax': 0.0015, 'colormap':'coolwarm', 'vstep': 0.0005},
+    'WS': {'vmin': 1, 'vmax': 20, 'colormap':'BuPu', 'vstep': 1},
+    'THT': {'vmin': 298, 'vmax': 308,'colormap':'OrRd', 'vstep': 0.5},
+    'THTV': {'vmin': 270, 'vmax': 285, 'colormap':'OrRd', 'vstep': 1},
+    'RVT': {'vmin': 0, 'vmax': 0.02, 'colormap':'OrRd', 'vstep': 0.001},
+    'WT': {'vmin': -1.5, 'vmax': 1.5, 'colormap':'coolwarm', 'vstep': 0.1},
+    'MSLP3D': {'vmin': None, 'vmax': None, 'colormap':'coolwarm', 'vstep': 1},
+    'RI': {'vmin':-0.05, 'vmax': 0.05, 'colormap':'coolwarm_r', 'vstep': 0.005},
+    'U_STAR': {'vmin':0, 'vmax': 2, 'colormap':'viridis', 'vstep': 0.2},
+    'ABL_TOP': {'vmin':0, 'vmax': 2000, 'colormap':'viridis', 'vstep': 100},
+    'ZS': {'vmin':0, 'vmax': 500, 'colormap': 'YlOrBr', 'vstep': 10},
+    None: {'vmin': None, 'vmax': None, 'colormap':'viridis', 'vstep': 1},
+    # --- Turbulent quantities
+    'U2ME': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},
+    'V2ME': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},
+    'W2ME': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},
+    'U_VAR': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},
+    'V_VAR': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},
+    'W_VAR': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},
+    'TKET': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},
+    'TKEMME': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},
+    'SBG_TKE': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},
+    'RES_TKE': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},
+    'TOT_TKE': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},
+    'TKE_MF_UP': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},
+    'TKE_EQ': {'vmin': 0, 'vmax': 3, 'colormap':'magma_r', 'vstep': 0.25},  # tke_mf + tke_sbg
+    'TKEBAVG025': {'vmin': 0, 'vmax': 5, 'colormap':'magma_r', 'vstep': 0.25},
+    'RES_TKE_FRAC': {'vmin': 0, 'vmax': 1, 'colormap':'coolwarm', 'vstep': 0.1},
+    'UV_FLX_RESBAVG025': {'vmin': -3, 'vmax': 3, 'colormap':'coolwarm', 'vstep': 0.25},
+    # --- TKE budget
+    'TKE_DISS': {'vmin': -0.01, 'vmax': 0.01, 'colormap':'coolwarm', 'vstep': 0.005},
+    'DISS': {'vmin': -0.01, 'vmax': 0.01, 'colormap':'coolwarm', 'vstep': 0.005},
+    'MEAN_DISS': {'vmin': -0.01, 'vmax': 0.01, 'colormap':'coolwarm', 'vstep': 0.005},
+    'TP': {'vmin': -0.01, 'vmax': 0.01, 'colormap':'coolwarm', 'vstep': 0.005},
+    'MEAN_TP': {'vmin': -0.01, 'vmax': 0.01, 'colormap':'coolwarm', 'vstep': 0.005},
+    'DP': {'vmin': -0.01, 'vmax': 0.01, 'colormap':'coolwarm', 'vstep': 0.005},
+    'MEAN_DP': {'vmin': -0.01, 'vmax': 0.01, 'colormap':'coolwarm', 'vstep': 0.005},
+    'TOT_PROD': {'vmin': -0.01, 'vmax': 0.01, 'colormap':'coolwarm', 'vstep': 0.005},
+    'MEAN_TOT_PROD': {'vmin': -0.01, 'vmax': 0.01, 'colormap':'coolwarm', 'vstep': 0.005},
+    'TR': {'vmin': -0.01, 'vmax': 0.01, 'colormap':'coolwarm', 'vstep': 0.005},
+    # 'CepsOverLeps': {'vmin': -0.02, 'vmax': 0, 'colormap':'jet', 'vstep': 0.005},
+    # --- EDKF related
+    'MF_FRAC_UP': {'vmin': 0, 'vmax': 1, 'colormap':'viridis', 'vstep': 0.1},
+    'MF_W_UP': {'vmin': 0, 'vmax': 4, 'colormap':'viridis', 'vstep': 0.25},
+
+    }
+# notes: propositions of colormaps
+# YlOrBr for orography
+# RdYlGn, YlGn for LAI, coolwarm_r for SWI
+# coolwarm for TH, coolwarm_r for RI
+
+#%% ------- Barbs properties dict --------
 barb_size_increments = {
         'very_weak_winds': {'half':0.5, 'full':1, 'flag':5},
         'weak_winds': {'half':1, 'full':2, 'flag':10},
@@ -399,16 +662,37 @@ zoom_domain_prop = {
     'planier_40m': {
         'skip_barbs': 25, # 1/skip_barbs will be printed
         'barb_length': 5,
-        'lat_range': [43.18, 43.38],
+        'lat_range': [43.165, 43.38],
         'lon_range': [5.11, 5.31],
         'figsize': (8,9),
+        },
+    'planier_40m_bigD3': {
+        'skip_barbs': 25, # 1/skip_barbs will be printed
+        'barb_length': 5,
+        'lat_range': [43.18, 43.38],
+        'lon_range': [5.08, 5.31],
+        'figsize': (9,9),
+        },
+    'planier_40m_eastD3': {
+        'skip_barbs': 25, # 1/skip_barbs will be printed
+        'barb_length': 5,
+        'lat_range': [43.085, 43.2476],
+        'lon_range': [5.173, 5.4395],
+        'figsize': (10,7),
+        },
+    'any_40m': {
+        'skip_barbs': 25, # 1/skip_barbs will be printed
+        'barb_length': 5,
+        'lat_range': [None, None],
+        'lon_range': [None, None],
+        'figsize': None,
         },
     None: {
         'skip_barbs': 8,
         'barb_length': 4.5,
         'lat_range': [None, None],
         'lon_range': [None, None],
-        'figsize': (8,8),
+        'figsize': None,
         },
 #    skip_barbs = 8 # 1/skip_barbs will be printed
 #    barb_length = 4.5

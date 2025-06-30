@@ -15,11 +15,11 @@ import global_variables as gv
 
 ############# Independant Parameters (TO FILL IN):
     
-site = 'XM'
+site = 'cendrosa'
 
 file_suffix = 'dg'  # '' or 'dg'
 
-varname_obs = 'T'
+varname_obs = 'wd_2'
 # -- For CNRM:
 # ta_5, hus_5, hur_5, soil_moisture_3, soil_temp_3, u_var_3, w_var_3, swd,... 
 # w_h2o_cov, h2o_flux[_1], shf_1, u_star_1
@@ -38,7 +38,7 @@ varname_obs = 'T'
 #TA_1_1_1, RH_1_1_1 Temperature and relative humidity 360cm above soil (~2m above maize)
 #Q_1_1_1
 
-varname_sim_list = ['T2M_ISBA']
+varname_sim_list = ['WD']
 # T2M_ISBA, LE_P4, EVAP_P9, GFLUX_P4, WG3_ISBA, WG4P9, SWI4_P9
 # U_STAR, BOWEN
 
@@ -54,8 +54,8 @@ models = [
 #        'std_d2_old',
 #        'irr_d2', 
 #        'std_d2', 
-        'irrswi1_d1', 
-        'std_d1',
+        # 'irrswi1_d1', 
+        # 'std_d1',
 #        'irrlagrip30_d1',
 #        'lagrip100_d1',
          ]
@@ -186,9 +186,10 @@ else: # SMC stations
     in_filenames_obs = f'{site}.nc'
     time_shift_correction = -30
     # raise ValueError('Site name not known')
-    
-lat = gv.whole[site]['lat']
-lon = gv.whole[site]['lon']
+
+if models != []:
+    lat = gv.whole[site]['lat']
+    lon = gv.whole[site]['lon']
 
 
 #%% OBS: Concatenate and plot data
@@ -224,11 +225,11 @@ if site in ['preixana', 'cendrosa']:
     EF_temp_min0 = [max(0, val) for val in obs.EVAP_FRAC.data]
     EF_temp_max1 = [min(1, val) for val in EF_temp_min0]
     obs['EVAP_FRAC_FILTERED'] = EF_temp_max1
-    for i in [1,2,3]:
-        obs['swi_{0}'.format(i)] = tools.calc_swi(
-                obs['soil_moisture_{0}'.format(i)],
-                gv.wilt_pt[site][i],
-                gv.field_capa[site][i],) 
+    # for i in [1,2,3]:
+    #     obs['swi_{0}'.format(i)] = tools.calc_swi(
+    #             obs['soil_moisture_{0}'.format(i)],
+    #             gv.wilt_pt[site][i],
+    #             gv.field_capa[site][i],) 
 elif site in ['irta-corn', 'irta-corn-real']:
     for i in [1,2,3,4,5]:
         site = 'irta-corn'

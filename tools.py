@@ -20,7 +20,7 @@ import xarray as xr
 # import metpy.constants as constants
 import re
 import global_variables as gv
-#from datetime import datetime as dt
+from datetime import datetime
 # from shapely.geometry import Point
 #from difflib import SequenceMatcher
 import warnings
@@ -34,7 +34,8 @@ import epygram
 #%% Load MNH/SFX/AROME files
 
 def load_series_dataset(varname_sim_list, model, concat_if_not_existing=True,
-                        out_suffix='', file_suffix='dg'):
+                      out_suffix='', file_suffix='dg',
+                      global_simu_folder = gv.global_simu_folder):
     """
     Load a simulation file in netcdf format. If not already existing,
     tries to concatenate multiple instantaneous output files into a series.
@@ -45,22 +46,35 @@ def load_series_dataset(varname_sim_list, model, concat_if_not_existing=True,
     concat_if_not_existing: Try to concatenate or not if the concatenated file
         does not exist yet
     """
-    global_simu_folder = gv.global_simu_folder
     
     for i, varname_item in enumerate(varname_sim_list):
         # get format of file to concatenate
 #        in_filenames_sim = gv.format_filename_simu_wildcards[model]
-        in_filenames_sim = gv.format_filename_simu_new[model].format(
+        # -- old way:
+        # in_filenames_sim = gv.format_filename_simu_new[model].format(
+        #     seg_nb='??', output_nb_3f='???', output_nb_2f='??',
+        #     out_suffix=out_suffix, file_suffix=file_suffix)
+        in_filenames_sim = gv.simu_filenames_rules[model]['format'].format(
             seg_nb='??', output_nb_3f='???', output_nb_2f='??',
             out_suffix=out_suffix, file_suffix=file_suffix)
+        
         gridnest_nb = in_filenames_sim[6]  # integer: 1 or 2 in my case
+        
+        # -- if normal work on lustre:
         # set name of concatenated output file
-        out_filename_sim = f'LIAIS.{gridnest_nb}.{varname_item}{out_suffix}.nc'
+        # out_filename_sim = f'LIAIS.{gridnest_nb}.{varname_item}{out_suffix}.nc'
         # path of file
-        datafolder = global_simu_folder + gv.simu_folders[model]
+        # datafolder = global_simu_folder + gv.simu_folders[model]
+        
+        # -- if work in local:
+        out_filename_sim_short = f'LIAIS.{gridnest_nb}.{varname_item}{out_suffix}.nc'
+        out_filename_sim = '/home/lunelt/Data/data_LIAISE/' + out_filename_sim_short
+        datafolder = ''
+        
         # concatenate multiple days if not already existing
         if concat_if_not_existing:
             concat_simu_files_1var(datafolder, varname_item, 
+                                   # in_filenames_sim, out_filename_sim)
                                    in_filenames_sim, out_filename_sim)
         
         if i == 0:      # if first data, create new dataset
@@ -82,6 +96,25 @@ def load_dataset(varname_sim_list, model, concat_if_not_existing=True,
                                model, concat_if_not_existing=True,
                                out_suffix='', file_suffix='dg')
 
+def open_profiler_file(filename, profiler_name):
+    """
+    Open a diachronic file to read the data of a profiler.
+    Concatenate atmospheric profile and surface data 
+    and replace time with correct time format
+    """
+    meta = xr.open_dataset(filename)
+    
+    profile_raw = xr.open_dataset(
+        filename, group=f"Profilers/{profiler_name}/Vertical_profile")
+    profile = flux_pt_to_mass_pt(profile_raw, only_basic_vars=False)
+    
+    surface_data = xr.open_dataset(
+        filename, group=f"Profilers/{profiler_name}/Point")
+    
+    ds = xr.merge([profile, surface_data])
+    ds['time_profiler'] = meta.time_profiler
+    
+    return ds
 
 def open_budget_file(filename, budget_type):
     """
@@ -168,6 +201,8 @@ def open_budget_file(filename, budget_type):
     # rename for simplicity in processing in other functions, but may be risky...
     ds = ds.rename({cart_level_X: 'level'})
     
+    ds['time_budget'] = meta.time_budget
+    
     if budget_type in ['VV', 'UU']:
         
         meta_subset = subset_ds(meta,
@@ -183,6 +218,31 @@ def open_budget_file(filename, budget_type):
         
         ds = ds.rename({nj_X: 'nj', ni_X: 'ni',
                         longitude_X: 'longitude', latitude_X: 'latitude'})
+    
+    return ds
+
+
+def open_les_budget_file(filename, LES_budgets_type = 'Mean',
+                       LES_budgets_averaging = 'Time_averaged'):
+    """
+    Add time and level coordinates to a dataset which does not have it.
+    """
+    
+    meta = xr.open_dataset(filename)  # metadata of the entire simulation domain, not only the budget one
+    
+    if isinstance(LES_budgets_type, list):
+        ds_list = []
+        for les_bu_type in LES_budgets_type:
+            groupname_les_budget = f"LES_budgets/{les_bu_type}/Cartesian/{LES_budgets_averaging}/Not_normalized/cart"
+            ds_list.append(xr.open_dataset(filename, 
+                                           group=groupname_les_budget))
+        ds = xr.merge(ds_list)
+    else:
+        groupname_les_budget = f"LES_budgets/{LES_budgets_type}/Cartesian/{LES_budgets_averaging}/Not_normalized/cart"
+        ds = xr.open_dataset(filename, group=groupname_les_budget)
+    
+    ds['level_les'] = meta.level_les
+    ds['time_les_avg'] = meta.time_les_avg
     
     return ds
 
@@ -377,8 +437,8 @@ def get_simu_filepath_old(model, date='20210722-1200',
 
 
 def get_simu_filepath(
-        model, wanted_date, 
-        output_type='backup',  # backup, output or diachronic (=000)
+        model, wanted_date='19700101T0000', 
+        output_type='backup',  # backup, output, diachronic (=000), diag
         global_simu_folder=gv.global_simu_folder,
         verbose=False,
         error_processing='error',
@@ -389,81 +449,102 @@ def get_simu_filepath(
     
     Parameters:
         model: str, 
-            'irr_d2' or 'std_d1'
+            ex: 'irr_d2', '1_planier_0105/0211_40m/'
         wanted_date: str with format accepted by pd.Timestamp ('20210722-1200')
             or pd.Timestamp
     
     Returns:
         filename: str, full path and filename
     """
-    pd_date = pd.Timestamp(wanted_date)
+    # rename for 000 case
+    if output_type == '000':
+        output_type = 'diachronic'
+    
+    if output_type != 'diachronic':
+        pd_date = pd.Timestamp(wanted_date)
     
     if model in gv.simu_folders.keys():
         local_simu_folder = gv.simu_folders[model]
     else:
         local_simu_folder = model
     
-    if model in gv.filename_simu_name_rules.keys():
-        name_rules = gv.filename_simu_name_rules[model][output_type]
-    else:  # default values
-        name_rules = gv.filename_simu_name_rules['default'][output_type]
+    naming_prop = gv.simu_filenames_rules[model]
+
+    simu_start = naming_prop['simu_start']
     
-    # Suffixes
+    if output_type == 'diag':
+        name_rules = naming_prop['backup']
+        file_suffix = 'dg'
+    else:
+        name_rules = naming_prop[output_type]
+        file_suffix = name_rules['file_suffix']
+        
     out_suffix = name_rules['out_suffix']
-    file_suffix = name_rules['file_suffix']
     # SEG number
     if name_rules['seg_nb'] == 'day':
         seg_nb = str(pd_date.day)
     else:
         seg_nb = name_rules['seg_nb']
+        
+    # Get timedelta between wanted_date and beginning of run in minutes
+    timestep_simu = pd.Timestamp(wanted_date) - pd.Timestamp(simu_start)
+    timestep_simu_min = timestep_simu.value/(60*1e9)
     
-    # Output number
-    if name_rules['output_nb'] == 'HH':
-        output_nb = pd_date.strftime('%H')
-    elif name_rules['output_nb'] == 'Hx6':
-        output_freq = 10
-        minute_total_day = pd_date.minute + pd_date.hour*60
-        output_nb = str(int(minute_total_day/output_freq))
-    elif name_rules['output_nb'] == 'H-2.5x2':
-        output_freq = 30
-        start_offset = 150    # in min
-        minute_total_day = pd_date.minute + pd_date.hour*60
-        minute_total_simu = minute_total_day - start_offset
-        output_nb = str(int(minute_total_simu/output_freq))
-    elif name_rules['output_nb'] == 'H-3x2':
-        output_freq = 30
-        start_offset = 180    # in min
-        minute_total_day = pd_date.minute + pd_date.hour*60
-        minute_total_simu = minute_total_day - start_offset
-        output_nb = str(int(minute_total_simu/output_freq))
-    elif name_rules['output_nb'] == 'H+12':
+    # How to translate this timedelta into output number
+    #ex: output_nb_rule='H-2x6': 03h10m = 3.166-2 = 1.166 -> x6 = 007
+    output_nb_rule = name_rules['output_nb']
+    if re.match('H-.*x.*', output_nb_rule):
+        splitted_rule = re.split('[-x]', output_nb_rule)
+        start_offset_min = float(splitted_rule[1]) * 60
+        output_freq = 60 / float(splitted_rule[2])
+    elif re.match('H-.*', output_nb_rule):
+        splitted_rule = re.split('[-]', output_nb_rule)
+        start_offset_min = float(splitted_rule[1]) * 60
         output_freq = 60
-        start_offset = -720    # in min
-        minute_total_day = pd_date.minute + pd_date.hour*60
-        minute_total_simu = minute_total_day - start_offset
-        output_nb = str(int(minute_total_simu/output_freq))
+    elif re.match('Hx.*', output_nb_rule):
+        splitted_rule = re.split('[x]', output_nb_rule)
+        start_offset_min = 0
+        output_freq = 60 / float(splitted_rule[1])
+    elif output_nb_rule in ['H', 'HH']:
+        start_offset_min = 0
+        output_freq = 60
+    elif output_nb_rule in ['hour']:
+        pass  # directly set later
+    elif output_nb_rule == '000':
+        pass  # diachronic file
     else:
-        output_nb = name_rules['output_nb']
+        raise ValueError('Format of output_nb_rule is unknown')
+    
+    if output_nb_rule == '000':
+        output_nb = '000'
+    if output_nb_rule == 'hour':
+        output_nb = str(pd_date.hour).zfill(2)
+    else:
+        output_nb = str(int((timestep_simu_min - start_offset_min)/output_freq))
     
     if int(output_nb) < 0:
         raise KeyError('No corresponding simu files (output number not existing)')
-    # Midnight case
+    elif int(output_nb) == 0 and output_type != 'diachronic':
+        raise KeyError('No corresponding simu files (output number not existing)')
+    #Midnight case
     if output_nb == "00":
+        print('midnight case -- check code here (needed?)')
         output_nb = "24"
     
     # Reformat the output_nb with 2 and 3 digits:
     output_nb_2f = output_nb.zfill(2)
     output_nb_3f = output_nb.zfill(3)
     
-    # retrieve filename
-    filename = gv.format_filename_simu[model].format(
+    # Retrieve filename and absolute filepath
+    # filename = gv.format_filename_simu[model].format(
+    filename = naming_prop['format'].format(
             seg_nb=seg_nb, 
             output_nb_2f=output_nb_2f, 
             output_nb_3f=output_nb_3f, 
             file_suffix=file_suffix,
             out_suffix=out_suffix)
     
-    filepath = global_simu_folder + local_simu_folder + filename
+    filepath = global_simu_folder + local_simu_folder + '/' + filename
     
     #check if nomenclature of filename is ok
     if output_type in ['backup', 'output']:
@@ -480,8 +561,8 @@ def extract_profile_arome(site, wanted_date, varname,
                           max_height=3000, 
                           folder_path='/home/lunelt/Data/analysis/',
                           file_prefix='arome.AN.',
-                          # save_to_pickle=True,
-                          # save_folder_pickle='/home/lunelt/Data/data_NEMO/arome_profiles/',
+                          save_to_pickle=True,
+                          save_folder_pickle='/home/lunelt/Data/data_NEMO/arome_profiles/',
                           verbose=True):
     """
     Parameters
@@ -578,14 +659,13 @@ def extract_profile_arome(site, wanted_date, varname,
     
     verti_profiles[varname] = verti_profile
     
-    # if save_to_pickle:
-    #     # -- Save profile to pickle
-    #     formatted_date = wanted_date.strftime('%Y%m%d.%H')
-    #     filename_pickle = f"verti_profile_arome_{site}_{formatted_date}"
-        
-    #     # Format pd.DataFrame:
-    #     df = pd.DataFrame(verti_profile)
-    #     df.to_pickle(f'{save_folder_pickle}/{filename_pickle}.pickle')
+    if save_to_pickle:
+        # -- Save profile to pickle
+        formatted_date = wanted_date.strftime('%Y%m%d.%H')
+        filename_pickle = f"verti_profile_arome_{site}_{formatted_date}"
+        # Format pd.DataFrame:
+        df = pd.DataFrame(verti_profiles)
+        df.to_pickle(f'{save_folder_pickle}/{site}/{filename_pickle}.pickle')
         
     return verti_profiles
 
@@ -1032,8 +1112,9 @@ def open_uib_seb(QC_threshold = 9, create_netcdf=True):
     
     return ds
 
-def extract_profile_lidar(wanted_date, site='planier',
-                                folder_path=gv.global_data_nemo):
+def extract_profile_lidar(
+        wanted_date, site='planier', folder_path=gv.global_data_nemo,
+        lidar_vars=['tke', 'ws', 'wd']):
     """
     Functions that extract a vertical profile from lidar data under csv.
 
@@ -1063,9 +1144,30 @@ def extract_profile_lidar(wanted_date, site='planier',
         'tke_along': f'{folder_path}/{site}/30-min/TKE_along_wind_standard_method.csv',
         'tke_cross': f'{folder_path}/{site}/30-min/TKE_cross_wind_standard_method.csv',
         'tke_verti': f'{folder_path}/{site}/30-min/TKE_vertical_wind_standard_method.csv',
+        'tke_along_var': f'{folder_path}/{site}/30-min/TKE_along_wind_variance_method.csv',
+        'tke_cross_var': f'{folder_path}/{site}/30-min/TKE_cross_wind_variance_method.csv',
+        'tke_verti_var': f'{folder_path}/{site}/30-min/TKE_vertical_wind_variance_method.csv',
+        'edr': f'{folder_path}/{site}/30-min/dissipation_rate.csv',
+        'dissipation_rate': f'{folder_path}/{site}/30-min/dissipation_rate.csv',
+        'production_rate': f'{folder_path}/{site}/30-min/production_rate.csv',
+        'diffusive_transport': f'{folder_path}/{site}/30-min/diffusive_transport.csv',
+        'vertical_integral_lengthscale': f'{folder_path}/{site}/30-min/vertical_integral_lengthscale_Lw.csv',
         }
 
-    lidar_data_list = ['ws', 'wd', 'tke_along', 'tke_cross', 'tke_verti']
+    # lidar_data_list = ['ws', 'wd', 'tke_along', 'tke_cross', 'tke_verti']
+    lidar_data_list = ['ws',]
+    for var in lidar_vars:
+        if var == 'tke':
+            lidar_data_list += ['tke_along', 'tke_cross', 'tke_verti']
+        elif var == 'tke_var':
+            lidar_data_list += ['tke_along_var', 'tke_cross_var', 'tke_verti_var']
+        elif var == 'CepsOverLeps':
+            lidar_data_list += ['edr']
+        elif var not in list(lidar_filepath_dict.keys()):
+            print(f'{var} not available in lidar data')
+        else:
+            lidar_data_list.append(var)
+    
     lidar_data_dict = {}
     
     # find nearest date:
@@ -1086,10 +1188,17 @@ def extract_profile_lidar(wanted_date, site='planier',
         lidar_data_dict[var] = data_temp_wanted_date
 
     # add 3d TKE:
-    lidar_data_dict['tke'] = lidar_data_dict['tke_along'] + \
-        lidar_data_dict['tke_cross'] + lidar_data_dict['tke_verti']
-    lidar_data_dict['tke_horiz'] = lidar_data_dict['tke_along'] + \
-        lidar_data_dict['tke_cross']
+    if 'tke' in lidar_vars:
+        lidar_data_dict['tke'] = lidar_data_dict['tke_along'] + \
+            lidar_data_dict['tke_cross'] + lidar_data_dict['tke_verti']
+    if 'tke_var' in lidar_vars:
+        lidar_data_dict['tke_var'] = lidar_data_dict['tke_along_var'] + \
+            lidar_data_dict['tke_cross_var'] + lidar_data_dict['tke_verti_var']
+    if 'tke_horiz' in lidar_vars:
+        lidar_data_dict['tke_horiz'] = lidar_data_dict['tke_along'] + \
+            lidar_data_dict['tke_cross']
+        lidar_data_dict['tke_horiz_var'] = lidar_data_dict['tke_along_var'] + \
+            lidar_data_dict['tke_cross_var']
     
     return lidar_data_dict
 
@@ -1205,6 +1314,7 @@ def get_obs_filename_from_date(datafolder, wanted_date='20210722-1200',
         match = re.search(regex_date, f)
         stringdate = f[match.start():match.end()]
         try:
+            stringdate = stringdate.replace('_','-')
             datetime = pd.Timestamp(stringdate)
         except ValueError as e:
             if 'could not convert string to Timestamp' not in e.args:
@@ -1247,6 +1357,15 @@ def distance_from_lat_lon(lat_lon_1, lat_lon_2):
             np.sin(lat1_rad)*np.sin(lat2_rad) + np.cos(lat1_rad)*np.cos(lat2_rad)*np.cos(lon1_rad - lon2_rad))
     
     return dist
+
+def distance_on_flat_geom(xy_1, xy_2):
+    """
+    compute distance in km between 2 pts given their coordinates in degrees
+    for short distance when we can consider the flat earth approximation
+    """
+    dist_x = xy_1[0] - xy_2[0]
+    dist_y = xy_1[1] - xy_2[1]
+    return np.sqrt(dist_x**2 + dist_y**2)
 
 
 def compute_errors(y_ref, y_to_eval, x_ref=None, x_to_eval=None,
@@ -1356,6 +1475,30 @@ def intersec_of_intervals(interval1, interval2):
  
     return intersec
 
+
+def nb_days_between(date1, date2):
+    """
+    Compute number of days between two dates
+    
+    Parameters:
+        date1, date2: datetime.datetime
+    """
+    y1 = date1.year
+    m1 = date1.month
+    d1 = date1.day
+    y2 = date2.year
+    m2 = date2.month
+    d2 = date2.day
+    DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+    date_str1 = "%s-%s-%s 00:00:00" %(y1,m1,d1)
+    date_str2 = "%s-%s-%s 00:00:00" %(y2,m2,d2)
+    to_dt = datetime.strptime(date_str2, DATETIME_FORMAT)
+    from_dt = datetime.strptime(date_str1, DATETIME_FORMAT)
+    timedelta = to_dt - from_dt
+    diff_day = timedelta.days #+ float(timedelta.seconds) / 86400
+    
+    return int(diff_day+1)
+
 #%% Manipulation of NetCDF files
 
 def concat_obs_files(datafolder, in_filenames, out_filename, 
@@ -1456,7 +1599,7 @@ def concat_simu_files_1var(datafolder, varname_sim, in_filenames, out_filename):
 #%% Manipulation of MNH/SFX files
 
 def check_filename_datetime(filepath, wanted_date, error_processing='warning',
-                            verbose=False):
+                         verbose=True):
     """
     Check that filename segment number is day and suffix number is hour
     """
@@ -1467,7 +1610,8 @@ def check_filename_datetime(filepath, wanted_date, error_processing='warning',
     
     if not datetime_correspondance:
         if verbose:
-            print(f'Datetime of file is: {datetime_file}')
+            print(f'For file: {filepath},')
+            print(f'Datetime is: {datetime_file}')
             print(f'Wanted datetime is: {pd.Timestamp(wanted_date)}')
     
         if error_processing == 'warning':
@@ -1579,7 +1723,7 @@ def get_indices_of_lat_lon(ds, lat, lon, verbose=True):
         Longitude
     
     Return:
-        tuple [index_lat, index_lon]
+        tuple [index_lat (nj), index_lon (ni)]
     
     """
     # Get latitude and longitude data
@@ -1938,11 +2082,11 @@ def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[],
         prop = gv.zoom_domain_prop[zoom_on]
         lat_range = prop['lat_range']
         lon_range = prop['lon_range']
-    elif zoom_on == None:
-        if lat_range == []:
-            # raise ValueError("Argument 'zoom_on' or lat_range & lon_range must be given")
-            print('No subsetting done on the dataset.')
-            return ds
+        
+    if lat_range == [] or lat_range == [None, None] :
+        # raise ValueError("Argument 'zoom_on' or lat_range & lon_range must be given")
+        print('No subsetting done on the dataset.')
+        return ds
         # else:
         #     lat_range = lat_range
         #     lon_range = lon_range
@@ -1966,6 +2110,19 @@ def subset_ds(ds, zoom_on=None, lat_range=[], lon_range=[],
 #            ds_subset = ds.isel(ni_u=np.arange(ni_min, ni_max), 
 #                                nj_u=np.arange(nj_min, nj_max))
 #    elif lastletters == 'de':
+    
+    if ni_min < 0:
+        print('subsetting reached the boundaries: clipping value of ni_min')
+        ni_min = 0
+    if ni_max >= len(ds.ni):
+        print('subsetting reached the boundaries: clipping value of ni_max')
+        ni_max = len(ds.ni) - 1
+    if nj_min < 0:
+        print('subsetting reached the boundaries: clipping value of nj_min')
+        nj_min = 0
+    if nj_max >= len(ds.nj):
+        print('subsetting reached the boundaries: clipping value of nj_max')
+        nj_max = len(ds.nj) - 1
         
     ds_subset = ds.isel(ni=np.arange(ni_min, ni_max), 
                         nj=np.arange(nj_min, nj_max))
@@ -2741,10 +2898,18 @@ def calc_ws_wd(ut, vt):
     wd_temp = np.arctan2(-ut, -vt)*180/np.pi
     
     try:
-        # works with xarray datatypes and conserve the format
-        wd = xr.where(wd_temp<0, wd_temp+360, wd_temp)
+        if isinstance(wd_temp, (xr.Dataset, xr.DataArray)):
+            # works with xarray datatypes and conserve the format
+            wd = xr.where(wd_temp<0, wd_temp+360, wd_temp)
+        elif isinstance(wd_temp, (pd.DataFrame, pd.Series)):
+            # works with pandas datatypes and conserve the format
+            wd = wd_temp.where(wd_temp>0, wd_temp+360)
+        else:
+            raise TypeError  # allow to go to except case
     except:
         # work with more formats
+        print("""tools.calc_ws_wd() - warning: 
+              format of output may be different from input""")
         wd = np.where(wd_temp<0, wd_temp+360, wd_temp)
     
     return ws, wd
@@ -3588,23 +3753,39 @@ def diag_lowleveljet(wind_speed_profile,
     return (np.nan, np.nan)
 
 
-def diag_abl_top(profile, method='Ri_bulk'):
+def diag_abl_top(ds, method='Ri_bulk'):
     """
     Parameters
     ----------
-    profile : TYPE
+    ds : xarray.dataset
         DESCRIPTION.
     method : TYPE, optional
         DESCRIPTION. The default is 'Ri_bulk'.
 
     Returns
     -------
-    abl_top : TYPE
-        DESCRIPTION.
+    abl_top : xarray.DataArray
+        Height of the atmosheric boundary layer.
 
     """
-    if method=='Ri_bulk':
-        return abl_top_from_bulk_ri()
+    ds_cen = flux_pt_to_mass_pt(ds, only_basic_vars=True)
+    ds_cen_red = ds_cen[['UT', 'VT', 'WT', 'THT', 'RVT']]
+    ds_cen_red['THV'] = calc_thetav(ds_cen['THT'], ds_cen['RVT'])
+    ds_res = ds_cen['ZS'].rename('ABL_TOP') * 0
+    
+    for j in range(len(ds_cen_red.nj)):
+        print(f'iteration {j}/{len(ds_cen_red.nj)}')
+        for i in range(len(ds_cen_red.ni)):
+            profile = ds_cen_red.isel(nj=j, ni=i)
+            
+            if method=='Ri_bulk':
+                ri_b = bulk_richardson_number(
+                    profile.level, profile['THT'], profile['UT'], profile['VT'])
+                ds_res[j, i] = abl_top_from_bulk_ri(profile.level, ri_b)
+            else:
+                raise KeyError('This method is not yet available')
+    
+    return ds_res
     
     
 def abl_top_from_bulk_ri(height, bulk_richardson_number, 

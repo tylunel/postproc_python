@@ -15,20 +15,40 @@ import global_variables as gv
 
 ###############################################
 models = [
-    '1_planier_0105/02_1km/', 
-    '1_planier_0105/04_1km_COARE/',
+    '2_planier_0122/05_1km_RM17',
+    # '1_planier_0105/02_1km'
+    '2_planier_0122/0411_40m',
     ]
-folder_res = 'diff_1km-1km_COARE'
 
-wanted_date = '20230105-2300'
+folder_res = '{expe}/diff_{simu1}-{simu2}'.format(
+    expe = models[0].split('/')[0],
+    simu1 = models[0].split('/')[1],
+    simu2 = models[1].split('/')[1])
+
+wanted_date = '20230122-1200'
 
 color_map = 'coolwarm'    # jet, seismic, BuPu, coolwarm, viridis, RdYlGn, 
-var_name = 'WS'
+
+var_name_model_dict = {
+    # '2_planier_0122/04_1km_COARE': 'TKEMME',
+    '2_planier_0122/05_1km_RM17': 'TKEMME',
+    # '1_planier_0105/02_1km': 'WS',
+    '2_planier_0122/0411_40m': 'TKEBAVG025',
+    }
+var_name_main = list(var_name_model_dict.values())[0]
+var_name_combined = '-'.join(list(var_name_model_dict.values()))
+
+filetype_model_dict = {
+    '2_planier_0122/04_1km_COARE': 'backup',
+    '2_planier_0122/05_1km_RM17': 'backup',
+    '2_planier_0122/0411_40m': 'diag',
+    }
 
 # level, only useful if var 3D
-ilevel = 10  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m
+# ilevel = 10  #0 is Halo, 1:2m, 2:6.12m, 3:10.49m, 10:49.3m, 20:141m, 30:304m, 40:600m, 50:1126m, 60:2070m
+wanted_alti = 140
 
-zoom_on = None  #None for no zoom, 'liaise' or 'urgell'
+zoom_on = 'planier_40m'  #None for no zoom, 'liaise', 'planier_40m'
 
 # Topo features
 sea_borders = True
@@ -45,8 +65,8 @@ barb_size_option = 'weak_winds'  # 'weak_winds' or 'standard'
 
 # Save
 save_plot = True
-save_folder = './figures/scalar_maps/{0}/{1}/{2}/'.format(
-    folder_res, var_name, ilevel)
+save_folder = './figures/scalar_maps/{0}/{1}/{2}m/'.format(
+    folder_res, var_name_combined, wanted_alti)
 
 vmax_dict = {
     'HU2M_SEA': 0.01,
@@ -54,16 +74,19 @@ vmax_dict = {
     'RI_SEA': 1,
     'WS': 1,
     'WSME': 1,
-    'TKET': 0.5,
+    'TKET': 1,
+    'TKEMME': 2,
     }
-vmax = vmax_dict[var_name]
+vmax = vmax_dict[var_name_main]
 vmin = -vmax
 
 ##############################################
 
 prop = gv.zoom_domain_prop[zoom_on]
-skip_barbs = prop['skip_barbs']
-barb_length = prop['barb_length']
+# skip_barbs = prop['skip_barbs']
+skip_barbs = 2
+# barb_length = prop['barb_length']
+barb_length = 6
 lat_range = prop['lat_range']
 lon_range = prop['lon_range']
 figsize = prop['figsize']
@@ -75,7 +98,8 @@ var_layer = {}
 for model in models:
 
     filename = tools.get_simu_filepath(
-        model, wanted_date, global_simu_folder=gv.global_simu_folder)
+        model, wanted_date, global_simu_folder=gv.global_simu_folder,
+        output_type=filetype_model_dict[model])
     
     # load dataset, default datetime okay as pgd vars are all the same along time
     ds = xr.open_dataset(filename)
@@ -85,11 +109,15 @@ for model in models:
                           zoom_on=zoom_on,
                           nb_indices_exterior=5,
                           )
-    ds1 = tools.flux_pt_to_mass_pt(ds1, only_basic_vars=False)
-    ds1['WS'], ds1['WD'] = tools.calc_ws_wd(ds1['UT'], ds1['VT'])
+    ds1 = tools.flux_pt_to_mass_pt(ds1, only_basic_vars=True)
+    try:
+        ds1['WS'], ds1['WD'] = tools.calc_ws_wd(ds1['UT'], ds1['VT'])
+    except KeyError:  # typically: no UT, VT in diag file
+        pass
     # ds1['WSME'], ds1['WDME'] = tools.calc_ws_wd(ds1['UMME'], ds1['VMME'])
     
     #%% DATA SELECTION and ZOOM
+    var_name = var_name_model_dict[model]
     varNd = ds1[var_name]
     #remove single dimensions
     varNd = varNd.squeeze()
@@ -97,7 +125,8 @@ for model in models:
     if len(varNd.shape) == 2:
         var2d = varNd
     elif len(varNd.shape) == 3:
-        var2d = varNd[ilevel,:,:]
+        # var2d = varNd[ilevel,:,:]
+        var2d = varNd.interp(level=wanted_alti)
         
     # remove 999 values, and replace by nan
     var2d = var2d.where(~(var2d == 999))
@@ -106,9 +135,13 @@ for model in models:
 
     var_layer[model] = var2d
 
+data_coarse = var_layer[models[0]]
+data_fine = var_layer[models[1]]
+data_coarse_refined = data_coarse.interp(ni=data_fine.ni, nj=data_fine.nj)
 
-var_diff = var_layer[models[0]] - var_layer[models[1]]
-var_diff.coords.update(var_layer[models[0]].coords)
+var_diff = data_coarse_refined - data_fine
+# reset lat/lon coords
+var_diff.coords.update(data_fine.coords)
 
 #%% PLOT OF VAR_NAME
 
@@ -129,10 +162,7 @@ plt.contourf(var_diff.longitude, var_diff.latitude, var_diff,
              )
 
 cbar = plt.colorbar(boundaries=[vmin, vmax])
-try:
-    cbar.set_label(var2d.long_name)
-except AttributeError:
-    cbar.set_label(var2d.name)
+cbar.set_label(var_name_combined)
 #cbar.set_clim(vmin, vmax)
 
 #%% WIND BARBS
@@ -141,11 +171,25 @@ barb_size_increments = gv.barb_size_increments
 barb_size_description = gv.barb_size_description
 
 if add_winds:
+    try:
+        # U = ds.UT[0, ilevel, :,:]
+        # V = ds.VT[0, ilevel, :,:]
+        U = ds['UT'].squeeze().interp(level=wanted_alti)
+        V = ds['VT'].squeeze().interp(level=wanted_alti)
+    except KeyError:  # typically: no UT, VT in second (diag) file
+        # reload dataset of first model
+        model = models[0]
+        filename = tools.get_simu_filepath(
+            model, wanted_date, global_simu_folder=gv.global_simu_folder,
+            output_type=filetype_model_dict[model])
+        ds = xr.open_dataset(filename)
+        # and get U and V
+        U = ds['UT'].squeeze().interp(level=wanted_alti)
+        V = ds['VT'].squeeze().interp(level=wanted_alti)
+    
     X = ds.longitude
     Y = ds.latitude
-    U = ds.UT[0, ilevel, :,:]
-    V = ds.VT[0, ilevel, :,:]
-    
+
     plt.barbs(X[::skip_barbs, ::skip_barbs], Y[::skip_barbs, ::skip_barbs], 
               U[::skip_barbs, ::skip_barbs], V[::skip_barbs, ::skip_barbs],
               pivot='middle',
@@ -161,10 +205,24 @@ if add_winds:
                  xy=(0.1, 0.05),
                  xycoords='subfigure fraction'
                  )
+    plt.annotate(f'barbs correspond to abs. wind of model {model} (not diff)',
+                 xy=(0.1, 0.025),
+                 xycoords='subfigure fraction'
+                 )
 
 #%% TOPO FEATURES
+try:
+    if '_1km' in model:
+        pgd_filename = f'{gv.global_simu_folder}/{model}/PGD_1KM.nc'
+    elif '_200m' in model:
+            pgd_filename = f'{gv.global_simu_folder}/{model}/PGD_200M.nc'
+    elif '_40m' in model:
+        pgd_filename = f'{gv.global_simu_folder}/{model}/PGD_40M.nc'
+    else:
+        raise KeyError
+except KeyError:
+    pgd_filename = f'{gv.global_simu_folder}/{model}/{gv.pgd_filename_dict[model]}'
 
-pgd_filename = f'/home/lunelt/Data/mnh_run/{model}/PGD_1KM.nc'
 pgd = xr.open_dataset(pgd_filename)
 
 # --- Sea borders
@@ -229,12 +287,16 @@ for site in sites:
 
 #%% FIGURE OPTIONS and ZOOM
 if len(varNd.shape) == 2:
-    plot_title = '{0} - {1} diff \nbetween {2} and {3}'.format(
-    wanted_date, var_name, models[0], models[1])
+    # plot_title = '{0} - {1} diff \nbetween {2} and {3}'.format(
+    #     wanted_date, var_name, models[0], models[1])
+    plot_title = '{0} - {1} - {2}'.format(
+        wanted_date, var_name, folder_res)
+    
 elif len(varNd.shape) == 3:
-    plot_title = '{0} - {1} diff between {2} and {3} at {4}m'.format(
-        wanted_date, var_name, models[0], models[1], var2d.level.round())
-        # wanted_date, var_name, models[0], models[1], var2d.level_w.round())
+    # plot_title = '{0} - {1} diff between {2} and {3} at {4}m'.format(
+    #     wanted_date, var_name, models[0], models[1], int(var2d.level))
+    plot_title = '{0} - {1} - {2} at {3}m'.format(
+        wanted_date, var_name, folder_res, int(var2d.level))
 
 plt.suptitle(plot_title)
 
